@@ -70,8 +70,17 @@ class Parser:
 
     def parse(self) -> ASTNode:
         """解析的進入點"""
-        # 由於目前我們的 BirdEye 專注於 SELECT 攔截，直接進入 SELECT 解析
-        return self._parse_select()
+        # 1. 解析主要的 SELECT 語句
+        stmt = self._parse_select()
+        
+        # 2. 🛑 ZTA 終極防禦：確保沒有尾隨的惡意垃圾 (Trailing Garbage)
+        # 如果解析完之後，下一個 Token 不是 EOF (代表後面還有東西沒處理到)
+        current_token = self._peek()
+        if current_token and current_token.type != TokenType.EOF:
+            # 直接拔刀，攔截可能的 SQL 注入！
+            raise SyntaxError(f"Unexpected tokens after parsing: '{self._get_token_text(current_token)}'. Possible SQL injection detected.")
+            
+        return stmt
 
     def _parse_select(self) -> SelectStatement:
         stmt = SelectStatement()
