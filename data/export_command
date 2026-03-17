@@ -1,0 +1,9 @@
+SELECT 
+    t.name AS table_name, 
+    c.name AS column_name,
+    tp.name AS data_type
+FROM sys.tables t
+JOIN sys.columns c ON t.object_id = c.object_id
+JOIN sys.types tp ON c.user_type_id = tp.user_type_id
+WHERE t.is_ms_shipped = 0  -- 只抓取使用者建立的資料表
+ORDER BY table_name, c.column_id;
