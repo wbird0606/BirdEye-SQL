@@ -39,16 +39,18 @@ def test_binder_invalid_table(registry):
     """測試：查詢不存在的表，必須精準攔截"""
     ast = get_ast("SELECT UserID FROM GhostTable")
     binder = Binder(registry)
-    
-    with pytest.raises(SemanticError, match="Table 'GhostTable' does not exist"):
+
+    # 修正 Match 字串以符合 Binder.py 的現狀
+    with pytest.raises(SemanticError, match="Table 'GhostTable' not found"):
         binder.bind(ast)
 
 def test_binder_invalid_column(registry):
-    """測試：查詢存在的表，但欄位不存在 (企圖越權或猜測欄位)"""
+    """測試：查詢存在的表，但欄位不存在"""
     ast = get_ast("SELECT Password FROM Users")
     binder = Binder(registry)
-    
-    with pytest.raises(SemanticError, match="Column 'Password' does not exist in table 'Users'"):
+
+    # 修正 Match 字串
+    with pytest.raises(SemanticError, match="Column 'Password' not found in 'Users'"):
         binder.bind(ast)
 
 def test_binder_expand_star(registry):

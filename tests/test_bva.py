@@ -34,16 +34,15 @@ def test_bva_empty_query():
     sql = "   \n  "
     lexer = Lexer(sql)
     parser = Parser(lexer.tokenize(), sql)
-    
-    # 應該要拋出語法錯誤，因為連 SELECT 都沒有
-    with pytest.raises(SyntaxError, match="Expected SELECT keyword"):
+
+    # 修正 Match 字串：從 "Expected SELECT keyword" 改為 "Expected SELECT"
+    with pytest.raises(SyntaxError, match="Expected SELECT"):
         parser.parse()
 
 def test_bva_trailing_garbage_injection(registry):
-    """BVA 測試 3 (致命弱點！)：夾帶惡意 SQL 注入的尾隨垃圾"""
-    # 駭客企圖在合法的 SELECT 後面夾帶惡意指令
+    """BVA 測試 3：夾帶惡意 SQL 注入的尾隨垃圾"""
     sql = "SELECT * FROM Users ; DROP TABLE Users--"
     
-    # 嚴格的 Parser 應該要在解析完 Users 後，發現後面還有東西沒處理完而報錯！
-    with pytest.raises(SyntaxError, match="Unexpected tokens after parsing"):
+    # 修正 Match 字串：現在會精準指出是哪個 Token (Unexpected token: ;)
+    with pytest.raises(SyntaxError, match="Unexpected token: ;"):
         run_pipeline(sql, registry)

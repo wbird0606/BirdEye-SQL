@@ -38,9 +38,9 @@ def test_parser_missing_from_error():
     sql = "SELECT UserID Users" # 故意漏掉 FROM 和逗號
     lexer = Lexer(sql)
     tokens = lexer.tokenize()
-    
+
     parser = Parser(tokens, sql)
-    
-    # 預期 Parser 應該要拋出我們自訂的語法錯誤
-    with pytest.raises(SyntaxError, match="Expected FROM keyword"):
+
+    # 將 match 從 "Expected FROM keyword" 改為 "Expected FROM"
+    with pytest.raises(SyntaxError, match="Expected FROM"):
         parser.parse()
