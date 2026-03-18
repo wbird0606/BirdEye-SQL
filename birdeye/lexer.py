@@ -47,12 +47,16 @@ class Lexer:
             self.position += 1
 
     def _read_string_literal(self) -> Token:
-        """讀取單引號字串常量"""
         start_pos = self.position
-        self.position += 1 # 跳過 '
+        self.position += 1 # 跳過起始 '
         while self.position < self.length and self.source[self.position] != "'":
             self.position += 1
-        if self.position < self.length: self.position += 1 # 跳過結尾 '
+        
+        # --- 【Issue #20 修正】檢查是否是因為 EOF 而跳出 ---
+        if self.position >= self.length:
+            raise ValueError("Unclosed string literal")
+            
+        self.position += 1 # 跳過結尾 '
         return Token(TokenType.STRING_LITERAL, start_pos, self.position)
 
     def _read_numeric_literal(self) -> Token:
@@ -127,5 +131,9 @@ class Lexer:
                 tokens.append(self._read_identifier_or_keyword() if self.in_bracket else Token(TokenType.IDENTIFIER, start_pos, start_pos+1))
                 if not self.in_bracket: self.position += 1
         
+        # --- 【Issue #20 修正】掃描結束後，確認括號是否閉合 ---
+        if self.in_bracket:
+            raise ValueError("Unclosed bracket")
+            
         tokens.append(Token(TokenType.EOF, self.position, self.position))
         return tokens
