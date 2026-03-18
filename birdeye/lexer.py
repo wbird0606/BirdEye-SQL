@@ -1,29 +1,32 @@
-# birdeye/lexer.py
 from enum import Enum, auto
 from dataclasses import dataclass
 from typing import List
 
 class TokenType(Enum):
-    # Keywords
+    """定義 BirdEye-SQL 支援的所有標記類型 [cite: 9, 11]"""
+    # Keywords (SQL 關鍵字)
     KEYWORD_SELECT = auto()
     KEYWORD_FROM = auto()
+    KEYWORD_AS = auto()
     
-    # Identifiers
+    # Identifiers (資料表名、欄位名)
     IDENTIFIER = auto()
     
-    # Symbols
-    SYMBOL_ASTERISK = auto() # *
-    SYMBOL_COMMA = auto()    # ,
-    SYMBOL_DOT = auto()      # .
-    SYMBOL_SEMICOLON = auto() # ;  <-- 新增
-    SYMBOL_MINUS = auto()    # -   <-- 新增
+    # Symbols (運算符與符號)
+    SYMBOL_ASTERISK = auto()   # *
+    SYMBOL_COMMA = auto()      # ,
+    SYMBOL_DOT = auto()        # .
+    SYMBOL_SEMICOLON = auto()  # ;
+    SYMBOL_MINUS = auto()      # -
+    SYMBOL_BRACKET_L = auto()  # [ (MSSQL 特有)
+    SYMBOL_BRACKET_R = auto()  # ] (MSSQL 特有)
     
     # Special
-    EOF = auto()             # End of File
+    EOF = auto()               # End of File
 
 @dataclass
 class Token:
-    """Zero-copy Token: 只保存原始資料的指標(Index)，不複製字串內容"""
+    """Zero-copy Token: 僅儲存原始代碼的索引位置 """
     type: TokenType
     start: int
     end: int
@@ -35,28 +38,30 @@ class Lexer:
         self.length = len(source_code)
 
     def _skip_whitespace(self):
-        """跳過空白、Tab 與換行符號"""
+        """跳過所有空白、換行與定位符"""
         while self.position < self.length and self.source[self.position].isspace():
             self.position += 1
 
     def _read_identifier_or_keyword(self) -> Token:
-        """讀取連續的字母或數字，並判斷是關鍵字還是 Identifier"""
+        """讀取連續字元並判斷是否為關鍵字 (不分大小寫) """
         start_pos = self.position
         while self.position < self.length and (self.source[self.position].isalnum() or self.source[self.position] == '_'):
             self.position += 1
         
-        # 利用 slice 取出字串來比對 Keyword (只有在判斷時暫時切出，回傳的 Token 仍是 zero-copy)
-        # 注意：這裡統一轉大寫來比對，實現 Case-insensitive
+        # 取得字串文本進行關鍵字比對
         word = self.source[start_pos:self.position].upper()
         
         if word == "SELECT":
             return Token(TokenType.KEYWORD_SELECT, start_pos, self.position)
         elif word == "FROM":
             return Token(TokenType.KEYWORD_FROM, start_pos, self.position)
+        elif word == "AS":
+            return Token(TokenType.KEYWORD_AS, start_pos, self.position)
         else:
             return Token(TokenType.IDENTIFIER, start_pos, self.position)
 
     def tokenize(self) -> List[Token]:
+        """核心掃描邏輯：將 SQL 字串轉化為 Token 流 """
         tokens = []
         
         while self.position < self.length:
@@ -67,8 +72,7 @@ class Lexer:
             char = self.source[self.position]
             start_pos = self.position
             
-            # 處理符號
-            # 處理符號 (新增 ; 和 -)
+            # --- 符號辨識鏈 ---
             if char == '*':
                 tokens.append(Token(TokenType.SYMBOL_ASTERISK, start_pos, start_pos + 1))
                 self.position += 1
@@ -78,20 +82,29 @@ class Lexer:
             elif char == '.':
                 tokens.append(Token(TokenType.SYMBOL_DOT, start_pos, start_pos + 1))
                 self.position += 1
-            elif char == ';':  # <-- 新增分號
+            elif char == ';':
                 tokens.append(Token(TokenType.SYMBOL_SEMICOLON, start_pos, start_pos + 1))
                 self.position += 1
-            elif char == '-':  # <-- 新增連字號 (SQL 註解常用)
+            elif char == '-':
                 tokens.append(Token(TokenType.SYMBOL_MINUS, start_pos, start_pos + 1))
                 self.position += 1
+            elif char == '[':
+                tokens.append(Token(TokenType.SYMBOL_BRACKET_L, start_pos, start_pos + 1))
+                self.position += 1
+            elif char == ']':
+                tokens.append(Token(TokenType.SYMBOL_BRACKET_R, start_pos, start_pos + 1))
+                self.position += 1
+            
+            # --- 標識符與關鍵字 ---
             elif char.isalpha() or char == '_':
                 tokens.append(self._read_identifier_or_keyword())
+            
+            # --- 錯誤防護機制 (與 BVA 測試連動) ---
             else:
-                # 為了避免未來再有未知符號讓 Lexer 崩潰，我們把它當作一格的 Identifier 傳下去
-                # 這樣 Parser 就會因為拿到不預期的 Token 而拋出 SyntaxError，而不是在這裡炸掉
+                # 遇到無法解析的字元，暫時視為單字元標識符交給 Parser 處理 EOF 結界
                 tokens.append(Token(TokenType.IDENTIFIER, start_pos, start_pos + 1))
                 self.position += 1
                 
-        # 最後補上 EOF Token
+        # 補上 EOF 結界，確保 Parser 能偵測 SQL 注入 [cite: 10]
         tokens.append(Token(TokenType.EOF, self.position, self.position))
         return tokens
