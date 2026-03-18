@@ -1,9 +1,10 @@
+# birdeye/lexer.py
+
 from enum import Enum, auto
 from dataclasses import dataclass
 from typing import List
 
 class TokenType(Enum):
-    """定義 BirdEye-SQL 支援的所有標記類型"""
     KEYWORD_SELECT = auto()
     KEYWORD_FROM = auto()
     KEYWORD_AS = auto()
@@ -19,7 +20,6 @@ class TokenType(Enum):
 
 @dataclass
 class Token:
-    """Zero-copy Token: 僅儲存原始代碼的索引位置"""
     type: TokenType
     start: int
     end: int
@@ -29,32 +29,43 @@ class Lexer:
         self.source = source_code
         self.position = 0
         self.length = len(source_code)
-        # 狀態感知：記錄目前是否處於 MSSQL 中括號內
         self.in_bracket = False 
 
     def _skip_whitespace(self):
+        # 關鍵：只有在非括號模式下才主動跳過空格
+        # 在括號內，空格可能是標識符的一部分
         while self.position < self.length and self.source[self.position].isspace():
+            if self.in_bracket:
+                break
             self.position += 1
 
     def _read_identifier_or_keyword(self) -> Token:
-        """讀取標識符，並根據是否在括號內決定是否檢查關鍵字"""
+        """根據是否在括號內，切換不同的讀取策略"""
         start_pos = self.position
-        while self.position < self.length and (self.source[self.position].isalnum() or self.source[self.position] == '_'):
-            self.position += 1
         
-        # 取得字串文本
-        word = self.source[start_pos:self.position].upper()
+        if self.in_bracket:
+            # 【Issue #16】括號模式：貪婪讀取直到遇見 ] 為止
+            while self.position < self.length and self.source[self.position] != ']':
+                self.position += 1
+        else:
+            # 正常模式：僅讀取英數與底線
+            while self.position < self.length and (self.source[self.position].isalnum() or self.source[self.position] == '_'):
+                self.position += 1
         
-        # 關鍵邏輯：如果在括號內，無條件視為 IDENTIFIER
+        # 取得文本
+        word = self.source[start_pos:self.position]
+        
+        # 關鍵邏輯：如果在括號內，強制為 IDENTIFIER 且不進行關鍵字比對
         if self.in_bracket:
             return Token(TokenType.IDENTIFIER, start_pos, self.position)
         
-        # 否則執行關鍵字比對
-        if word == "SELECT":
+        # 否則檢查是否為關鍵字
+        upper_word = word.upper()
+        if upper_word == "SELECT":
             return Token(TokenType.KEYWORD_SELECT, start_pos, self.position)
-        elif word == "FROM":
+        elif upper_word == "FROM":
             return Token(TokenType.KEYWORD_FROM, start_pos, self.position)
-        elif word == "AS":
+        elif upper_word == "AS":
             return Token(TokenType.KEYWORD_AS, start_pos, self.position)
         else:
             return Token(TokenType.IDENTIFIER, start_pos, self.position)
@@ -68,7 +79,6 @@ class Lexer:
             char = self.source[self.position]
             start_pos = self.position
             
-            # --- 完整的符號辨識鏈 ---
             if char == '*':
                 tokens.append(Token(TokenType.SYMBOL_ASTERISK, start_pos, start_pos + 1))
                 self.position += 1
@@ -78,26 +88,30 @@ class Lexer:
             elif char == '.':
                 tokens.append(Token(TokenType.SYMBOL_DOT, start_pos, start_pos + 1))
                 self.position += 1
-            elif char == ';': # <--- 補上這個
+            elif char == ';':
                 tokens.append(Token(TokenType.SYMBOL_SEMICOLON, start_pos, start_pos + 1))
                 self.position += 1
-            elif char == '-': # <--- 補上這個 (為了支援註解或運算)
+            elif char == '-':
                 tokens.append(Token(TokenType.SYMBOL_MINUS, start_pos, start_pos + 1))
                 self.position += 1
             elif char == '[':
-                self.in_bracket = True
+                # 進入括號模式，立即標記並移動指標
                 tokens.append(Token(TokenType.SYMBOL_BRACKET_L, start_pos, start_pos + 1))
                 self.position += 1
+                self.in_bracket = True
+                # 關鍵：進入後若下一個字元不是 ]，立刻讀取整個標識符
+                if self.position < self.length and self.source[self.position] != ']':
+                    tokens.append(self._read_identifier_or_keyword())
             elif char == ']':
-                self.in_bracket = False
                 tokens.append(Token(TokenType.SYMBOL_BRACKET_R, start_pos, start_pos + 1))
                 self.position += 1
+                self.in_bracket = False
             elif char.isalpha() or char == '_':
                 tokens.append(self._read_identifier_or_keyword())
             else:
-                # 真正的未知字元才當標識符處理 (例如 $, # 等)
-                tokens.append(Token(TokenType.IDENTIFIER, start_pos, start_pos + 1))
-                self.position += 1
+                # 處理數字開頭或其他特殊字元
+                tokens.append(self._read_identifier_or_keyword() if self.in_bracket else Token(TokenType.IDENTIFIER, start_pos, start_pos + 1))
+                if not self.in_bracket: self.position += 1
                 
         tokens.append(Token(TokenType.EOF, self.position, self.position))
         return tokens
