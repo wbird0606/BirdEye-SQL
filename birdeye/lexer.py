@@ -77,8 +77,33 @@ class Lexer:
             if self.position >= self.length: break
                 
             char = self.source[self.position]
+            # 取得下一個字元，用於判斷雙字元符號
+            next_char = self.source[self.position + 1] if self.position + 1 < self.length else None
             start_pos = self.position
             
+            # --- 【Issue #17】註解跳過邏輯 ---
+            # 只有在非中括號模式下才處理註解 (防止 [Column -- Name] 被誤殺)
+            if not self.in_bracket:
+                # 1. 單行註解 (-- ...)
+                if char == '-' and next_char == '-':
+                    while self.position < self.length and self.source[self.position] != '\n':
+                        self.position += 1
+                    continue # 直接進入下一輪掃描，不產生 Token
+                
+                # 2. 多行註解 (/* ... */)
+                if char == '/' and next_char == '*':
+                    self.position += 2 # 跳過 /*
+                    while self.position < self.length - 1:
+                        if self.source[self.position] == '*' and self.source[self.position + 1] == '/':
+                            self.position += 2 # 跳過 */
+                            break
+                        self.position += 1
+                    else:
+                        # 沒找到結束符號，直接跳到結尾 (或是留給後續 Issue #20 處理報錯)
+                        self.position = self.length
+                    continue
+
+            # --- 原有符號辨識鏈 ---
             if char == '*':
                 tokens.append(Token(TokenType.SYMBOL_ASTERISK, start_pos, start_pos + 1))
                 self.position += 1
@@ -92,14 +117,13 @@ class Lexer:
                 tokens.append(Token(TokenType.SYMBOL_SEMICOLON, start_pos, start_pos + 1))
                 self.position += 1
             elif char == '-':
+                # 這裡的單一減號可能是運算子
                 tokens.append(Token(TokenType.SYMBOL_MINUS, start_pos, start_pos + 1))
                 self.position += 1
             elif char == '[':
-                # 進入括號模式，立即標記並移動指標
                 tokens.append(Token(TokenType.SYMBOL_BRACKET_L, start_pos, start_pos + 1))
                 self.position += 1
                 self.in_bracket = True
-                # 關鍵：進入後若下一個字元不是 ]，立刻讀取整個標識符
                 if self.position < self.length and self.source[self.position] != ']':
                     tokens.append(self._read_identifier_or_keyword())
             elif char == ']':
@@ -109,7 +133,7 @@ class Lexer:
             elif char.isalpha() or char == '_':
                 tokens.append(self._read_identifier_or_keyword())
             else:
-                # 處理數字開頭或其他特殊字元
+                # 其他特殊字元 (如數字或未知標記)
                 tokens.append(self._read_identifier_or_keyword() if self.in_bracket else Token(TokenType.IDENTIFIER, start_pos, start_pos + 1))
                 if not self.in_bracket: self.position += 1
                 
