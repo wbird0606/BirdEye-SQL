@@ -2,57 +2,60 @@ from birdeye.parser import SelectStatement, IdentifierNode
 from birdeye.registry import MetadataRegistry
 from birdeye.lexer import Token, TokenType
 
-class SemanticError(Exception): pass
+# birdeye/binder.py
+
+class SemanticError(Exception):
+    """當 SQL 語意違反資料庫結構或作用域規則時拋出"""
+    pass
+
 
 class Binder:
-    def __init__(self, registry: MetadataRegistry):
+    def __init__(self, registry):
         self.registry = registry
 
-    def bind(self, stmt: SelectStatement):
-        """
-        執行語意綁定：驗證元數據並處理別名與星號展開 
-        """
-        if not stmt.table:
-            raise SemanticError("No table specified in SELECT statement")
-
+    def bind(self, stmt):
+        from birdeye.parser import IdentifierNode
         table_name = stmt.table.name
-        alias = stmt.table_alias
-        t_name_lower = table_name.lower()
-
-        # 1. 驗證資料表是否存在於 Registry [cite: 4]
+        
         if not self.registry.has_table(table_name):
             raise SemanticError(f"Table '{table_name}' not found")
 
-        # 2. 處理星號展開 (包含 * 和 Schema.Table.*) 
-        if stmt.is_select_star or stmt.star_prefixes:
-            valid_prefixes = [t_name_lower, (alias or "").lower()]
-            
-            # 檢查 Table.* 中的前綴是否正確匹配資料表或別名
-            for prefix in stmt.star_prefixes:
-                # 取得前綴的最後一個節點 (例如 dbo.Users 取得 Users)
-                last_part = prefix.split('.')[-1].lower()
-                if last_part not in valid_prefixes:
-                    raise SemanticError(f"Unknown prefix '{prefix}' in star expansion")
-            
-            # 從 Registry 抓出該表的真實欄位清單
-            all_cols = self.registry._catalog[t_name_lower].keys()
-            for col_name in all_cols:
-                # 建立新的標識符節點，保留 Registry 中的原始命名
-                stmt.columns.append(IdentifierNode(name=col_name, token=Token(TokenType.IDENTIFIER, -1, -1)))
-            
-            # 標記為已展開，避免重複處理
-            stmt.is_select_star = True 
+        # 決定唯一合法限定符
+        expected_qualifier = stmt.table_alias if stmt.table_alias else table_name
 
-        # 3. 驗證明確指定的欄位與其限定符 (Qualifiers) 
+        # --- 【修復 星號展開邏輯】 ---
+        
+        # 1. 處理全域星號 SELECT *
+        if stmt.is_select_star:
+            all_cols = self.registry.get_columns_for_table(table_name)
+            # 展開並加入 columns 清單
+            for col in all_cols:
+                stmt.columns.append(IdentifierNode(name=col, token=None, qualifiers=[expected_qualifier]))
+
+        # 2. 處理限定星號 SELECT Table.* 或 Alias.*
+        for prefix in stmt.star_prefixes:
+            # 驗證前綴是否為合法的表名或別名
+            if prefix.upper() not in [table_name.upper(), (stmt.table_alias or "").upper()]:
+                raise SemanticError(f"Unknown table prefix '{prefix}' in star expansion")
+            
+            # 若使用了原名但有別名，根據 Issue #19 應報警
+            if stmt.table_alias and prefix.upper() == table_name.upper():
+                raise SemanticError(f"Original table name '{table_name}' cannot be used for star expansion when alias '{stmt.table_alias}' is defined")
+
+            all_cols = self.registry.get_columns_for_table(table_name)
+            for col in all_cols:
+                stmt.columns.append(IdentifierNode(name=col, token=None, qualifiers=[expected_qualifier]))
+
+        # 3. 驗證現有欄位與作用域
         for col in stmt.columns:
             if col.qualifiers:
-                # 取得直接前綴 (例如 dbo.Users.UserID 的 Users)
-                # 這是為了處理 MSSQL 的多層級路徑歸屬 [cite: 4]
-                immediate_prefix = col.qualifiers[-1].lower()
-                if immediate_prefix not in [t_name_lower, (alias or "").lower()]:
-                    raise SemanticError(f"Invalid qualifier '{'.'.join(col.qualifiers)}' for column '{col.name}'")
-            
-            # 驗證欄位是否存在於該資料表中 [cite: 4]
+                actual_qualifier = col.qualifiers[-1]
+                if stmt.table_alias and actual_qualifier.upper() == table_name.upper():
+                    raise SemanticError(f"Original table name '{table_name}' cannot be used when alias '{stmt.table_alias}' is defined")
+                
+                if actual_qualifier.upper() not in [table_name.upper(), (stmt.table_alias or "").upper()]:
+                    raise SemanticError(f"Unknown qualifier '{actual_qualifier}' for column '{col.name}'")
+
             if not self.registry.has_column(table_name, col.name):
                 raise SemanticError(f"Column '{col.name}' not found in '{table_name}'")
 
