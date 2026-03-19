@@ -8,8 +8,8 @@ from birdeye.ast import (
 
 class ASTVisualizer:
     """
-    將 AST 轉換為樹狀文字結構，支援 DQL、DML 與條件分支語法。
-    v1.6.9: 新增 CASE WHEN 節點視覺化支援。
+    將 AST 轉換為樹狀文字結構，支援 DQL、DML、條件分支與函數擴展。
+    v1.7.1: 強化函數呼叫與無來源表查詢的視覺化呈現。
     """
 
     def __init__(self):
@@ -46,8 +46,8 @@ class ASTVisualizer:
                 if node.table_alias:
                     self.lines.append(f"{current_indent}    └── ALIAS: {node.table_alias}")
             else:
-                # 💡 v1.6.9: 支援 SELECT 常數 (無 FROM)
-                self.lines.append(f"{current_indent}  ├── FROM: <NONE> (Literal SELECT)")
+                # 💡 v1.7.1: 明確標示無來源查詢 (例如 SELECT GETDATE())
+                self.lines.append(f"{current_indent}  ├── FROM: <DUAL/NONE> (Scalar/Literal Query)")
 
             if node.joins:
                 self.lines.append(f"{current_indent}  ├── JOINS")
@@ -106,45 +106,34 @@ class ASTVisualizer:
             self.lines.append(f"{prefix}BULK_COPY_STATEMENT")
             self.lines.append(f"{current_indent}  └── TARGET TABLE: {node.table.name}")
 
-        # --- 2. 結構化輔助節點 ---
+        # --- 2. 表達式與函數節點 ---
 
-        elif isinstance(node, JoinNode):
-            self.lines.append(f"{prefix}{node.type}_JOIN")
-            self._visit(node.table, indent + 1, "TABLE")
-            if node.alias:
-                self.lines.append(f"{current_indent}    └── ALIAS: {node.alias}")
-            self.lines.append(f"{current_indent}    └── ON")
-            if node.on_condition:
-                self._visit(node.on_condition, indent + 3, "COND")
-
-        elif isinstance(node, OrderByNode):
-            self.lines.append(f"{prefix}SORT_BY: {node.direction}")
-            self._visit(node.column, indent + 1, "COL")
-
-        elif isinstance(node, AssignmentNode):
-            self.lines.append(f"{prefix}EXPRESSION: =")
-            self._visit(node.column, indent + 1, "LEFT")
-            self._visit(node.right, indent + 1, "RIGHT")
-
-        # --- 3. 基礎與複雜表達式節點 ---
+        elif isinstance(node, FunctionCallNode):
+            # 💡 v1.7.1: 優化函數視覺化，處理無參數情況
+            alias = f" AS {node.alias}" if node.alias else ""
+            arg_info = f" ({len(node.args)} args)" if node.args else " ()"
+            self.lines.append(f"{prefix}FUNCTION: {node.name}{arg_info}{alias}")
+            for i, arg in enumerate(node.args):
+                self._visit(arg, indent + 1, f"ARG#{i+1}")
 
         elif isinstance(node, CaseExpressionNode):
-            # 💡 v1.6.9 新增：CASE 視覺化
             self.lines.append(f"{prefix}CASE_EXPRESSION")
             if node.input_expr:
-                self._visit(node.input_expr, indent + 2, "INPUT_EXPR")
-            
+                self._visit(node.input_expr, indent + 2, "INPUT")
             for i, (when_expr, then_expr) in enumerate(node.branches):
                 self.lines.append(f"{current_indent}  ├── BRANCH #{i+1}")
                 self._visit(when_expr, indent + 3, "WHEN")
                 self._visit(then_expr, indent + 3, "THEN")
-            
             if node.else_expr:
                 self.lines.append(f"{current_indent}  ├── ELSE")
                 self._visit(node.else_expr, indent + 2, "RESULT")
-            
             if node.alias:
                 self.lines.append(f"{current_indent}  └── ALIAS: {node.alias}")
+
+        elif isinstance(node, BinaryExpressionNode):
+            self.lines.append(f"{prefix}EXPRESSION: {node.operator}")
+            self._visit(node.left, indent + 1, "LEFT")
+            self._visit(node.right, indent + 1, "RIGHT")
 
         elif isinstance(node, IdentifierNode):
             qual = f" (Qual: {node.qualifier})" if node.qualifiers else ""
@@ -155,14 +144,22 @@ class ASTVisualizer:
             type_str = f" ({node.type.name})" if hasattr(node.type, 'name') else ""
             self.lines.append(f"{prefix}LITERAL: {node.value}{type_str}")
 
-        elif isinstance(node, BinaryExpressionNode):
-            # 💡 遞迴顯示子查詢
-            self.lines.append(f"{prefix}EXPRESSION: {node.operator}")
-            self._visit(node.left, indent + 1, "LEFT")
-            self._visit(node.right, indent + 1, "RIGHT")
+        # --- 3. 結構輔助節點 ---
 
-        elif isinstance(node, FunctionCallNode):
-            alias = f" AS {node.alias}" if node.alias else ""
-            self.lines.append(f"{prefix}FUNCTION: {node.name}{alias}")
-            for arg in node.args:
-                self._visit(arg, indent + 1, "ARG")
+        elif isinstance(node, JoinNode):
+            self.lines.append(f"{prefix}{node.type}_JOIN")
+            self._visit(node.table, indent + 1, "TABLE")
+            if node.alias:
+                self.lines.append(f"{current_indent}    └── ALIAS: {node.alias}")
+            if node.on_condition:
+                self.lines.append(f"{current_indent}    └── ON")
+                self._visit(node.on_condition, indent + 3, "COND")
+
+        elif isinstance(node, OrderByNode):
+            self.lines.append(f"{prefix}SORT_BY: {node.direction}")
+            self._visit(node.column, indent + 1, "COL")
+
+        elif isinstance(node, AssignmentNode):
+            self.lines.append(f"{prefix}SET_OP: =")
+            self._visit(node.column, indent + 1, "TARGET")
+            self._visit(node.right, indent + 1, "VALUE")

@@ -9,7 +9,7 @@ from birdeye.ast import (
 class Parser:
     """
     語法分析器：將 Token 序列轉換為抽象語法樹 (AST)。
-    v1.6.9: 支援 CASE WHEN、子查詢，並實作 ZTA 語意感知 FROM 檢查。
+    v1.7.1: 支援語意感知 FROM 檢查，允許無來源表的標量函數呼叫。
     """
     def __init__(self, tokens, source):
         self.tokens = tokens
@@ -74,7 +74,7 @@ class Parser:
             if not num_tok: raise SyntaxError("Expected numeric literal after TOP")
             stmt.top_count = int(num_tok.value)
 
-        # 解析投影欄位
+        # 1. 解析投影欄位
         while True:
             if self._match(TokenType.SYMBOL_ASTERISK):
                 stmt.is_select_star = True
@@ -91,7 +91,7 @@ class Parser:
                     stmt.columns.append(expr)
             if not self._match(TokenType.SYMBOL_COMMA): break
 
-        # 💡 ZTA 語意感知 FROM 檢查
+        # 2. 💡 ZTA 語意感知 FROM 檢查 (v1.7.1)
         if self._match(TokenType.KEYWORD_FROM):
             stmt.table, _ = self._parse_full_identifier_safe()
             self._match(TokenType.KEYWORD_AS)
@@ -121,12 +121,12 @@ class Parser:
                     stmt.joins.append(j_node)
                 else: break
         else:
-            # 💡 只有在全為常數投影時才允許省略 FROM
-            needs_from = stmt.is_select_star or any(not isinstance(c, LiteralNode) for c in stmt.columns)
+            # 💡 核心邏輯：若投影中包含 Identifier 或 *，則強制要求 FROM
+            needs_from = stmt.is_select_star or any(self._contains_identifier(c) for c in stmt.columns)
             if needs_from:
                 self._consume(TokenType.KEYWORD_FROM, "Expected FROM")
 
-        # 其餘子句
+        # 3. 其餘子句
         if self._match(TokenType.KEYWORD_WHERE):
             stmt.where_condition = self._parse_expression()
         if self._match(TokenType.KEYWORD_GROUP):
@@ -148,6 +148,24 @@ class Parser:
 
         return stmt
 
+    # --- 💡 v1.7.1: 語意檢查輔助方法 ---
+
+    def _contains_identifier(self, node) -> bool:
+        """遞迴檢查表達式節點中是否包含標識符 (用於判斷 FROM 是否選配)"""
+        if isinstance(node, IdentifierNode):
+            return True
+        if isinstance(node, BinaryExpressionNode):
+            return self._contains_identifier(node.left) or self._contains_identifier(node.right)
+        if isinstance(node, FunctionCallNode):
+            # 內建函數如 GETDATE() 參數為空，或參數皆為字面量，則回傳 False
+            return any(self._contains_identifier(arg) for arg in node.args)
+        if isinstance(node, CaseExpressionNode):
+            if node.input_expr and self._contains_identifier(node.input_expr): return True
+            for w, t in node.branches:
+                if self._contains_identifier(w) or self._contains_identifier(t): return True
+            return self._contains_identifier(node.else_expr) if node.else_expr else False
+        return False
+
     # --- 3. DML 解析 ---
 
     def _parse_update(self):
@@ -161,7 +179,6 @@ class Parser:
             val = self._parse_expression()
             stmt.set_clauses.append(AssignmentNode(column=col, expression=val))
             if not self._match(TokenType.SYMBOL_COMMA): break
-        # 🛡️ ZTA 強制性報錯訊息
         self._consume(TokenType.KEYWORD_WHERE, "WHERE clause is mandatory for UPDATE/DELETE")
         stmt.where_condition = self._parse_expression()
         return stmt
@@ -171,7 +188,6 @@ class Parser:
         self._consume(TokenType.KEYWORD_DELETE, "Expected DELETE")
         self._match(TokenType.KEYWORD_FROM)
         stmt.table, _ = self._parse_full_identifier_safe()
-        # 🛡️ ZTA 強制性報錯訊息
         self._consume(TokenType.KEYWORD_WHERE, "WHERE clause is mandatory for UPDATE/DELETE")
         stmt.where_condition = self._parse_expression()
         return stmt
@@ -253,7 +269,6 @@ class Parser:
         return node
 
     def _parse_primary(self):
-        # 💡 Issue #33: CASE 入口
         if self._match(TokenType.KEYWORD_CASE):
             return self._parse_case_expression()
 
@@ -274,7 +289,6 @@ class Parser:
             return IdentifierNode(name="*", qualifiers=[])
 
         tok = self._peek()
-        # 💡 精準報錯：對齊測試要求
         if tok and tok.type == TokenType.SYMBOL_COMMA:
             raise SyntaxError("Expected identifier")
         
@@ -306,7 +320,6 @@ class Parser:
         raise SyntaxError(f"Unexpected expression token: {self._get_text(tok)}")
 
     def _parse_case_expression(self):
-        """💡 Issue #33: 遞迴解析 CASE 分支"""
         input_expr = None
         if self._peek() and self._peek().type != TokenType.KEYWORD_WHEN:
             input_expr = self._parse_expression()
