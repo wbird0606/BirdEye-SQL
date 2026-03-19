@@ -104,6 +104,18 @@ class Lexer:
         return Token(TokenType.STRING_LITERAL, start, self.position)
 
     def _read_numeric_literal(self):
-        start = self.position
-        while self.position < self.length and self.source[self.position].isdigit(): self.position += 1
-        return Token(TokenType.NUMERIC_LITERAL, start, self.position)
+            """升級版：支援解析包含小數點的浮點數"""
+            start = self.position
+            # 讀取整數部分
+            while self.position < self.length and self.source[self.position].isdigit():
+                self.position += 1
+            
+            # 處理小數點 (Float Support)
+            if self.position < self.length and self.source[self.position] == '.':
+                # 確保後面跟著的是數字，而不是表格路徑 (如 Users.ID)
+                if self.position + 1 < self.length and self.source[self.position + 1].isdigit():
+                    self.position += 1
+                    while self.position < self.length and self.source[self.position].isdigit():
+                        self.position += 1
+                        
+            return Token(TokenType.NUMERIC_LITERAL, start, self.position)
