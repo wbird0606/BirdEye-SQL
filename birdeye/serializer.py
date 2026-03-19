@@ -1,0 +1,129 @@
+import json
+from birdeye.ast import (
+    SelectStatement, UpdateStatement, DeleteStatement, 
+    InsertStatement, SqlBulkCopyStatement,
+    IdentifierNode, LiteralNode, BinaryExpressionNode, 
+    FunctionCallNode, JoinNode, AssignmentNode,
+    OrderByNode, CaseExpressionNode
+)
+
+class ASTSerializer:
+    """
+    將 AST 轉換為標準 JSON 格式。
+    v1.7.2: 支援全節點遞迴序列化，適用於圖形化工具對接。
+    """
+
+    def to_json(self, node, indent=2) -> str:
+        """主入口：將 AST 根節點轉換為 JSON 字串"""
+        return json.dumps(self._serialize(node), indent=indent, ensure_ascii=False)
+
+    def _serialize(self, node):
+        """遞迴將節點物件轉換為 dict"""
+        if node is None:
+            return None
+        
+        # 處理列表
+        if isinstance(node, list):
+            return [self._serialize(item) for item in node]
+        
+        # 處理元組
+        if isinstance(node, tuple):
+            return [self._serialize(item) for item in node]
+
+        res = {"node_type": node.__class__.__name__}
+
+        if isinstance(node, SelectStatement):
+            res.update({
+                "top": node.top_count,
+                "is_star": node.is_select_star,
+                "columns": self._serialize(node.columns),
+                "table": self._serialize(node.table),
+                "alias": node.table_alias,
+                "joins": self._serialize(node.joins),
+                "where": self._serialize(node.where_condition),
+                "group_by": self._serialize(node.group_by_cols),
+                "having": self._serialize(node.having_condition),
+                "order_by": self._serialize(node.order_by_terms)
+            })
+
+        elif isinstance(node, UpdateStatement):
+            res.update({
+                "table": self._serialize(node.table),
+                "alias": node.table_alias,
+                "set": self._serialize(node.set_clauses),
+                "where": self._serialize(node.where_condition)
+            })
+
+        elif isinstance(node, DeleteStatement):
+            res.update({
+                "table": self._serialize(node.table),
+                "alias": node.table_alias,
+                "where": self._serialize(node.where_condition)
+            })
+
+        elif isinstance(node, InsertStatement):
+            res.update({
+                "table": self._serialize(node.table),
+                "columns": self._serialize(node.columns),
+                "values": self._serialize(node.values)
+            })
+
+        elif isinstance(node, IdentifierNode):
+            res.update({
+                "name": node.name,
+                "qualifiers": node.qualifiers,
+                "alias": node.alias
+            })
+
+        elif isinstance(node, LiteralNode):
+            res.update({
+                "value": node.value,
+                "type": node.type.name if hasattr(node.type, 'name') else str(node.type)
+            })
+
+        elif isinstance(node, BinaryExpressionNode):
+            res.update({
+                "op": node.operator,
+                "left": self._serialize(node.left),
+                "right": self._serialize(node.right)
+            })
+
+        elif isinstance(node, FunctionCallNode):
+            res.update({
+                "name": node.name,
+                "args": self._serialize(node.args),
+                "alias": node.alias
+            })
+
+        elif isinstance(node, CaseExpressionNode):
+            res.update({
+                "input": self._serialize(node.input_expr),
+                "branches": [
+                    {"when": self._serialize(b[0]), "then": self._serialize(b[1])} 
+                    for b in node.branches
+                ],
+                "else": self._serialize(node.else_expr),
+                "alias": node.alias
+            })
+
+        elif isinstance(node, JoinNode):
+            res.update({
+                "join_type": node.type,
+                "table": self._serialize(node.table),
+                "alias": node.alias,
+                "on": self._serialize(node.on_condition)
+            })
+
+        elif isinstance(node, OrderByNode):
+            res.update({
+                "column": self._serialize(node.column),
+                "direction": node.direction
+            })
+
+        elif isinstance(node, AssignmentNode):
+            res.update({
+                "column": self._serialize(node.column),
+                "expr": self._serialize(node.right)
+            })
+
+        return res
