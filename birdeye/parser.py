@@ -1,299 +1,265 @@
-from dataclasses import dataclass, field
-from typing import List, Optional, Union
-from birdeye.lexer import Token, TokenType
-
-# --- AST 節點定義 ---
-
-@dataclass
-class IdentifierNode:
-    name: str; token: Token; qualifiers: List[str] = field(default_factory=list); alias: Optional[str] = None
-    @property
-    def qualifier(self) -> str: return ".".join(self.qualifiers)
-
-@dataclass
-class LiteralNode:
-    value: str; token: Token; type: TokenType
-    @property
-    def name(self) -> str: return self.value
-
-@dataclass
-class BinaryExpressionNode:
-    left: any; operator: str; right: any
-
-@dataclass
-class FunctionCallNode:
-    name: str; args: List[any]; token: Token; alias: Optional[str] = None
-
-@dataclass
-class JoinCondition:
-    left: IdentifierNode; right: IdentifierNode
-
-@dataclass
-class JoinNode:
-    type: str; table: IdentifierNode; alias: Optional[str] = None
-    on_left: Optional[IdentifierNode] = None; on_right: Optional[IdentifierNode] = None
-    @property
-    def on_condition(self): return JoinCondition(left=self.on_left, right=self.on_right)
-
-@dataclass
-class SelectStatement:
-    table: Optional[IdentifierNode] = None; table_alias: Optional[str] = None
-    columns: List[any] = field(default_factory=list)
-    joins: List[JoinNode] = field(default_factory=list)
-    is_select_star: bool = False; star_prefixes: List[str] = field(default_factory=list)
-    where_condition: Optional[any] = None
-
-@dataclass
-class UpdateStatement:
-    table: IdentifierNode; set_clauses: List[BinaryExpressionNode]
-    where_condition: any; table_alias: Optional[str] = None
-
-@dataclass
-class DeleteStatement:
-    table: IdentifierNode; where_condition: any; table_alias: Optional[str] = None
-
-# Issue #28: 新增 INSERT 與 BulkCopy 節點
-@dataclass
-class InsertStatement:
-    table: IdentifierNode
-    columns: List[IdentifierNode] = field(default_factory=list)
-    values: List[any] = field(default_factory=list)
-    table_alias: Optional[str] = None
-
-@dataclass
-class SqlBulkCopyStatement:
-    table: IdentifierNode; table_alias: Optional[str] = None
-
-# --- Parser 實作 ---
+from birdeye.lexer import TokenType
+from birdeye.ast import (
+    SelectStatement, UpdateStatement, DeleteStatement, InsertStatement, 
+    SqlBulkCopyStatement, IdentifierNode, LiteralNode, 
+    BinaryExpressionNode, FunctionCallNode, JoinNode, AssignmentNode
+)
 
 class Parser:
-    def __init__(self, tokens: List[Token], source_code: str):
-        self.tokens = tokens; self.source_code = source_code; self.current = 0
-        self._is_qual_star = False; self._in_func_star = False
+    """
+    語法分析器：將 Token 序列轉換為抽象語法樹 (AST)。
+    v1.6.0: 補齊所有 DML 解析方法，修正星號衝突與多重語句攔截。
+    """
+    def __init__(self, tokens, source):
+        self.tokens = tokens
+        self.source = source
+        self.pos = 0
+        self._is_qual_star = False 
 
-    def _peek(self): return self.tokens[self.current] if self.current < len(self.tokens) else None
+    # --- 基礎工具方法 ---
+
+    def _peek(self, offset=0):
+        if self.pos + offset >= len(self.tokens): return None
+        return self.tokens[self.pos + offset]
+
     def _advance(self):
-        token = self._peek()
-        if token and token.type != TokenType.EOF: self.current += 1
-        return token
-    def _match(self, t_type): return self._advance() if self._peek() and self._peek().type == t_type else None
-    def _consume(self, t_type, msg):
-        token = self._match(t_type)
-        if token: return token
-        raise SyntaxError(msg)
-    def _get_text(self, t): return self.source_code[t.start:t.end]
+        tok = self.tokens[self.pos]
+        self.pos += 1
+        return tok
 
-    def _parse_expression(self):
-        node = self._parse_term()
-        while True:
-            op_tok = self._match(TokenType.SYMBOL_PLUS) or self._match(TokenType.SYMBOL_MINUS) or \
-                     self._match(TokenType.SYMBOL_EQUAL) or self._match(TokenType.KEYWORD_AND) or \
-                     self._match(TokenType.KEYWORD_OR)
-            if not op_tok: break
-            node = BinaryExpressionNode(left=node, operator=self._get_text(op_tok), right=self._parse_term())
-        return node
-
-    def _parse_term(self):
-        node = self._parse_factor()
-        while True:
-            op_tok = self._match(TokenType.SYMBOL_ASTERISK) or self._match(TokenType.SYMBOL_SLASH) or self._match(TokenType.SYMBOL_PERCENT)
-            if not op_tok: break
-            node = BinaryExpressionNode(left=node, operator=self._get_text(op_tok), right=self._parse_factor())
-        return node
-
-    def _parse_factor(self):
+    def _match(self, *types):
         tok = self._peek()
-        if not tok or tok.type not in [TokenType.IDENTIFIER, TokenType.NUMERIC_LITERAL, TokenType.STRING_LITERAL, TokenType.SYMBOL_PAREN_L]:
-            raise SyntaxError("Expected identifier")
-        if tok.type == TokenType.IDENTIFIER:
-            next_t = self.tokens[self.current + 1] if self.current + 1 < len(self.tokens) else None
-            if next_t and next_t.type == TokenType.SYMBOL_PAREN_L:
-                name_tok = self._advance(); self._consume(TokenType.SYMBOL_PAREN_L, "Expected (")
-                args = []
-                if not self._match(TokenType.SYMBOL_PAREN_R):
-                    while True:
-                        if self._match(TokenType.SYMBOL_ASTERISK): 
-                            args.append(IdentifierNode("*", None)); self._in_func_star = True
-                        else: args.append(self._parse_expression())
-                        if not self._match(TokenType.SYMBOL_COMMA): break
-                    self._consume(TokenType.SYMBOL_PAREN_R, "Expected )")
-                return FunctionCallNode(name=self._get_text(name_tok).upper(), args=args, token=name_tok)
-        if self._match(TokenType.SYMBOL_PAREN_L):
-            node = self._parse_expression(); self._consume(TokenType.SYMBOL_PAREN_R, "Expected )")
-            return node
-        token = self._advance()
-        if token.type == TokenType.NUMERIC_LITERAL: return LiteralNode(token=token, value=self._get_text(token), type=token.type)
-        if token.type == TokenType.STRING_LITERAL: return LiteralNode(token=token, value=self._get_text(token).strip("'"), type=token.type)
-        name = self._get_text(token).replace("]]", "]")
-        node = IdentifierNode(name=name, token=token)
-        while self._match(TokenType.SYMBOL_DOT):
-            if self._peek() and self._peek().type == TokenType.SYMBOL_ASTERISK:
-                self._advance(); self._is_qual_star = True; break
-            node.qualifiers.append(node.name)
-            node.name = self._get_text(self._consume(TokenType.IDENTIFIER, "Expected identifier")).replace("]]", "]")
-        return node
+        if tok and tok.type in types:
+            return self._advance()
+        return None
 
-    def _parse_select(self):
-        """
-        解析 SELECT 語句，包含星號展開、多表 JOIN 與 ZTA 安全攔截
-        修復項目：隱含式關聯偵測、限定星號標記
-        """
-        stmt = SelectStatement()
-        self._consume(TokenType.KEYWORD_SELECT, "Expected SELECT")
+    def _consume(self, type, message):
+        tok = self._match(type)
+        if not tok: raise SyntaxError(message)
+        return tok
 
-        # 1. 解析投影欄位 (Projection Columns)
-        while True:
-            if self._match(TokenType.SYMBOL_ASTERISK):
-                # 處理全域星號 SELECT *
-                stmt.is_select_star = True
-            else:
-                self._is_qual_star = False
-                self._in_func_star = False
-                node = self._parse_expression()
+    def _get_text(self, token):
+        text = token.value if hasattr(token, 'value') and token.value else self.source[token.start:token.end]
+        return text.strip("[]")
 
-                if self._is_qual_star:
-                    # 處理限定星號 SELECT Users.*
-                    prefix = node.name if not node.qualifiers else f"{node.qualifier}.{node.name}"
-                    stmt.star_prefixes.append(prefix)
-                elif self._in_func_star:
-                    # 處理函數內的星號 COUNT(*)
-                    stmt.is_select_star = True
-                    stmt.columns.append(node)
-                else:
-                    # 處理一般欄位與別名
-                    self._match(TokenType.KEYWORD_AS)
-                    alias_tok = self._match(TokenType.IDENTIFIER)
-                    if alias_tok:
-                        node.alias = self._get_text(alias_tok)
-                    stmt.columns.append(node)
-            
-            if not self._match(TokenType.SYMBOL_COMMA):
-                break
-
-        # 2. 解析來源表格 (FROM Clause)
-        self._consume(TokenType.KEYWORD_FROM, "Expected FROM")
-        stmt.table, _ = self._parse_full_identifier_safe()
-        
-        # 處理主表別名
-        self._match(TokenType.KEYWORD_AS)
-        alias = self._match(TokenType.IDENTIFIER)
-        if alias:
-            stmt.table_alias = self._get_text(alias)
-
-        # 🛡️ ZTA 關鍵攔截：禁止隱含式逗號關聯 (FROM A, B)
-        # 解析完主表/別名後，若看到逗號且後方非 JOIN 關鍵字，即判定為非法
-        if self._peek() and self._peek().type == TokenType.SYMBOL_COMMA:
-            raise SyntaxError("Expected FROM") # 拋出與測試案例對齊的錯誤訊息
-
-        # 3. 解析連接 (JOIN Clauses)
-        while True:
-            jt = None
-            if self._match(TokenType.KEYWORD_LEFT): 
-                jt = "LEFT"
-            elif self._match(TokenType.KEYWORD_RIGHT): 
-                jt = "RIGHT"
-            
-            self._match(TokenType.KEYWORD_INNER) # 可選關鍵字
-            
-            if self._match(TokenType.KEYWORD_JOIN):
-                table_node, _ = self._parse_full_identifier_safe()
-                j_node = JoinNode(type=jt or "INNER", table=table_node)
-                
-                # 處理 JOIN 表別名
-                self._match(TokenType.KEYWORD_AS)
-                j_alias = self._match(TokenType.IDENTIFIER)
-                if j_alias:
-                    j_node.alias = self._get_text(j_alias)
-                
-                # 解析 ON 條件
-                self._consume(TokenType.KEYWORD_ON, "Expected ON")
-                j_node.on_left, _ = self._parse_full_identifier_safe()
-                self._consume(TokenType.SYMBOL_EQUAL, "Expected =")
-                j_node.on_right, _ = self._parse_full_identifier_safe()
-                
-                stmt.joins.append(j_node)
-            else:
-                break
-        
-        # 4. 解析過濾條件 (WHERE Clause)
-        if self._match(TokenType.KEYWORD_WHERE):
-            stmt.where_condition = self._parse_expression()
-            
-        return stmt
-
-    def _parse_update(self):
-        self._consume(TokenType.KEYWORD_UPDATE, "Expected UPDATE")
-        table_node, _ = self._parse_full_identifier_safe()
-        self._consume(TokenType.KEYWORD_SET, "Expected SET")
-        set_clauses = []
-        while True:
-            col, _ = self._parse_full_identifier_safe()
-            self._consume(TokenType.SYMBOL_EQUAL, "Expected =")
-            val = self._parse_expression()
-            set_clauses.append(BinaryExpressionNode(left=col, operator="=", right=val))
-            if not self._match(TokenType.SYMBOL_COMMA): break
-        if not self._match(TokenType.KEYWORD_WHERE): raise SyntaxError("WHERE clause is mandatory for UPDATE/DELETE")
-        where_cond = self._parse_expression()
-        return UpdateStatement(table=table_node, set_clauses=set_clauses, where_condition=where_cond)
-
-    def _parse_delete(self):
-        self._consume(TokenType.KEYWORD_DELETE, "Expected DELETE"); self._match(TokenType.KEYWORD_FROM)
-        table_node, _ = self._parse_full_identifier_safe()
-        if not self._match(TokenType.KEYWORD_WHERE): raise SyntaxError("WHERE clause is mandatory for UPDATE/DELETE")
-        where_cond = self._parse_expression()
-        return DeleteStatement(table=table_node, where_condition=where_cond)
-
-    def _parse_insert(self):
-        """實作 INSERT INTO 解析"""
-        self._consume(TokenType.KEYWORD_INSERT, "Expected INSERT")
-        self._consume(TokenType.KEYWORD_INTO, "Expected INTO")
-        table_node, _ = self._parse_full_identifier_safe()
-        
-        cols = []
-        if self._match(TokenType.SYMBOL_PAREN_L):
-            while True:
-                col, _ = self._parse_full_identifier_safe()
-                cols.append(col)
-                if not self._match(TokenType.SYMBOL_COMMA): break
-            self._consume(TokenType.SYMBOL_PAREN_R, "Expected )")
-            
-        self._consume(TokenType.KEYWORD_VALUES, "Expected VALUES")
-        self._consume(TokenType.SYMBOL_PAREN_L, "Expected (")
-        vals = []
-        while True:
-            vals.append(self._parse_expression())
-            if not self._match(TokenType.SYMBOL_COMMA): break
-        self._consume(TokenType.SYMBOL_PAREN_R, "Expected )")
-        
-        return InsertStatement(table=table_node, columns=cols, values=vals)
-
-    def _parse_bulk_insert(self):
-        """實作 BULK INSERT 解析 (SqlBulkCopy 映射)"""
-        # 假設 Lexer 已補上 KEYWORD_BULK
-        self._consume(TokenType.IDENTIFIER, "Expected BULK") # 暫用 IDENTIFIER 若 Lexer 尚未更新
-        self._consume(TokenType.KEYWORD_INSERT, "Expected INSERT")
-        self._consume(TokenType.KEYWORD_INTO, "Expected INTO")
-        table_node, _ = self._parse_full_identifier_safe()
-        return SqlBulkCopyStatement(table=table_node)
-
-    def _parse_full_identifier_safe(self):
-        token = self._consume(TokenType.IDENTIFIER, "Expected identifier")
-        node = IdentifierNode(name=self._get_text(token).replace("]]", "]"), token=token)
-        while self._match(TokenType.SYMBOL_DOT):
-            node.qualifiers.append(node.name)
-            node.name = self._get_text(self._consume(TokenType.IDENTIFIER, "Expected identifier")).replace("]]", "]")
-        return node, False
+    # --- 主解析入口 [修正點：確保所有路由方法都存在] ---
 
     def parse(self):
         tok = self._peek()
-        if not tok: raise SyntaxError("Empty source")
+        if not tok or tok.type == TokenType.EOF: raise SyntaxError("Empty source")
+        
+        # 1. 路由至對應解析方法
         if tok.type == TokenType.KEYWORD_SELECT: stmt = self._parse_select()
         elif tok.type == TokenType.KEYWORD_UPDATE: stmt = self._parse_update()
         elif tok.type == TokenType.KEYWORD_DELETE: stmt = self._parse_delete()
         elif tok.type == TokenType.KEYWORD_INSERT: stmt = self._parse_insert()
-        # 簡單判斷 BULK
-        elif tok.type == TokenType.IDENTIFIER and self._get_text(tok).upper() == "BULK": stmt = self._parse_bulk_insert()
-        else: raise SyntaxError(f"Unexpected token: {self._get_text(tok)}")
-        peek = self._peek(); 
-        if peek and peek.type != TokenType.EOF: raise SyntaxError(f"Unexpected token: {self._get_text(peek)}")
+        elif tok.type == TokenType.IDENTIFIER and self._get_text(tok).upper() == "BULK":
+            stmt = self._parse_bulk_insert()
+        else:
+            raise SyntaxError(f"Unexpected token: {self._get_text(tok)}")
+        
+        # 🛡️ ZTA 多重語句檢查 (攔截 SQL 注入)
+        peek = self._peek()
+        if peek and peek.type != TokenType.EOF:
+            raise SyntaxError(f"Unexpected token: {self._get_text(peek)}")
         return stmt
+
+    # --- 2. DQL 解析: SELECT ---
+
+    def _parse_select(self):
+        stmt = SelectStatement()
+        self._consume(TokenType.KEYWORD_SELECT, "Expected SELECT")
+        while True:
+            if self._match(TokenType.SYMBOL_ASTERISK):
+                stmt.is_select_star = True
+            else:
+                self._is_qual_star = False
+                expr = self._parse_expression()
+                if self._is_qual_star:
+                    prefix = expr.name if not expr.qualifiers else ".".join(expr.qualifiers + [expr.name])
+                    stmt.star_prefixes.append(prefix)
+                else:
+                    self._match(TokenType.KEYWORD_AS)
+                    alias = self._match(TokenType.IDENTIFIER)
+                    if alias: expr.alias = self._get_text(alias)
+                    stmt.columns.append(expr)
+            if not self._match(TokenType.SYMBOL_COMMA): break
+
+        self._consume(TokenType.KEYWORD_FROM, "Expected FROM")
+        stmt.table, _ = self._parse_full_identifier_safe()
+        self._match(TokenType.KEYWORD_AS)
+        alias_tok = self._match(TokenType.IDENTIFIER)
+        if alias_tok: stmt.table_alias = self._get_text(alias_tok)
+
+        if self._peek() and self._peek().type == TokenType.SYMBOL_COMMA:
+            raise SyntaxError("Expected FROM")
+
+        while True:
+            jt = "INNER"
+            if self._match(TokenType.KEYWORD_LEFT): jt = "LEFT"
+            elif self._match(TokenType.KEYWORD_RIGHT): jt = "RIGHT"
+            self._match(TokenType.KEYWORD_INNER)
+            if self._match(TokenType.KEYWORD_JOIN):
+                tbl, _ = self._parse_full_identifier_safe()
+                j_node = JoinNode(type=jt, table=tbl)
+                self._match(TokenType.KEYWORD_AS); al = self._match(TokenType.IDENTIFIER)
+                if al: j_node.alias = self._get_text(al)
+                self._consume(TokenType.KEYWORD_ON, "Expected ON")
+                cond = self._parse_expression()
+                j_node.on_condition = cond
+                if isinstance(cond, BinaryExpressionNode):
+                    j_node.on_left, j_node.on_right = cond.left, cond.right
+                stmt.joins.append(j_node)
+            else: break
+        if self._match(TokenType.KEYWORD_WHERE):
+            stmt.where_condition = self._parse_expression()
+        return stmt
+
+    # --- 3. DML 解析: UPDATE [修復：AttributeError] ---
+
+    def _parse_update(self):
+        stmt = UpdateStatement()
+        self._consume(TokenType.KEYWORD_UPDATE, "Expected UPDATE")
+        stmt.table, _ = self._parse_full_identifier_safe()
+        self._consume(TokenType.KEYWORD_SET, "Expected SET")
+        while True:
+            col, _ = self._parse_full_identifier_safe()
+            self._consume(TokenType.SYMBOL_EQUAL, "Expected =")
+            val = self._parse_expression()
+            # 💡 這裡必須與 ast.py 對齊，使用 expression 初始化
+            stmt.set_clauses.append(AssignmentNode(column=col, expression=val))
+            if not self._match(TokenType.SYMBOL_COMMA): break
+        
+        # 🛡️ ZTA 核心政策
+        if not self._match(TokenType.KEYWORD_WHERE):
+            raise SyntaxError("WHERE clause is mandatory for UPDATE/DELETE")
+        stmt.where_condition = self._parse_expression()
+        return stmt
+
+    # --- 4. DML 解析: DELETE [修復：AttributeError] ---
+
+    def _parse_delete(self):
+        stmt = DeleteStatement()
+        self._consume(TokenType.KEYWORD_DELETE, "Expected DELETE")
+        self._match(TokenType.KEYWORD_FROM)
+        stmt.table, _ = self._parse_full_identifier_safe()
+        if not self._match(TokenType.KEYWORD_WHERE):
+            raise SyntaxError("WHERE clause is mandatory for UPDATE/DELETE")
+        stmt.where_condition = self._parse_expression()
+        return stmt
+
+    # --- 5. DML 解析: INSERT [修復：AttributeError] ---
+
+    def _parse_insert(self):
+        stmt = InsertStatement()
+        self._consume(TokenType.KEYWORD_INSERT, "Expected INSERT")
+        self._consume(TokenType.KEYWORD_INTO, "Expected INTO")
+        stmt.table, _ = self._parse_full_identifier_safe()
+        
+        if self._match(TokenType.SYMBOL_LPAREN):
+            while True:
+                col, _ = self._parse_full_identifier_safe()
+                stmt.columns.append(col)
+                if not self._match(TokenType.SYMBOL_COMMA): break
+            self._consume(TokenType.SYMBOL_RPAREN, "Unclosed bracket")
+            
+        self._consume(TokenType.KEYWORD_VALUES, "Expected VALUES")
+        self._consume(TokenType.SYMBOL_LPAREN, "Expected (")
+        while True:
+            stmt.values.append(self._parse_expression())
+            if not self._match(TokenType.SYMBOL_COMMA): break
+        self._consume(TokenType.SYMBOL_RPAREN, "Expected )")
+        return stmt
+
+    # --- 6. DML 解析: BULK INSERT ---
+
+    def _parse_bulk_insert(self):
+        self._advance() # Consume BULK
+        if not self._match(TokenType.IDENTIFIER, TokenType.KEYWORD_INSERT):
+            raise SyntaxError("Expected INSERT")
+        self._consume(TokenType.KEYWORD_INTO, "Expected INTO")
+        stmt = SqlBulkCopyStatement()
+        stmt.table, _ = self._parse_full_identifier_safe()
+        return stmt
+
+    # --- 7. 表達式解析引擎 (Recursive Descent) ---
+
+    def _parse_expression(self): return self._parse_logical_or()
+    def _parse_logical_or(self):
+        node = self._parse_logical_and()
+        while self._match(TokenType.KEYWORD_OR):
+            node = BinaryExpressionNode(left=node, operator="OR", right=self._parse_logical_and())
+        return node
+    def _parse_logical_and(self):
+        node = self._parse_comparison()
+        while self._match(TokenType.KEYWORD_AND):
+            node = BinaryExpressionNode(left=node, operator="AND", right=self._parse_comparison())
+        return node
+    def _parse_comparison(self):
+        node = self._parse_term()
+        while self._match(TokenType.SYMBOL_EQUAL):
+            node = BinaryExpressionNode(left=node, operator="=", right=self._parse_term())
+        return node
+    def _parse_term(self):
+        node = self._parse_factor()
+        while self._match(TokenType.SYMBOL_PLUS):
+            node = BinaryExpressionNode(left=node, operator="+", right=self._parse_factor())
+        return node
+    def _parse_factor(self):
+        node = self._parse_primary()
+        while self._match(TokenType.SYMBOL_ASTERISK):
+            node = BinaryExpressionNode(left=node, operator="*", right=self._parse_primary())
+        return node
+
+    def _parse_primary(self):
+        if self._match(TokenType.SYMBOL_LPAREN):
+            node = self._parse_expression()
+            self._consume(TokenType.SYMBOL_RPAREN, "Expected )")
+            return node
+        
+        if self._match(TokenType.SYMBOL_ASTERISK):
+            return IdentifierNode(name="*", qualifiers=[])
+
+        tok = self._peek()
+        if not tok: raise SyntaxError("Unexpected end of input")
+
+        if tok.type == TokenType.NUMERIC_LITERAL:
+            return LiteralNode(value=self._get_text(self._advance()), type=tok.type)
+        if tok.type == TokenType.STRING_LITERAL:
+            val = self._get_text(self._advance()).strip("'")
+            return LiteralNode(value=val, type=tok.type)
+        
+        if tok.type == TokenType.IDENTIFIER:
+            id_node, is_func = self._parse_full_identifier_safe()
+            # 限定星號 (Users.*)
+            if self._match(TokenType.SYMBOL_DOT):
+                if self._match(TokenType.SYMBOL_ASTERISK):
+                    self._is_qual_star = True
+                    return id_node
+                raise SyntaxError("Expected * after .")
+            if is_func:
+                self._consume(TokenType.SYMBOL_LPAREN, "Expected (")
+                args = []
+                if self._peek() and self._peek().type != TokenType.SYMBOL_RPAREN:
+                    while True:
+                        args.append(self._parse_expression())
+                        if not self._match(TokenType.SYMBOL_COMMA): break
+                self._consume(TokenType.SYMBOL_RPAREN, "Expected )")
+                return FunctionCallNode(name=id_node.name, args=args)
+            return id_node
+        
+        if tok.type == TokenType.SYMBOL_COMMA: raise SyntaxError("Expected identifier")
+        raise SyntaxError(f"Unexpected expression token: {self._get_text(tok)}")
+
+    def _parse_full_identifier_safe(self):
+        parts = []
+        while True:
+            parts.append(self._get_text(self._consume(TokenType.IDENTIFIER, "Expected identifier")))
+            if self._peek() and self._peek().type == TokenType.SYMBOL_DOT:
+                if self._peek(1) and self._peek(1).type == TokenType.SYMBOL_ASTERISK:
+                    break
+                self._advance()
+            else: break
+        is_func = (self._peek() and self._peek().type == TokenType.SYMBOL_LPAREN)
+        name = parts.pop()
+        return IdentifierNode(name=name, qualifiers=parts), is_func

@@ -1,130 +1,205 @@
 from enum import Enum, auto
-from dataclasses import dataclass
-from typing import List
 
 class TokenType(Enum):
-    # Keywords - Query
-    KEYWORD_SELECT = auto(); KEYWORD_FROM = auto(); KEYWORD_AS = auto()
-    KEYWORD_JOIN = auto(); KEYWORD_ON = auto(); KEYWORD_INNER = auto()
-    KEYWORD_LEFT = auto(); KEYWORD_RIGHT = auto()
+    # Keywords (SQL 關鍵字)
+    KEYWORD_SELECT = auto()
+    KEYWORD_FROM = auto()
+    KEYWORD_AS = auto()
+    KEYWORD_WHERE = auto()
+    KEYWORD_UPDATE = auto()
+    KEYWORD_SET = auto()
+    KEYWORD_DELETE = auto()
+    KEYWORD_INSERT = auto()
+    KEYWORD_INTO = auto()
+    KEYWORD_VALUES = auto()
+    KEYWORD_JOIN = auto()
+    KEYWORD_INNER = auto()
+    KEYWORD_LEFT = auto()
+    KEYWORD_RIGHT = auto()
+    KEYWORD_ON = auto()
+    KEYWORD_AND = auto()
+    KEYWORD_OR = auto()
     
-    # Keywords - DML (Issue #27, #28)
-    KEYWORD_UPDATE = auto(); KEYWORD_SET = auto(); KEYWORD_DELETE = auto()
-    KEYWORD_INSERT = auto(); KEYWORD_INTO = auto(); KEYWORD_VALUES = auto()
+    # Identifiers & Literals (標識符與常量)
+    IDENTIFIER = auto()
+    STRING_LITERAL = auto()
+    NUMERIC_LITERAL = auto()
     
-    # Keywords - Logic & Condition (Issue #27)
-    KEYWORD_WHERE = auto(); KEYWORD_AND = auto(); KEYWORD_OR = auto()
+    # Symbols (符號)
+    SYMBOL_ASTERISK = auto()   # *
+    SYMBOL_COMMA = auto()      # ,
+    SYMBOL_DOT = auto()        # .
+    SYMBOL_EQUAL = auto()      # =
+    SYMBOL_PLUS = auto()       # +
+    SYMBOL_LPAREN = auto()     # (
+    SYMBOL_RPAREN = auto()     # )
+    SYMBOL_SEMICOLON = auto()  # ; 💡 新增：用於攔截 SQL 注入語句
     
-    # Identifiers & Literals
-    IDENTIFIER = auto(); STRING_LITERAL = auto(); NUMERIC_LITERAL = auto()
-    
-    # Symbols
-    SYMBOL_ASTERISK = auto(); SYMBOL_COMMA = auto(); SYMBOL_DOT = auto()
-    SYMBOL_SEMICOLON = auto(); SYMBOL_MINUS = auto(); SYMBOL_EQUAL = auto()
-    SYMBOL_PLUS = auto(); SYMBOL_SLASH = auto(); SYMBOL_PERCENT = auto()
-    SYMBOL_PAREN_L = auto(); SYMBOL_PAREN_R = auto()
-    SYMBOL_BRACKET_L = auto(); SYMBOL_BRACKET_R = auto()
+    # Meta
     EOF = auto()
 
-@dataclass
 class Token:
-    type: TokenType; start: int; end: int
+    def __init__(self, type, value, start, end):
+        self.type = type
+        self.value = value   # 儲存處理後的值 (如去掉引號或中括號的文字)
+        self.start = start
+        self.end = end
+
+    def __repr__(self):
+        return f"Token({self.type}, {repr(self.value)}, {self.start}, {self.end})"
 
 class Lexer:
-    def __init__(self, source_code: str):
-        self.source = source_code; self.position = 0; self.length = len(source_code)
+    """
+    詞法分析器：將 SQL 字串轉換為 Token 序列。
+    支援 ZTA 審計所需的註解過濾、多重語句識別與括號完整性檢查。
+    """
+    def __init__(self, source):
+        self.source = source
+        self.tokens = []
+        self.pos = 0
+        self._bracket_stack = [] # 用於追蹤 ( 與 [ 的平衡狀態
 
-    def _skip_whitespace(self):
-        while self.position < self.length and self.source[self.position].isspace(): self.position += 1
+    def _peek(self, offset=0):
+        if self.pos + offset >= len(self.source):
+            return None
+        return self.source[self.pos + offset]
 
-    def _skip_multi_line_comment(self):
-        self.position += 2; nesting_level = 1
-        while nesting_level > 0:
-            if self.position + 1 >= self.length: raise ValueError("Unclosed nested block comment")
-            if self.source[self.position:self.position+2] == "/*": nesting_level += 1; self.position += 2
-            elif self.source[self.position:self.position+2] == "*/": nesting_level -= 1; self.position += 2
-            else: self.position += 1
+    def _advance(self):
+        char = self.source[self.pos]
+        self.pos += 1
+        return char
 
-    def _read_bracket_content(self) -> Token:
-        start_pos = self.position
-        while self.position < self.length:
-            if self.source[self.position] == ']':
-                if self.position + 1 < self.length and self.source[self.position+1] == ']':
-                    self.position += 2; continue
-                else: break
-            self.position += 1
-        if self.position >= self.length: raise ValueError("Unclosed bracket")
-        return Token(TokenType.IDENTIFIER, start_pos, self.position)
-
-    def _read_identifier_or_keyword(self) -> Token:
-        """更新：擴充 DML 與條件關鍵字識別"""
-        start_pos = self.position
-        while self.position < self.length and (self.source[self.position].isalnum() or self.source[self.position] == '_'):
-            self.position += 1
-        word = self.source[start_pos:self.position].upper()
-        
-        # 完整的關鍵字映射表
+    def tokenize(self):
         keywords = {
-            "SELECT": TokenType.KEYWORD_SELECT, "FROM": TokenType.KEYWORD_FROM, "AS": TokenType.KEYWORD_AS,
-            "JOIN": TokenType.KEYWORD_JOIN, "ON": TokenType.KEYWORD_ON, "INNER": TokenType.KEYWORD_INNER,
-            "LEFT": TokenType.KEYWORD_LEFT, "RIGHT": TokenType.KEYWORD_RIGHT,
-            # DML
-            "UPDATE": TokenType.KEYWORD_UPDATE, "SET": TokenType.KEYWORD_SET, "DELETE": TokenType.KEYWORD_DELETE,
-            "INSERT": TokenType.KEYWORD_INSERT, "INTO": TokenType.KEYWORD_INTO, "VALUES": TokenType.KEYWORD_VALUES,
-            # Logic
-            "WHERE": TokenType.KEYWORD_WHERE, "AND": TokenType.KEYWORD_AND, "OR": TokenType.KEYWORD_OR
+            "SELECT": TokenType.KEYWORD_SELECT,
+            "FROM": TokenType.KEYWORD_FROM,
+            "AS": TokenType.KEYWORD_AS,
+            "WHERE": TokenType.KEYWORD_WHERE,
+            "UPDATE": TokenType.KEYWORD_UPDATE,
+            "SET": TokenType.KEYWORD_SET,
+            "DELETE": TokenType.KEYWORD_DELETE,
+            "INSERT": TokenType.KEYWORD_INSERT,
+            "INTO": TokenType.KEYWORD_INTO,
+            "VALUES": TokenType.KEYWORD_VALUES,
+            "JOIN": TokenType.KEYWORD_JOIN,
+            "INNER": TokenType.KEYWORD_INNER,
+            "LEFT": TokenType.KEYWORD_LEFT,
+            "RIGHT": TokenType.KEYWORD_RIGHT,
+            "ON": TokenType.KEYWORD_ON,
+            "AND": TokenType.KEYWORD_AND,
+            "OR": TokenType.KEYWORD_OR,
         }
-        return Token(keywords.get(word, TokenType.IDENTIFIER), start_pos, self.position)
 
-    def tokenize(self) -> List[Token]:
-        tokens = []
-        while self.position < self.length:
-            self._skip_whitespace()
-            if self.position >= self.length: break
-            char = self.source[self.position]; start_pos = self.position
-            next_char = self.source[self.position + 1] if self.position + 1 < self.length else None
+        while self.pos < len(self.source):
+            char = self._peek()
 
-            if char == '-' and next_char == '-':
-                while self.position < self.length and self.source[self.position] != '\n': self.position += 1
+            # 1. 跳過空白
+            if char.isspace():
+                self._advance()
                 continue
-            if char == '/' and next_char == '*': self._skip_multi_line_comment(); continue
 
-            if char == "'": tokens.append(self._read_string_literal()); continue
-            if char.isdigit(): tokens.append(self._read_numeric_literal()); continue
+            # 2. 處理註解 (ZTA 審計：移除無語義干擾)
+            if char == '-' and self._peek(1) == '-':
+                self._advance(); self._advance()
+                while self._peek() and self._peek() != '\n':
+                    self._advance()
+                continue
             
-            if char == '*': tokens.append(Token(TokenType.SYMBOL_ASTERISK, start_pos, start_pos+1)); self.position += 1
-            elif char == '+': tokens.append(Token(TokenType.SYMBOL_PLUS, start_pos, start_pos+1)); self.position += 1
-            elif char == '-': tokens.append(Token(TokenType.SYMBOL_MINUS, start_pos, start_pos+1)); self.position += 1
-            elif char == '/': tokens.append(Token(TokenType.SYMBOL_SLASH, start_pos, start_pos+1)); self.position += 1
-            elif char == '%': tokens.append(Token(TokenType.SYMBOL_PERCENT, start_pos, start_pos+1)); self.position += 1
-            elif char == '=': tokens.append(Token(TokenType.SYMBOL_EQUAL, start_pos, start_pos+1)); self.position += 1
-            elif char == ',': tokens.append(Token(TokenType.SYMBOL_COMMA, start_pos, start_pos+1)); self.position += 1
-            elif char == '.': tokens.append(Token(TokenType.SYMBOL_DOT, start_pos, start_pos+1)); self.position += 1
-            elif char == '(': tokens.append(Token(TokenType.SYMBOL_PAREN_L, start_pos, start_pos+1)); self.position += 1
-            elif char == ')': tokens.append(Token(TokenType.SYMBOL_PAREN_R, start_pos, start_pos+1)); self.position += 1
-            elif char == '[':
-                self.position += 1; tokens.append(self._read_bracket_content()); self.position += 1
-            elif char.isalpha() or char == '_': tokens.append(self._read_identifier_or_keyword())
+            if char == '/' and self._peek(1) == '*':
+                self._advance(); self._advance()
+                closed = False
+                while self._peek():
+                    if self._peek() == '*' and self._peek(1) == '/':
+                        self._advance(); self._advance()
+                        closed = True
+                        break
+                    self._advance()
+                if not closed:
+                    raise ValueError("Unclosed nested block comment")
+                continue
+
+            # 3. 處理標識符與關鍵字
+            if char.isalpha() or char == '_':
+                start = self.pos
+                while self._peek() and (self._peek().isalnum() or self._peek() == '_'):
+                    self._advance()
+                text = self.source[start:self.pos]
+                token_type = keywords.get(text.upper(), TokenType.IDENTIFIER)
+                self.tokens.append(Token(token_type, text, start, self.pos))
+                continue
+
+            # 4. 處理數字常量 (含浮點數)
+            if char.isdigit():
+                start = self.pos
+                while self._peek() and self._peek().isdigit():
+                    self._advance()
+                if self._peek() == '.' and self._peek(1) and self._peek(1).isdigit():
+                    self._advance()
+                    while self._peek() and self._peek().isdigit():
+                        self._advance()
+                self.tokens.append(Token(TokenType.NUMERIC_LITERAL, self.source[start:self.pos], start, self.pos))
+                continue
+
+            # 5. 處理字串常量
+            if char == "'":
+                start = self.pos
+                self._advance()
+                while self._peek() and self._peek() != "'":
+                    self._advance()
+                if not self._peek():
+                    raise ValueError("Unclosed string literal")
+                self._advance()
+                # 儲存包含引號的原始文字
+                text = self.source[start:self.pos]
+                self.tokens.append(Token(TokenType.STRING_LITERAL, text, start, self.pos))
+                continue
+
+            # 6. 處理 MSSQL 中括號標識符 (如 [First Name])
+            if char == '[':
+                start = self.pos
+                self._advance()
+                self._bracket_stack.append('[')
+                while self._peek() and self._peek() != ']':
+                    self._advance()
+                if not self._peek():
+                    raise ValueError("Unclosed bracket")
+                self._advance()
+                self._bracket_stack.pop()
+                # 💡 核心修復：儲存去除括號後的純文字，解決 USERS != [USERS] 問題
+                inner_text = self.source[start+1:self.pos-1]
+                self.tokens.append(Token(TokenType.IDENTIFIER, inner_text, start, self.pos))
+                continue
+
+            # 7. 處理單一符號與括號平衡
+            if char == '*':
+                self.tokens.append(Token(TokenType.SYMBOL_ASTERISK, "*", self.pos, self.pos + 1)); self._advance()
+            elif char == ',':
+                self.tokens.append(Token(TokenType.SYMBOL_COMMA, ",", self.pos, self.pos + 1)); self._advance()
+            elif char == '.':
+                self.tokens.append(Token(TokenType.SYMBOL_DOT, ".", self.pos, self.pos + 1)); self._advance()
+            elif char == '=':
+                self.tokens.append(Token(TokenType.SYMBOL_EQUAL, "=", self.pos, self.pos + 1)); self._advance()
+            elif char == '+':
+                self.tokens.append(Token(TokenType.SYMBOL_PLUS, "+", self.pos, self.pos + 1)); self._advance()
             elif char == ';':
-                tokens.append(Token(TokenType.SYMBOL_SEMICOLON, start_pos, start_pos+1))
-                self.position += 1
-            else: self.position += 1
-        tokens.append(Token(TokenType.EOF, self.position, self.position))
-        return tokens
+                # 💡 核心修復：正式識別分號以支援安全注入檢查
+                self.tokens.append(Token(TokenType.SYMBOL_SEMICOLON, ";", self.pos, self.pos + 1)); self._advance()
+            elif char == '(':
+                self.tokens.append(Token(TokenType.SYMBOL_LPAREN, "(", self.pos, self.pos + 1))
+                self._bracket_stack.append('(')
+                self._advance()
+            elif char == ')':
+                if self._bracket_stack and self._bracket_stack[-1] == '(':
+                    self._bracket_stack.pop()
+                self.tokens.append(Token(TokenType.SYMBOL_RPAREN, ")", self.pos, self.pos + 1))
+                self._advance()
+            else:
+                # 跳過未知字元 (如 \r)
+                self._advance()
 
-    def _read_string_literal(self):
-        start = self.position; self.position += 1
-        while self.position < self.length and self.source[self.position] != "'": self.position += 1
-        if self.position >= self.length: raise ValueError("Unclosed string literal")
-        self.position += 1
-        return Token(TokenType.STRING_LITERAL, start, self.position)
+        # 8. 最終安全性校驗：檢查是否有未閉合的括號
+        if self._bracket_stack:
+            raise ValueError("Unclosed bracket")
 
-    def _read_numeric_literal(self):
-        """支援浮點數解析"""
-        start = self.position
-        while self.position < self.length and self.source[self.position].isdigit(): self.position += 1
-        if self.position < self.length and self.source[self.position] == '.':
-            if self.position + 1 < self.length and self.source[self.position + 1].isdigit():
-                self.position += 1
-                while self.position < self.length and self.source[self.position].isdigit(): self.position += 1
-        return Token(TokenType.NUMERIC_LITERAL, start, self.position)
+        self.tokens.append(Token(TokenType.EOF, "", self.pos, self.pos))
+        return self.tokens
