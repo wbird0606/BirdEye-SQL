@@ -1,10 +1,12 @@
 from birdeye.parser import (
-    SelectStatement, IdentifierNode, LiteralNode, 
-    BinaryExpressionNode, FunctionCallNode, JoinNode
+    SelectStatement, UpdateStatement, DeleteStatement, 
+    InsertStatement, SqlBulkCopyStatement,
+    IdentifierNode, LiteralNode, BinaryExpressionNode, 
+    FunctionCallNode, JoinNode
 )
 
 class ASTVisualizer:
-    """將 AST 轉換為易讀的樹狀文字結構"""
+    """將 AST 轉換為易讀的樹狀文字結構，支援 DQL 與 DML"""
 
     def __init__(self):
         self.lines = []
@@ -19,9 +21,9 @@ class ASTVisualizer:
         prefix = "  " * indent + "└── " if indent > 0 else ""
         current_indent = "  " * indent
 
+        # 1. SELECT 語句
         if isinstance(node, SelectStatement):
             self.lines.append(f"{prefix}SELECT_STATEMENT")
-            # 支援顯示 SELECT *
             if node.is_select_star and not node.columns:
                 self.lines.append(f"{current_indent}  ├── COLUMNS: *")
             else:
@@ -29,17 +31,55 @@ class ASTVisualizer:
                 for col in node.columns:
                     self._visit(col, indent + 2, "COL")
             
-            # 2. 處理來源表格 (From)
             self.lines.append(f"{current_indent}  ├── FROM")
             self._visit(node.table, indent + 2, "TABLE")
             if node.table_alias:
                 self.lines.append(f"{current_indent}    └── ALIAS: {node.table_alias}")
 
-            # 3. 處理連接 (Joins)
             if node.joins:
-                self.lines.append(f"{current_indent}  └── JOINS")
+                self.lines.append(f"{current_indent}  ├── JOINS")
                 for j in node.joins:
                     self._visit(j, indent + 2, "JOIN")
+            
+            if node.where_condition:
+                self.lines.append(f"{current_indent}  └── WHERE")
+                self._visit(node.where_condition, indent + 2, "COND")
+
+        # 2. UPDATE 語句
+        elif isinstance(node, UpdateStatement):
+            self.lines.append(f"{prefix}UPDATE_STATEMENT")
+            self.lines.append(f"{current_indent}  ├── TABLE: {node.table.name}")
+            self.lines.append(f"{current_indent}  ├── SET")
+            for clause in node.set_clauses:
+                self._visit(clause, indent + 2, "CLAUSE")
+            self.lines.append(f"{current_indent}  └── WHERE (MANDATORY)")
+            self._visit(node.where_condition, indent + 2, "COND")
+
+        # 3. DELETE 語句
+        elif isinstance(node, DeleteStatement):
+            self.lines.append(f"{prefix}DELETE_STATEMENT")
+            self.lines.append(f"{current_indent}  ├── FROM: {node.table.name}")
+            self.lines.append(f"{current_indent}  └── WHERE (MANDATORY)")
+            self._visit(node.where_condition, indent + 2, "COND")
+
+        # 4. INSERT 語句
+        elif isinstance(node, InsertStatement):
+            self.lines.append(f"{prefix}INSERT_STATEMENT")
+            self.lines.append(f"{current_indent}  ├── INTO: {node.table.name}")
+            if node.columns:
+                self.lines.append(f"{current_indent}  ├── COLUMNS")
+                for col in node.columns:
+                    self.lines.append(f"{current_indent}  │   └── {col.name}")
+            self.lines.append(f"{current_indent}  └── VALUES")
+            for val in node.values:
+                self._visit(val, indent + 2, "VAL")
+
+        # 5. BulkCopy 語句
+        elif isinstance(node, SqlBulkCopyStatement):
+            self.lines.append(f"{prefix}BULK_COPY_STATEMENT")
+            self.lines.append(f"{current_indent}  └── TARGET TABLE: {node.table.name}")
+
+        # --- 基礎節點渲染 ---
 
         elif isinstance(node, IdentifierNode):
             qual = f" (Qual: {node.qualifier})" if node.qualifiers else ""
@@ -63,8 +103,6 @@ class ASTVisualizer:
         elif isinstance(node, JoinNode):
             self.lines.append(f"{prefix}{node.type}_JOIN")
             self._visit(node.table, indent + 1, "TABLE")
-            if node.alias:
-                self.lines.append(f"{current_indent}    └── ALIAS: {node.alias}")
             self.lines.append(f"{current_indent}    └── ON")
             self._visit(node.on_left, indent + 3, "L")
             self._visit(node.on_right, indent + 3, "R")

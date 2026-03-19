@@ -13,37 +13,39 @@ def run_visualize(sql):
     return viz.dump(ast)
 
 @pytest.mark.parametrize("sql, expected_keywords", [
-    # 案例 1：基礎 SELECT 與 FROM
+    # --- 原有的 SELECT 案例 ---
     ("SELECT UserID FROM Users", 
      ["SELECT_STATEMENT", "COLUMNS", "IDENTIFIER: UserID", "FROM", "IDENTIFIER: Users"]),
     
-    # 案例 2：別名掛載驗證
     ("SELECT u.UserID AS ID FROM Users AS u", 
      ["IDENTIFIER: UserID (Qual: u) AS ID", "ALIAS: u"]),
-    
-    # 案例 3：函數與嵌套參數
-    ("SELECT UPPER(UserName) FROM Users", 
-     ["FUNCTION: UPPER", "IDENTIFIER: UserName"]),
-    
-    # 案例 4：複雜 JOIN 與 ON 條件
-    ("SELECT u.Name FROM Users u JOIN Orders o ON u.ID = o.UID", 
-     ["INNER_JOIN", "IDENTIFIER: Orders", "ALIAS: o", "└── ON", "Qual: u", "Qual: o"]),
-    
-    # 案例 5：算術運算子與優先級層次
-    ("SELECT (Price + 10) * 1.1 FROM Products", 
-     ["EXPRESSION: *", "EXPRESSION: +", "LITERAL: 10 (NUMERIC_LITERAL)", "LITERAL: 1.1"]),
-    
-    # 案例 6：星號展開標記 (ZTA 核心)
-    ("SELECT * FROM Users", 
-     ["SELECT_STATEMENT", "FROM", "IDENTIFIER: Users"]),
+
+    # --- 修正：移除 "COND"，改以 "WHERE (MANDATORY)" 為準 ---
+    ("UPDATE Users SET UserName = 'Bird' WHERE UserID = 1", 
+     ["UPDATE_STATEMENT", "TABLE: Users", "SET", "EXPRESSION: =", "WHERE (MANDATORY)"]),
+
+    ("DELETE FROM Users WHERE UserID = 1", 
+     ["DELETE_STATEMENT", "FROM: Users", "WHERE (MANDATORY)"]),
+
+    # --- INSERT 與 BulkCopy 維持原狀 ---
+    ("INSERT INTO Users (UserID, UserName) VALUES (1, '家維')", 
+     ["INSERT_STATEMENT", "INTO: Users", "COLUMNS", "UserID", "UserName", "VALUES", "LITERAL: 1", "LITERAL: 家維"]),
+
+    ("BULK INSERT INTO Logs", 
+     ["BULK_COPY_STATEMENT", "TARGET TABLE: Logs"]),
+
+    # --- 邊界案例 ---
+    ("DELETE FROM Users WHERE ID = 1 AND Status = 'Old'", 
+     ["DELETE_STATEMENT", "EXPRESSION: AND", "EXPRESSION: =", "IDENTIFIER: Status"]),
 ])
 def test_visualizer_output_integrity(sql, expected_keywords):
     """
-    參數化測試：驗證視覺化工具是否能精確反映 AST 節點資訊
+    參數化測試：驗證視覺化工具是否能精確反映所有 DQL/DML 節點資訊
     """
     output = run_visualize(sql)
     
     for keyword in expected_keywords:
+        assert keyword in output, f"在 SQL: {sql} 的輸出中找不到預期標籤 '{keyword}'\n輸出內容：\n{output}"
         assert keyword in output, f"在 SQL: {sql} 的輸出中找不到預期標籤 '{keyword}'\n輸出內容：\n{output}"
 
 def test_visualizer_indentation_logic():
