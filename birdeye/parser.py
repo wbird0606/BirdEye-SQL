@@ -3,13 +3,13 @@ from birdeye.ast import (
     SelectStatement, UpdateStatement, DeleteStatement, InsertStatement, 
     SqlBulkCopyStatement, IdentifierNode, LiteralNode, 
     BinaryExpressionNode, FunctionCallNode, JoinNode, AssignmentNode,
-    OrderByNode # 💡 v1.6.1 新增
+    OrderByNode 
 )
 
 class Parser:
     """
     語法分析器：將 Token 序列轉換為抽象語法樹 (AST)。
-    v1.6.1: 實作 Issue #30 - 支援 TOP 與 ORDER BY 子句。
+    v1.6.3: 修正表達式引擎，支援完整比較運算子 (>, <, >=, <=, !=)。
     """
     def __init__(self, tokens, source):
         self.tokens = tokens
@@ -49,7 +49,6 @@ class Parser:
         tok = self._peek()
         if not tok or tok.type == TokenType.EOF: raise SyntaxError("Empty source")
         
-        # 路由至對應解析方法
         if tok.type == TokenType.KEYWORD_SELECT: stmt = self._parse_select()
         elif tok.type == TokenType.KEYWORD_UPDATE: stmt = self._parse_update()
         elif tok.type == TokenType.KEYWORD_DELETE: stmt = self._parse_delete()
@@ -65,17 +64,16 @@ class Parser:
             raise SyntaxError(f"Unexpected token: {self._get_text(peek)}")
         return stmt
 
-    # --- 2. DQL 解析: SELECT (Updated v1.6.1) ---
+    # --- 2. DQL 解析: SELECT ---
 
     def _parse_select(self):
         stmt = SelectStatement()
         self._consume(TokenType.KEYWORD_SELECT, "Expected SELECT")
 
-        # 💡 Issue #30: 解析 TOP (n)
+        # 解析 TOP (n)
         if self._match(TokenType.KEYWORD_TOP):
             num_tok = self._match(TokenType.NUMERIC_LITERAL)
             if not num_tok:
-                # 🛡️ 精準對齊測試案例的錯誤訊息
                 raise SyntaxError("Expected numeric literal after TOP")
             stmt.top_count = int(num_tok.value)
 
@@ -129,7 +127,19 @@ class Parser:
         if self._match(TokenType.KEYWORD_WHERE):
             stmt.where_condition = self._parse_expression()
 
-        # 💡 Issue #30: 解析 ORDER BY
+        # 解析 GROUP BY
+        if self._match(TokenType.KEYWORD_GROUP):
+            self._consume(TokenType.KEYWORD_BY, "Expected BY after GROUP")
+            while True:
+                stmt.group_by_cols.append(self._parse_expression())
+                if not self._match(TokenType.SYMBOL_COMMA):
+                    break
+
+        # 解析 HAVING
+        if self._match(TokenType.KEYWORD_HAVING):
+            stmt.having_condition = self._parse_expression()
+
+        # 解析 ORDER BY
         if self._match(TokenType.KEYWORD_ORDER):
             self._consume(TokenType.KEYWORD_BY, "Expected BY after ORDER")
             while True:
@@ -146,7 +156,7 @@ class Parser:
 
         return stmt
 
-    # --- 3. DML 解析: UPDATE ---
+    # --- 3. DML 解析 ---
 
     def _parse_update(self):
         stmt = UpdateStatement()
@@ -165,8 +175,6 @@ class Parser:
         stmt.where_condition = self._parse_expression()
         return stmt
 
-    # --- 4. DML 解析: DELETE ---
-
     def _parse_delete(self):
         stmt = DeleteStatement()
         self._consume(TokenType.KEYWORD_DELETE, "Expected DELETE")
@@ -176,8 +184,6 @@ class Parser:
             raise SyntaxError("WHERE clause is mandatory for UPDATE/DELETE")
         stmt.where_condition = self._parse_expression()
         return stmt
-
-    # --- 5. DML 解析: INSERT ---
 
     def _parse_insert(self):
         stmt = InsertStatement()
@@ -200,8 +206,6 @@ class Parser:
         self._consume(TokenType.SYMBOL_RPAREN, "Expected )")
         return stmt
 
-    # --- 6. DML 解析: BULK INSERT ---
-
     def _parse_bulk_insert(self):
         self._advance() 
         if not self._match(TokenType.IDENTIFIER, TokenType.KEYWORD_INSERT):
@@ -214,26 +218,40 @@ class Parser:
     # --- 7. 表達式解析引擎 (Recursive Descent) ---
 
     def _parse_expression(self): return self._parse_logical_or()
+    
     def _parse_logical_or(self):
         node = self._parse_logical_and()
         while self._match(TokenType.KEYWORD_OR):
             node = BinaryExpressionNode(left=node, operator="OR", right=self._parse_logical_and())
         return node
+
     def _parse_logical_and(self):
         node = self._parse_comparison()
         while self._match(TokenType.KEYWORD_AND):
             node = BinaryExpressionNode(left=node, operator="AND", right=self._parse_comparison())
         return node
+
     def _parse_comparison(self):
         node = self._parse_term()
-        while self._match(TokenType.SYMBOL_EQUAL):
-            node = BinaryExpressionNode(left=node, operator="=", right=self._parse_term())
+        # 💡 v1.6.3: 支援完整的比較運算子
+        while True:
+            op_tok = self._match(
+                TokenType.SYMBOL_EQUAL, TokenType.SYMBOL_GT, TokenType.SYMBOL_LT,
+                TokenType.SYMBOL_GE, TokenType.SYMBOL_LE, TokenType.SYMBOL_NE
+            )
+            if op_tok:
+                op_text = self._get_text(op_tok)
+                node = BinaryExpressionNode(left=node, operator=op_text, right=self._parse_term())
+            else:
+                break
         return node
+
     def _parse_term(self):
         node = self._parse_factor()
         while self._match(TokenType.SYMBOL_PLUS):
             node = BinaryExpressionNode(left=node, operator="+", right=self._parse_factor())
         return node
+
     def _parse_factor(self):
         node = self._parse_primary()
         while self._match(TokenType.SYMBOL_ASTERISK):

@@ -1,7 +1,7 @@
 from birdeye.ast import (
     SelectStatement, UpdateStatement, DeleteStatement, InsertStatement,
     SqlBulkCopyStatement, IdentifierNode, BinaryExpressionNode, 
-    FunctionCallNode, LiteralNode, OrderByNode # 💡 v1.6.1 新增
+    FunctionCallNode, LiteralNode, OrderByNode
 )
 
 class SemanticError(Exception):
@@ -11,13 +11,16 @@ class SemanticError(Exception):
 class Binder:
     """
     語意綁定器：執行標識符解析、星號展開與 ZTA 政策強制執行。
-    v1.6.1: 支援 Issue #30 - 排序欄位的作用域綁定與歧義檢查。
+    v1.6.2: 實作 Issue #31 - 聚合函數校驗與 GROUP BY 語意完整性檢查。
     """
     def __init__(self, registry):
         self.registry = registry
         self.current_scopes = {}    # 作用域名稱 (別名或表名) -> 原始大寫表名
         self.active_tables = []     # 當前查詢涉及的原始表名清單
         self.nullable_scopes = set() # 標記為 Nullable 的作用域 (用於 Join)
+        
+        # 💡 Issue #31: 聚合檢查狀態
+        self._aggregate_funcs = {"SUM", "COUNT", "AVG", "MIN", "MAX"}
 
     def bind(self, stmt):
         """主入口：執行語意檢查並返回綁定後的 AST"""
@@ -40,34 +43,47 @@ class Binder:
     # --- 核心語句綁定邏輯 ---
 
     def _bind_select(self, stmt):
-        # 1. 註冊主表
+        # 1. 註冊作用域 (FROM & JOIN)
         self._register_scope(stmt.table, stmt.table_alias)
-
-        # 2. 註冊 JOIN 表 (依序註冊以支援前向引用)
         for join in stmt.joins:
             if join.type == "LEFT":
                 self.nullable_scopes.add(join.alias.upper() if join.alias else join.table.name.upper())
             elif join.type == "RIGHT":
                 self.nullable_scopes.update(self.current_scopes.keys())
-
             self._register_scope(join.table, join.alias)
             if join.on_condition:
                 self._visit_expression(join.on_condition)
 
-        # 3. 處理星號展開
+        # 2. 處理星號展開 (SELECT *)
         if stmt.is_select_star:
             self._expand_global_star(stmt)
         for prefix in stmt.star_prefixes:
             self._expand_qualified_star(stmt, prefix)
 
-        # 4. 綁定投影欄位與 WHERE
-        for col in stmt.columns:
-            self._visit_expression(col)
+        # 3. 🛡️ ZTA 政策：檢查 WHERE 子句 (不允許聚合函數)
         if stmt.where_condition:
+            if self._has_aggregate(stmt.where_condition):
+                raise SemanticError("Aggregate functions are not allowed in WHERE clause")
             self._visit_expression(stmt.where_condition)
 
-        # 💡 Issue #30: 綁定 ORDER BY 欄位
-        # 排序欄位必須在已註冊的作用域內，且遵循相同的 ZTA 歧義與別名政策
+        # 4. 綁定 GROUP BY 欄位
+        for g_col in stmt.group_by_cols:
+            self._visit_expression(g_col)
+
+        # 5. 🛡️ ZTA 政策：執行聚合完整性校驗
+        # 如果有 GROUP BY，或者 SELECT 中有任何聚合函數，則啟動嚴格校驗
+        is_agg_query = len(stmt.group_by_cols) > 0 or any(self._has_aggregate(c) for c in stmt.columns)
+        
+        for col_expr in stmt.columns:
+            self._visit_expression(col_expr)
+            if is_agg_query:
+                self._validate_aggregate_integrity(col_expr, stmt.group_by_cols)
+
+        # 6. 綁定 HAVING (支援聚合函數)
+        if stmt.having_condition:
+            self._visit_expression(stmt.having_condition)
+
+        # 7. 綁定 ORDER BY
         for term in stmt.order_by_terms:
             self._visit_expression(term.column)
 
@@ -91,7 +107,6 @@ class Binder:
         for val in stmt.values:
             self._visit_expression(val)
         
-        # 🛡️ ZTA 數量校驗
         expected = len(stmt.columns) if stmt.columns else self.registry.get_column_count(stmt.table.name)
         actual = len(stmt.values)
         if expected != actual:
@@ -101,7 +116,47 @@ class Binder:
         if not self.registry.has_table(stmt.table.name):
             raise SemanticError(f"Table '{stmt.table.name}' not found")
 
-    # --- 表達式走訪 ---
+    # --- 聚合輔助方法 ---
+
+    def _has_aggregate(self, expr):
+        """遞迴檢查表達式中是否包含聚合函數"""
+        if isinstance(expr, FunctionCallNode):
+            if expr.name.upper() in self._aggregate_funcs:
+                return True
+            return any(self._has_aggregate(arg) for arg in expr.args)
+        elif isinstance(expr, BinaryExpressionNode):
+            return self._has_aggregate(expr.left) or self._has_aggregate(expr.right)
+        return False
+
+    def _validate_aggregate_integrity(self, expr, group_by_cols):
+        """
+        🛡️ ZTA 核心校驗：確保非聚合欄位必須出現在 GROUP BY 中。
+        """
+        if self._has_aggregate(expr):
+            return # 已經是聚合運算，安全
+        
+        if isinstance(expr, IdentifierNode):
+            if expr.name == "*": return
+            # 檢查此標識符是否在 GROUP BY 列表中 (比對名稱與限定符)
+            found = False
+            for g_col in group_by_cols:
+                if isinstance(g_col, IdentifierNode):
+                    if g_col.name.upper() == expr.name.upper() and g_col.qualifier == expr.qualifier:
+                        found = True
+                        break
+            if not found:
+                raise SemanticError(f"Column '{expr.name}' must appear in the GROUP BY clause or be used in an aggregate function")
+        
+        elif isinstance(expr, BinaryExpressionNode):
+            self._validate_aggregate_integrity(expr.left, group_by_cols)
+            self._validate_aggregate_integrity(expr.right, group_by_cols)
+        
+        elif isinstance(expr, FunctionCallNode):
+            # 一般函數（非聚合）內部的所有參數也必須符合規則
+            for arg in expr.args:
+                self._validate_aggregate_integrity(arg, group_by_cols)
+
+    # --- 標識符解析引擎 ---
 
     def _visit_expression(self, expr):
         if isinstance(expr, IdentifierNode):
@@ -115,28 +170,17 @@ class Binder:
         elif isinstance(expr, LiteralNode):
             pass
 
-    # --- 標識符解析引擎 (ZTA 核心政策) ---
-
     def _resolve_identifier(self, node):
         if node.name == "*": return
-
         full_qual = node.qualifier.upper() if node.qualifier else None
 
         if full_qual:
-            # 🛡️ ZTA 政策：一旦定義別名，禁止再使用原始表名
             for alias_key, real_table_val in self.current_scopes.items():
                 if full_qual == real_table_val and alias_key != real_table_val:
                     raise SemanticError(f"Original table name '{node.qualifier}' cannot be used when alias '{alias_key.lower()}' is defined")
             
-            match_scope = None
-            if full_qual in self.current_scopes:
-                match_scope = full_qual
-            else:
-                parts = full_qual.split('.')
-                if parts[-1] in self.current_scopes:
-                    match_scope = parts[-1]
-            
-            if not match_scope:
+            match_scope = full_qual if full_qual in self.current_scopes else full_qual.split('.')[-1]
+            if match_scope not in self.current_scopes:
                 raise SemanticError(f"Unknown qualifier '{node.qualifier}'")
             
             real_table = self.current_scopes[match_scope]
@@ -166,12 +210,8 @@ class Binder:
         real_t = table_node.name.upper()
         if not self.registry.has_table(real_t):
             raise SemanticError(f"Table '{table_node.name}' not found")
-        
         self.active_tables.append(real_t)
-        if alias:
-            self.current_scopes[alias.upper()] = real_t
-        else:
-            self.current_scopes[real_t] = real_t
+        self.current_scopes[alias.upper() if alias else real_t] = real_t
 
     def _expand_global_star(self, stmt):
         expanded = []
@@ -179,17 +219,14 @@ class Binder:
             if scope_name == real_table and any(v == real_table and k != real_table for k, v in self.current_scopes.items()):
                 continue
             cols = self.registry.get_columns(real_table)
-            for c in cols:
-                expanded.append(IdentifierNode(name=c, qualifiers=[scope_name]))
+            expanded.extend([IdentifierNode(name=c, qualifiers=[scope_name]) for c in cols])
         stmt.columns.extend(expanded)
 
     def _expand_qualified_star(self, stmt, prefix):
         up_prefix = prefix.upper()
         match_scope = up_prefix if up_prefix in self.current_scopes else up_prefix.split('.')[-1]
-        
         if match_scope not in self.current_scopes:
             raise SemanticError(f"Unknown qualifier '{prefix}' in star expansion")
-            
         real_table = self.current_scopes[match_scope]
         cols = self.registry.get_columns(real_table)
         stmt.columns.extend([IdentifierNode(name=c, qualifiers=[prefix]) for c in cols])

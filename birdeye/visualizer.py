@@ -3,13 +3,13 @@ from birdeye.ast import (
     InsertStatement, SqlBulkCopyStatement,
     IdentifierNode, LiteralNode, BinaryExpressionNode, 
     FunctionCallNode, JoinNode, AssignmentNode,
-    OrderByNode # 💡 v1.6.1 新增
+    OrderByNode 
 )
 
 class ASTVisualizer:
     """
     將 AST 轉換為樹狀文字結構，支援 DQL 與 DML 語法。
-    v1.6.1: 新增 TOP 與 ORDER BY 節點的視覺化支援。
+    v1.6.2: 新增 GROUP BY 與 HAVING 節點的視覺化支援。
     """
 
     def __init__(self):
@@ -30,11 +30,11 @@ class ASTVisualizer:
         if isinstance(node, SelectStatement):
             self.lines.append(f"{prefix}SELECT_STATEMENT")
             
-            # 💡 Issue #30: 顯示 TOP 限制
+            # TOP 限制
             if node.top_count is not None:
                 self.lines.append(f"{current_indent}  ├── TOP: {node.top_count}")
             
-            # 處理投影欄位
+            # 投影欄位
             if node.is_select_star and not node.columns:
                 self.lines.append(f"{current_indent}  ├── COLUMNS: *")
             else:
@@ -42,29 +42,37 @@ class ASTVisualizer:
                 for col in node.columns:
                     self._visit(col, indent + 2, "COL")
             
-            # 處理主表與別名
+            # 主表與別名
             self.lines.append(f"{current_indent}  ├── FROM")
             self._visit(node.table, indent + 2, "TABLE")
             if node.table_alias:
                 self.lines.append(f"{current_indent}    └── ALIAS: {node.table_alias}")
 
-            # 處理 JOIN 列表
+            # JOIN 列表
             if node.joins:
                 self.lines.append(f"{current_indent}  ├── JOINS")
                 for j in node.joins:
                     self._visit(j, indent + 2, "JOIN")
             
-            # 處理 WHERE 條件
+            # WHERE 條件
             if node.where_condition:
-                self.lines.append(f"{current_indent}  └── WHERE")
+                self.lines.append(f"{current_indent}  ├── WHERE")
                 self._visit(node.where_condition, indent + 2, "COND")
             
-            # 💡 Issue #30: 顯示 ORDER BY 排序
+            # 💡 Issue #31: 顯示 GROUP BY
+            if node.group_by_cols:
+                self.lines.append(f"{current_indent}  ├── GROUP BY")
+                for g_col in node.group_by_cols:
+                    self._visit(g_col, indent + 2, "G_COL")
+
+            # 💡 Issue #31: 顯示 HAVING
+            if node.having_condition:
+                self.lines.append(f"{current_indent}  ├── HAVING")
+                self._visit(node.having_condition, indent + 2, "COND")
+
+            # ORDER BY 排序
             if node.order_by_terms:
-                # 若上方有 WHERE，則 ORDER BY 應使用中間的分支符號或是最後一個
-                order_prefix = "  └── " if not node.where_condition else "  ├── "
-                # 簡單化處理：若有排序，則統一在底部顯示
-                self.lines.append(f"{current_indent}  ├── ORDER BY")
+                self.lines.append(f"{current_indent}  └── ORDER BY")
                 for order in node.order_by_terms:
                     self._visit(order, indent + 2, "ORDER")
 
@@ -119,7 +127,6 @@ class ASTVisualizer:
                 self._visit(node.on_condition, indent + 3, "COND")
 
         elif isinstance(node, OrderByNode):
-            # 💡 Issue #30: 渲染排序項
             self.lines.append(f"{prefix}SORT_BY: {node.direction}")
             self._visit(node.column, indent + 1, "COL")
 

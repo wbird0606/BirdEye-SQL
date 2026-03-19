@@ -1,7 +1,7 @@
 """
 BirdEye-SQL AST Nodes Definition
 為 ZTA 零信任架構量身打造的抽象語法樹節點。
-v1.6.1: 新增 ORDER BY 與 TOP 支援。
+v1.6.2: 新增 GROUP BY 與 HAVING 支援。
 """
 
 class Node:
@@ -23,9 +23,12 @@ class SelectStatement(Statement):
         self.table_alias = None    # 主表別名 (Binder 核心)
         self.joins = []            # JoinNode 列表
         self.where_condition = None # 過濾條件
-        # 💡 Issue #30 新增
-        self.top_count = None      # TOP N 的數量
-        self.order_by_terms = []   # OrderByNode 列表
+        self.top_count = None      # 💡 Issue #30: TOP N 的數量
+        self.order_by_terms = []   # 💡 Issue #30: OrderByNode 列表
+        
+        # 💡 Issue #31 新增
+        self.group_by_cols = []    # 分組欄位列表 (ExpressionNodes)
+        self.having_condition = None # HAVING 過濾條件 (ExpressionNode)
 
 class UpdateStatement(Statement):
     def __init__(self):

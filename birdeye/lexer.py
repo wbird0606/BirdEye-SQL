@@ -19,12 +19,13 @@ class TokenType(Enum):
     KEYWORD_ON = auto()
     KEYWORD_AND = auto()
     KEYWORD_OR = auto()
-    # 💡 Issue #30 新增
-    KEYWORD_TOP = auto()
-    KEYWORD_ORDER = auto()
-    KEYWORD_BY = auto()
-    KEYWORD_ASC = auto()
-    KEYWORD_DESC = auto()
+    KEYWORD_TOP = auto()        # Issue #30
+    KEYWORD_ORDER = auto()      # Issue #30
+    KEYWORD_BY = auto()         # Issue #30
+    KEYWORD_ASC = auto()        # Issue #30
+    KEYWORD_DESC = auto()       # Issue #30
+    KEYWORD_GROUP = auto()      # Issue #31
+    KEYWORD_HAVING = auto()     # Issue #31
     
     # Identifiers & Literals
     IDENTIFIER = auto()
@@ -32,14 +33,21 @@ class TokenType(Enum):
     NUMERIC_LITERAL = auto()
     
     # Symbols
-    SYMBOL_ASTERISK = auto()   
-    SYMBOL_COMMA = auto()      
-    SYMBOL_DOT = auto()        
-    SYMBOL_EQUAL = auto()      
-    SYMBOL_PLUS = auto()       
-    SYMBOL_LPAREN = auto()     
-    SYMBOL_RPAREN = auto()     
-    SYMBOL_SEMICOLON = auto()  
+    SYMBOL_ASTERISK = auto()   # *
+    SYMBOL_COMMA = auto()      # ,
+    SYMBOL_DOT = auto()        # .
+    SYMBOL_EQUAL = auto()      # =
+    SYMBOL_PLUS = auto()       # +
+    SYMBOL_LPAREN = auto()     # (
+    SYMBOL_RPAREN = auto()     # )
+    SYMBOL_SEMICOLON = auto()  # ;
+    
+    # 💡 v1.6.3 新增比較運算子
+    SYMBOL_GT = auto()         # >
+    SYMBOL_LT = auto()         # <
+    SYMBOL_GE = auto()         # >=
+    SYMBOL_LE = auto()         # <=
+    SYMBOL_NE = auto()         # != 或 <>
     
     # Meta
     EOF = auto()
@@ -55,6 +63,10 @@ class Token:
         return f"Token({self.type}, {repr(self.value)}, {self.start}, {self.end})"
 
 class Lexer:
+    """
+    詞法分析器：將 SQL 字串轉換為 Token 序列。
+    v1.6.3: 支援完整的比較運算子，修復 Issue #31 測試失敗問題。
+    """
     def __init__(self, source):
         self.source = source
         self.tokens = []
@@ -72,7 +84,6 @@ class Lexer:
         return char
 
     def tokenize(self):
-        # 💡 Issue #30: 更新關鍵字清單
         keywords = {
             "SELECT": TokenType.KEYWORD_SELECT,
             "FROM": TokenType.KEYWORD_FROM,
@@ -96,6 +107,8 @@ class Lexer:
             "BY": TokenType.KEYWORD_BY,
             "ASC": TokenType.KEYWORD_ASC,
             "DESC": TokenType.KEYWORD_DESC,
+            "GROUP": TokenType.KEYWORD_GROUP,
+            "HAVING": TokenType.KEYWORD_HAVING,
         }
 
         while self.pos < len(self.source):
@@ -105,7 +118,7 @@ class Lexer:
                 self._advance()
                 continue
 
-            # 處理註解
+            # 1. 處理註解 (ZTA 審計：移除無語義干擾)
             if char == '-' and self._peek(1) == '-':
                 self._advance(); self._advance()
                 while self._peek() and self._peek() != '\n':
@@ -125,7 +138,7 @@ class Lexer:
                     raise ValueError("Unclosed nested block comment")
                 continue
 
-            # 處理標識符與關鍵字
+            # 2. 處理標識符與關鍵字
             if char.isalpha() or char == '_':
                 start = self.pos
                 while self._peek() and (self._peek().isalnum() or self._peek() == '_'):
@@ -135,7 +148,7 @@ class Lexer:
                 self.tokens.append(Token(token_type, text, start, self.pos))
                 continue
 
-            # 處理數字
+            # 3. 處理數字常量
             if char.isdigit():
                 start = self.pos
                 while self._peek() and self._peek().isdigit():
@@ -147,7 +160,7 @@ class Lexer:
                 self.tokens.append(Token(TokenType.NUMERIC_LITERAL, self.source[start:self.pos], start, self.pos))
                 continue
 
-            # 處理字串
+            # 4. 處理字串常量
             if char == "'":
                 start = self.pos
                 self._advance()
@@ -160,7 +173,7 @@ class Lexer:
                 self.tokens.append(Token(TokenType.STRING_LITERAL, text, start, self.pos))
                 continue
 
-            # 處理 MSSQL 中括號
+            # 5. 處理 MSSQL 中括號
             if char == '[':
                 start = self.pos
                 self._advance()
@@ -175,15 +188,41 @@ class Lexer:
                 self.tokens.append(Token(TokenType.IDENTIFIER, inner_text, start, self.pos))
                 continue
 
-            # 單一符號
-            if char == '*':
+            # 6. 💡 v1.6.3 新增比較運算子邏輯
+            if char == '=':
+                self.tokens.append(Token(TokenType.SYMBOL_EQUAL, "=", self.pos, self.pos + 1))
+                self._advance()
+            elif char == '>':
+                if self._peek(1) == '=':
+                    self.tokens.append(Token(TokenType.SYMBOL_GE, ">=", self.pos, self.pos + 2))
+                    self._advance(); self._advance()
+                else:
+                    self.tokens.append(Token(TokenType.SYMBOL_GT, ">", self.pos, self.pos + 1))
+                    self._advance()
+            elif char == '<':
+                if self._peek(1) == '=':
+                    self.tokens.append(Token(TokenType.SYMBOL_LE, "<=", self.pos, self.pos + 2))
+                    self._advance(); self._advance()
+                elif self._peek(1) == '>':
+                    self.tokens.append(Token(TokenType.SYMBOL_NE, "<>", self.pos, self.pos + 2))
+                    self._advance(); self._advance()
+                else:
+                    self.tokens.append(Token(TokenType.SYMBOL_LT, "<", self.pos, self.pos + 1))
+                    self._advance()
+            elif char == '!':
+                if self._peek(1) == '=':
+                    self.tokens.append(Token(TokenType.SYMBOL_NE, "!=", self.pos, self.pos + 2))
+                    self._advance(); self._advance()
+                else:
+                    self._advance() # 忽略孤立的感嘆號
+
+            # 7. 處理其他單一符號與括號
+            elif char == '*':
                 self.tokens.append(Token(TokenType.SYMBOL_ASTERISK, "*", self.pos, self.pos + 1)); self._advance()
             elif char == ',':
                 self.tokens.append(Token(TokenType.SYMBOL_COMMA, ",", self.pos, self.pos + 1)); self._advance()
             elif char == '.':
                 self.tokens.append(Token(TokenType.SYMBOL_DOT, ".", self.pos, self.pos + 1)); self._advance()
-            elif char == '=':
-                self.tokens.append(Token(TokenType.SYMBOL_EQUAL, "=", self.pos, self.pos + 1)); self._advance()
             elif char == '+':
                 self.tokens.append(Token(TokenType.SYMBOL_PLUS, "+", self.pos, self.pos + 1)); self._advance()
             elif char == ';':
