@@ -9,7 +9,7 @@ from birdeye.ast import (
 class Parser:
     """
     語法分析器：將 Token 序列轉換為抽象語法樹 (AST)。
-    v1.6.3: 修正表達式引擎，支援完整比較運算子 (>, <, >=, <=, !=)。
+    v1.6.4: 支援子查詢 (IN, EXISTS) 與括號嵌套 Select 的遞迴解析。
     """
     def __init__(self, tokens, source):
         self.tokens = tokens
@@ -100,7 +100,6 @@ class Parser:
         alias_tok = self._match(TokenType.IDENTIFIER)
         if alias_tok: stmt.table_alias = self._get_text(alias_tok)
 
-        # 🛡️ ZTA 規範：禁止隱含式關聯
         if self._peek() and self._peek().type == TokenType.SYMBOL_COMMA:
             raise SyntaxError("Expected FROM")
 
@@ -215,7 +214,7 @@ class Parser:
         stmt.table, _ = self._parse_full_identifier_safe()
         return stmt
 
-    # --- 7. 表達式解析引擎 (Recursive Descent) ---
+    # --- 7. 表達式解析引擎 (v1.6.4 更新) ---
 
     def _parse_expression(self): return self._parse_logical_or()
     
@@ -233,8 +232,22 @@ class Parser:
 
     def _parse_comparison(self):
         node = self._parse_term()
-        # 💡 v1.6.3: 支援完整的比較運算子
+        # 💡 v1.6.4: 支援 IN 子查詢與運算子
         while True:
+            if self._match(TokenType.KEYWORD_IN):
+                self._consume(TokenType.SYMBOL_LPAREN, "Expected ( after IN")
+                # 判斷是 IN (SELECT ...) 還是 IN (1, 2, 3)
+                if self._peek() and self._peek().type == TokenType.KEYWORD_SELECT:
+                    right_node = self._parse_select()
+                else:
+                    right_node = []
+                    while True:
+                        right_node.append(self._parse_expression())
+                        if not self._match(TokenType.SYMBOL_COMMA): break
+                self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after IN list")
+                node = BinaryExpressionNode(left=node, operator="IN", right=right_node)
+                continue
+
             op_tok = self._match(
                 TokenType.SYMBOL_EQUAL, TokenType.SYMBOL_GT, TokenType.SYMBOL_LT,
                 TokenType.SYMBOL_GE, TokenType.SYMBOL_LE, TokenType.SYMBOL_NE
@@ -259,8 +272,19 @@ class Parser:
         return node
 
     def _parse_primary(self):
+        # 💡 v1.6.4: 支援 EXISTS (SELECT ...)
+        if self._match(TokenType.KEYWORD_EXISTS):
+            self._consume(TokenType.SYMBOL_LPAREN, "Expected ( after EXISTS")
+            subquery = self._parse_select()
+            self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after EXISTS subquery")
+            return FunctionCallNode(name="EXISTS", args=[subquery])
+
         if self._match(TokenType.SYMBOL_LPAREN):
-            node = self._parse_expression()
+            # 💡 v1.6.4: 支援子查詢遞迴 (SELECT ...)
+            if self._peek() and self._peek().type == TokenType.KEYWORD_SELECT:
+                node = self._parse_select()
+            else:
+                node = self._parse_expression()
             self._consume(TokenType.SYMBOL_RPAREN, "Expected )")
             return node
         
