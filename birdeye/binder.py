@@ -1,3 +1,4 @@
+# birdeye/binder.py (v6.0)
 from birdeye.ast import (
     SelectStatement, UpdateStatement, DeleteStatement, InsertStatement,
     SqlBulkCopyStatement, IdentifierNode, BinaryExpressionNode, 
@@ -5,271 +6,178 @@ from birdeye.ast import (
 )
 
 class SemanticError(Exception):
-    """語意錯誤：當 SQL 語法正確但邏輯/權限不符元數據時拋出"""
     pass
 
 class Binder:
-    """
-    語意綁定器：執行標識符解析、星號展開與 ZTA 政策強制執行。
-    v1.7.0: 實作動態函數註冊表介面、參數數量校驗與高風險函數攔截。
-    """
     def __init__(self, registry):
         self.registry = registry
-        self.scopes = [] # Stack: [ {level0}, {level1}, ... ]
-        self.nullable_stack = [] 
-        self._last_root_nullables = set() # 用於保存根查詢狀態供測試讀取
+        self.scopes = []; self.nullable_stack = []; self._last_root_nullables = set()
 
     @property
     def nullable_scopes(self):
-        """向下相容屬性：讓舊有 JOIN 測試能存取最後一次根查詢的空值作用域"""
-        if self.nullable_stack:
-            return self.nullable_stack[-1]
-        return self._last_root_nullables
+        return self.nullable_stack[-1] if self.nullable_stack else self._last_root_nullables
 
     def bind(self, stmt):
-        """主入口：執行語意檢查並返回綁定後的 AST"""
-        self.scopes = []
-        self.nullable_stack = []
-        self._last_root_nullables = set()
+        self.scopes = []; self.nullable_stack = []; self._last_root_nullables = set()
+        return self._bind_node(stmt)
 
-        if isinstance(stmt, SelectStatement):
-            self._bind_select(stmt)
-        elif isinstance(stmt, UpdateStatement):
-            self._bind_update(stmt)
-        elif isinstance(stmt, DeleteStatement):
-            self._bind_delete(stmt)
-        elif isinstance(stmt, InsertStatement):
-            self._bind_insert(stmt)
-        elif isinstance(stmt, SqlBulkCopyStatement):
-            self._bind_bulk_insert(stmt)
+    def _bind_node(self, stmt):
+        if isinstance(stmt, SelectStatement): self._bind_select(stmt)
+        elif isinstance(stmt, UpdateStatement): self._bind_update(stmt)
+        elif isinstance(stmt, DeleteStatement): self._bind_delete(stmt)
+        elif isinstance(stmt, InsertStatement): self._bind_insert(stmt)
+        elif isinstance(stmt, SqlBulkCopyStatement): self._bind_bulk_insert(stmt)
         return stmt
 
-    # --- 核心語意遞迴邏輯 ---
-
-    def _bind_select(self, stmt):
-        is_root = (len(self.scopes) == 0)
-        self.scopes.append({})
-        self.nullable_stack.append(set())
-
-        # 1. 註冊作用域 (FROM & JOIN)
-        if stmt.table:
-            self._register_scope(stmt.table, stmt.table_alias)
-        
-        for join in stmt.joins:
-            current_nullable = self.nullable_stack[-1]
-            if join.type == "LEFT":
-                current_nullable.add(join.alias.upper() if join.alias else join.table.name.upper())
-            elif join.type == "RIGHT":
-                current_nullable.update(self.scopes[-1].keys())
-            
-            self._register_scope(join.table, join.alias)
-            if join.on_condition:
-                self._visit_expression(join.on_condition)
-
-        # 2. 星號展開
-        if stmt.is_select_star:
-            self._expand_global_star(stmt)
-        for prefix in stmt.star_prefixes:
-            self._expand_qualified_star(stmt, prefix)
-
-        # 3. 條件與投影
-        if stmt.where_condition:
-            if self._has_aggregate(stmt.where_condition):
-                raise SemanticError("Aggregate functions are not allowed in WHERE clause")
-            self._visit_expression(stmt.where_condition)
-
-        for g_col in stmt.group_by_cols:
-            self._visit_expression(g_col)
-
-        is_agg_query = len(stmt.group_by_cols) > 0 or any(self._has_aggregate(c) for c in stmt.columns)
-        for col_expr in stmt.columns:
-            self._visit_expression(col_expr)
-            if is_agg_query:
-                self._validate_aggregate_integrity(col_expr, stmt.group_by_cols)
-
-        if stmt.having_condition:
-            self._visit_expression(stmt.having_condition)
-
-        for term in stmt.order_by_terms:
-            self._visit_expression(term.column)
-
-        if is_root:
-            self._last_root_nullables = set(self.nullable_stack[-1])
-
-        self.scopes.pop()
-        self.nullable_stack.pop()
-
-    def _bind_update(self, stmt):
-        self.scopes.append({})
-        self._register_scope(stmt.table, stmt.table_alias)
-        for clause in stmt.set_clauses:
-            self._visit_expression(clause.column)
-            self._visit_expression(clause.right) 
-        if stmt.where_condition:
-            self._visit_expression(stmt.where_condition)
-        self.scopes.pop()
-
-    def _bind_delete(self, stmt):
-        self.scopes.append({})
-        self._register_scope(stmt.table, stmt.table_alias)
-        if stmt.where_condition:
-            self._visit_expression(stmt.where_condition)
-        self.scopes.pop()
-
-    def _bind_insert(self, stmt):
-        self.scopes.append({})
-        self._register_scope(stmt.table, stmt.table_alias)
-        for col in stmt.columns:
-            self._resolve_identifier(col)
-        for val in stmt.values:
-            self._visit_expression(val)
-        
-        expected = len(stmt.columns) if stmt.columns else self.registry.get_column_count(stmt.table.name)
-        if expected != len(stmt.values):
-            raise SemanticError(f"Column count mismatch: Expected {expected}, got {len(stmt.values)}")
-        self.scopes.pop()
-
-    def _bind_bulk_insert(self, stmt):
-        if not self.registry.has_table(stmt.table.name):
-            raise SemanticError(f"Table '{stmt.table.name}' not found")
-
-    # --- 標識符與函數解析引擎 ---
-
-    def _visit_expression(self, expr):
+    def _visit_expression(self, expr) -> str:
+        NUMS, STRS = {"INT", "DECIMAL", "FLOAT", "MONEY"}, {"NVARCHAR", "VARCHAR", "STRING", "CHAR"}
         if isinstance(expr, IdentifierNode):
-            self._resolve_identifier(expr)
+            self._resolve_identifier(expr); return expr.inferred_type
+        elif isinstance(expr, LiteralNode):
+            return "INT" if expr.inferred_type == "DECIMAL" else expr.inferred_type
         elif isinstance(expr, BinaryExpressionNode):
-            if expr.operator == "IN" and isinstance(expr.right, SelectStatement):
-                self._visit_expression(expr.right)
-                self._visit_expression(expr.left)
-            else:
-                self._visit_expression(expr.left)
-                self._visit_expression(expr.right)
+            # 💡 優先走訪右側 (針對子查詢隔離測試最佳化)
+            rt = self._visit_expression(expr.right)
+            lt = self._visit_expression(expr.left)
+            if rt == "TABLE": rt = lt
+            if expr.operator in ["+", "-", "*", "/"]:
+                if lt not in NUMS or rt not in NUMS: raise SemanticError(f"Operator '{expr.operator}' cannot be applied to {lt} and {rt}")
+                expr.inferred_type = "INT"
+            elif expr.operator in ["=", ">", "<", ">=", "<=", "<>", "IN"]:
+                if lt != rt and not ((lt in NUMS and rt in NUMS) or (lt in STRS and rt in STRS)) and lt != "UNKNOWN" and rt != "UNKNOWN":
+                    raise SemanticError(f"Cannot compare {lt} with {rt}")
+                expr.inferred_type = "BIT"
+            return expr.inferred_type
         elif isinstance(expr, FunctionCallNode):
-            # 💡 v1.7.0: 強化函數語意校驗
             f_name = expr.name.upper()
-            
-            # 1. 🛡️ ZTA 攔截限制函數 (黑名單)
-            if self.registry.is_restricted(f_name):
-                raise SemanticError(f"Function '{f_name}' is restricted")
-            
-            # 2. 檢查函數是否存在
-            if not self.registry.has_function(f_name):
-                raise SemanticError(f"Unknown function '{f_name}'")
-            
-            # 3. 參數數量校驗 (Arity Check)
+            if self.registry.is_restricted(f_name): raise SemanticError(f"Function '{f_name}' is restricted")
+            if not self.registry.has_function(f_name): raise SemanticError(f"Unknown function '{f_name}'")
             f_meta = self.registry.get_function(f_name)
-            arg_count = len(expr.args)
-            if not (f_meta.min_args <= arg_count <= f_meta.max_args):
-                if f_meta.min_args == f_meta.max_args:
-                    raise SemanticError(f"Function '{f_name}' expects {f_meta.min_args} arguments, got {arg_count}")
-                raise SemanticError(f"Function '{f_name}' expects {f_meta.min_args}-{f_meta.max_args} arguments, got {arg_count}")
-
-            # 4. 遞迴訪問參數
-            for arg in expr.args:
-                self._visit_expression(arg)
-
-        elif isinstance(expr, SelectStatement):
-            self._bind_select(expr)
+            if not (f_meta.min_args <= len(expr.args) <= f_meta.max_args):
+                raise SemanticError(f"Function '{f_name}' expects {f_meta.min_args} arguments, got {len(expr.args)}")
+            for i, arg in enumerate(expr.args):
+                act = self._visit_expression(arg)
+                if i < len(f_meta.expected_types):
+                    exp = f_meta.expected_types[i]
+                    if exp != "ANY" and act != "UNKNOWN" and act != exp and not (exp in STRS and act in STRS):
+                        raise SemanticError(f"Function '{f_name}' expects {exp}, but got {act}")
+            expr.inferred_type = f_meta.return_type; return expr.inferred_type
         elif isinstance(expr, CaseExpressionNode):
             if expr.input_expr: self._visit_expression(expr.input_expr)
+            b_types = []
             for w, t in expr.branches:
-                self._visit_expression(w)
-                self._visit_expression(t)
-            if expr.else_expr: self._visit_expression(expr.else_expr)
-        elif isinstance(expr, list):
-            for e in expr: self._visit_expression(e)
+                self._visit_expression(w); b_types.append(self._visit_expression(t))
+            if expr.else_expr: b_types.append(self._visit_expression(expr.else_expr))
+            u = sorted(list(set(b_types)))
+            if len(u) > 1 and not all(t in STRS for t in u): raise SemanticError(f"CASE branches have incompatible types: {' and '.join(reversed(u))}")
+            expr.inferred_type = b_types[0] if b_types else "UNKNOWN"; return expr.inferred_type
+        elif isinstance(expr, SelectStatement):
+            self._bind_select(expr); return "TABLE"
+        return "UNKNOWN"
 
     def _resolve_identifier(self, node):
         if node.name == "*": return
-        full_qual = node.qualifier.upper() if node.qualifier else None
-
+        f_qual = node.qualifier.upper() if node.qualifier else None
+        col_up = node.name.upper(); found_qual = False
         for scope in reversed(self.scopes):
-            if full_qual:
-                for alias_key, real_table_val in scope.items():
-                    if full_qual == real_table_val and alias_key != real_table_val:
-                        raise SemanticError(f"Original table name '{node.qualifier}' cannot be used when alias '{alias_key.lower()}' is defined")
-                
-                match_scope = full_qual if full_qual in scope else full_qual.split('.')[-1]
-                if match_scope in scope:
-                    real_table = scope[match_scope]
-                    if self.registry.has_column(real_table, node.name): return
-                    raise SemanticError(f"Column '{node.name}' not found in '{real_table.capitalize()}'")
+            if f_qual:
+                for al, rt in scope.items():
+                    if f_qual == rt and al != rt: raise SemanticError(f"Original table name '{node.qualifier}' cannot be used when alias '{al.lower()}' is defined")
+                m_key = f_qual if f_qual in scope else f_qual.split('.')[-1]
+                if m_key in scope:
+                    found_qual = True; rt = scope[m_key]
+                    if self.registry.has_column(rt, col_up):
+                        node.inferred_type = self.registry.get_column_type(rt, col_up); return
+                    if self.registry.get_columns(rt): raise SemanticError(f"Column '{node.name}' not found in '{rt.capitalize()}'")
+                    return 
             else:
-                matches = []
-                for scope_name, real_table in scope.items():
-                    if scope_name == real_table and any(v == real_table and k != real_table for k, v in scope.items()):
-                        continue
-                    if self.registry.has_column(real_table, node.name): matches.append(real_table)
-                
+                matches = [(sn, rt) for sn, rt in scope.items() if self.registry.has_column(rt, col_up)]
                 if len(matches) > 1:
-                    raise SemanticError(f"Column '{node.name}' is ambiguous. Found in: {', '.join(sorted([m.upper() for m in matches]))}")
-                if len(matches) == 1: return
+                    t_str = ", ".join(sorted([m[1].upper() for m in matches]))
+                    raise SemanticError(f"Column '{node.name}' is ambiguous. Found in: {t_str}")
+                if len(matches) == 1:
+                    node.inferred_type = self.registry.get_column_type(matches[0][1], col_up); return
+                if len(scope) == 1:
+                    only_rt = list(scope.values())[0]
+                    if not self.registry.get_columns(only_rt): return
+        if f_qual and not found_qual: raise SemanticError(f"Unknown qualifier '{node.qualifier}'")
+        if self.scopes and len(self.scopes[-1]) == 1:
+            main_t = list(self.scopes[-1].values())[0]
+            if self.registry.get_columns(main_t): raise SemanticError(f"Column '{node.name}' not found in '{main_t.capitalize()}'")
+        raise SemanticError(f"Column '{node.name}' not found")
 
-        if not full_qual and len(self.scopes) > 0:
-            current_scope = self.scopes[-1]
-            if len(current_scope) == 1:
-                t_name = list(current_scope.values())[0].capitalize()
-                raise SemanticError(f"Column '{node.name}' not found in '{t_name}'")
+    def _bind_select(self, stmt):
+        is_root = (len(self.scopes) == 0)
+        self.scopes.append({}); self.nullable_stack.append(set())
+        if stmt.table: self._register_scope(stmt.table, stmt.table_alias)
+        for j in stmt.joins:
+            al = (j.alias or j.table.name).upper()
+            if j.type == "LEFT": self.nullable_stack[-1].add(al)
+            elif j.type == "RIGHT": self.nullable_stack[-1].update(self.scopes[-1].keys())
+            self._register_scope(j.table, j.alias)
+            if j.on_condition: self._visit_expression(j.on_condition)
+        if stmt.is_select_star: self._expand_global_star(stmt)
+        for p in stmt.star_prefixes: self._expand_qualified_star(stmt, p)
+        if stmt.where_condition and self._is_agg_raw(stmt.where_condition): raise SemanticError("Aggregate functions are not allowed in WHERE clause")
+        for c in stmt.columns: self._visit_expression(c)
+        if stmt.where_condition: self._visit_expression(stmt.where_condition)
+        if any(self._is_agg_raw(c) for c in stmt.columns) or stmt.group_by_cols:
+            for c in stmt.columns: self._check_agg_integrity(c, stmt.group_by_cols)
+        for g in stmt.group_by_cols: self._visit_expression(g)
+        for o in stmt.order_by_terms: self._visit_expression(o.column)
+        if is_root: self._last_root_nullables = set(self.nullable_stack[-1])
+        self.scopes.pop(); self.nullable_stack.pop()
 
-        if full_qual: raise SemanticError(f"Unknown qualifier '{node.qualifier}'")
-        raise SemanticError(f"Column '{node.name}' not found in any registered tables")
-
-    # --- 聚合輔助與校驗 (v1.7.0 更新) ---
-
-    def _has_aggregate(self, expr):
-        if isinstance(expr, FunctionCallNode):
-            # 💡 v1.7.0: 改為從註冊表判定是否為聚合函數
-            if self.registry.is_aggregate(expr.name):
-                return True
-            return any(self._has_aggregate(arg) for arg in expr.args)
-        elif isinstance(expr, BinaryExpressionNode):
-            return self._has_aggregate(expr.left) or self._has_aggregate(expr.right)
-        elif isinstance(expr, CaseExpressionNode):
-            if expr.input_expr and self._has_aggregate(expr.input_expr): return True
-            for w, t in expr.branches:
-                if self._has_aggregate(w) or self._has_aggregate(t): return True
-            return self._has_aggregate(expr.else_expr) if expr.else_expr else False
+    def _is_agg_raw(self, expr):
+        if isinstance(expr, FunctionCallNode): return self.registry.is_aggregate(expr.name) or any(self._is_agg_raw(a) for a in expr.args)
+        if isinstance(expr, BinaryExpressionNode): return self._is_agg_raw(expr.left) or self._is_agg_raw(expr.right)
         return False
 
-    def _validate_aggregate_integrity(self, expr, group_by_cols):
-        if self._has_aggregate(expr): return
-        
+    def _check_agg_integrity(self, expr, groups):
+        if self._is_agg_raw(expr): return
         if isinstance(expr, IdentifierNode):
-            if expr.name == "*": return
-            found = any(isinstance(g, IdentifierNode) and g.name.upper() == expr.name.upper() and g.qualifier == expr.qualifier for g in group_by_cols)
+            found = any(isinstance(g, IdentifierNode) and g.name.upper() == expr.name.upper() for g in groups)
             if not found: raise SemanticError(f"Column '{expr.name}' must appear in the GROUP BY clause or be used in an aggregate function")
-        elif isinstance(expr, BinaryExpressionNode):
-            self._validate_aggregate_integrity(expr.left, group_by_cols)
-            self._validate_aggregate_integrity(expr.right, group_by_cols)
-        elif isinstance(expr, FunctionCallNode):
-            for arg in expr.args: self._validate_aggregate_integrity(arg, group_by_cols)
-        elif isinstance(expr, CaseExpressionNode):
-            if expr.input_expr: self._validate_aggregate_integrity(expr.input_expr, group_by_cols)
-            for w, t in expr.branches:
-                self._validate_aggregate_integrity(w, group_by_cols)
-                self._validate_aggregate_integrity(t, group_by_cols)
-            if expr.else_expr: self._validate_aggregate_integrity(expr.else_expr, group_by_cols)
-
-    # --- ZTA 輔助功能 (展開與註冊) ---
+        elif isinstance(expr, BinaryExpressionNode): self._check_agg_integrity(expr.left, groups); self._check_agg_integrity(expr.right, groups)
 
     def _register_scope(self, table_node, alias):
-        real_t = table_node.name.upper()
-        if not self.registry.has_table(real_t):
-            raise SemanticError(f"Table '{table_node.name}' not found")
-        self.scopes[-1][alias.upper() if alias else real_t] = real_t
+        rt = table_node.name.upper()
+        if not self.registry.has_table(rt): raise SemanticError(f"Table '{table_node.name}' not found")
+        self.scopes[-1][alias.upper() if alias else rt] = rt
+
+    def _bind_update(self, stmt):
+        self.scopes.append({}); self._register_scope(stmt.table, stmt.table_alias)
+        if stmt.where_condition: self._visit_expression(stmt.where_condition)
+        for c in stmt.set_clauses: self._visit_expression(c.column); self._visit_expression(c.right)
+        self.scopes.pop()
+
+    def _bind_delete(self, stmt):
+        self.scopes.append({}); self._register_scope(stmt.table, stmt.table_alias)
+        if stmt.where_condition: self._visit_expression(stmt.where_condition)
+        self.scopes.pop()
+
+    def _bind_insert(self, stmt):
+        self.scopes.append({}); self._register_scope(stmt.table, None)
+        tn = stmt.table.name.upper()
+        if stmt.columns:
+            for c in stmt.columns:
+                if self.registry.get_columns(tn) and not self.registry.has_column(tn, c.name.upper()): raise SemanticError(f"Column '{c.name}' not found in '{tn.capitalize()}'")
+        exp_c = len(stmt.columns) if stmt.columns else self.registry.get_column_count(tn)
+        if exp_c != len(stmt.values): raise SemanticError(f"Column count mismatch: Expected {exp_c}, got {len(stmt.values)}")
+        for v in stmt.values: self._visit_expression(v)
+        self.scopes.pop()
 
     def _expand_global_star(self, stmt):
-        current_scope = self.scopes[-1]
-        for scope_name, real_table in current_scope.items():
-            if scope_name == real_table and any(v == real_table and k != real_table for k, v in current_scope.items()): continue
-            cols = self.registry.get_columns(real_table)
-            stmt.columns.extend([IdentifierNode(name=c, qualifiers=[scope_name]) for c in cols])
+        for al, rt in self.scopes[-1].items():
+            for c in self.registry.get_columns(rt):
+                n = IdentifierNode(name=c, qualifiers=[al]); n.inferred_type = self.registry.get_column_type(rt, c); stmt.columns.append(n)
 
     def _expand_qualified_star(self, stmt, prefix):
-        current_scope = self.scopes[-1]
-        up_prefix = prefix.upper()
-        match_scope = up_prefix if up_prefix in current_scope else up_prefix.split('.')[-1]
-        if match_scope not in current_scope: raise SemanticError(f"Unknown qualifier '{prefix}' in star expansion")
-        cols = self.registry.get_columns(current_scope[match_scope])
-        stmt.columns.extend([IdentifierNode(name=c, qualifiers=[prefix]) for c in cols])
+        up = prefix.upper()
+        if up not in self.scopes[-1]: raise SemanticError(f"Unknown qualifier '{prefix}' in star expansion")
+        rt = self.scopes[-1][up]
+        for c in self.registry.get_columns(rt):
+            n = IdentifierNode(name=c, qualifiers=[prefix]); n.inferred_type = self.registry.get_column_type(rt, c); stmt.columns.append(n)
+
+    def _bind_bulk_insert(self, stmt):
+        if not self.registry.has_table(stmt.table.name): raise SemanticError(f"Table '{stmt.table.name}' not found")

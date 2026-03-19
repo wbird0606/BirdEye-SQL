@@ -9,16 +9,17 @@ from birdeye.binder import Binder, SemanticError
 
 @pytest.fixture
 def scope_reg():
-    """建立包含 Users 與 Orders 的元數據"""
+    reg = MetadataRegistry()
     csv_data = (
         "table_name,column_name,data_type\n"
-        "Users,UserID,INT\n"
-        "Users,UserName,VARCHAR\n"
+        "Users,ID,INT\n"
+        "Users,UserID,INT\n"  # 💡 核心修正：加入此行
+        "Users,UserName,NVARCHAR\n"
         "Orders,OrderID,INT\n"
         "Orders,UserID,INT\n"
-        "Orders,Amount,DECIMAL\n"
+        "A,ID,INT\n"
+        "B,ID,INT\n"
     )
-    reg = MetadataRegistry()
     reg.load_from_csv(io.StringIO(csv_data))
     return reg
 

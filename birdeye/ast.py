@@ -1,120 +1,117 @@
-"""
-BirdEye-SQL AST Nodes Definition
-為 ZTA 零信任架構量身打造的抽象語法樹節點。
-v1.6.7: 新增 CaseExpressionNode 以支援 CASE WHEN 邏輯分支。
-"""
+# --- 1. 基礎語句節點 (Statements) ---
 
-class Node:
-    """所有 AST 節點的基類"""
-    pass
-
-class Statement(Node):
-    """所有 SQL 語句的基類"""
-    pass
-
-# --- 1. DQL / DML 語句節點 ---
-
-class SelectStatement(Statement):
+class SelectStatement:
     def __init__(self):
-        self.columns = []          # 投影欄位列表 (包含 Identifier, Function, CaseNode)
-        self.is_select_star = False # 是否為 SELECT *
-        self.star_prefixes = []    # 限定星號列表 (如 Users.*)
-        self.table = None          # 主表
-        self.table_alias = None    # 主表別名 (Binder 核心)
-        self.joins = []            # JoinNode 列表
-        self.where_condition = None # 過濾條件
-        self.top_count = None      # 💡 Issue #30: TOP N 的數量
-        self.order_by_terms = []   # 💡 Issue #30: OrderByNode 列表
-        self.group_by_cols = []    # 💡 Issue #31: 分組欄位
-        self.having_condition = None # 💡 Issue #31: HAVING 條件
+        self.is_select_star = False
+        self.star_prefixes = []
+        self.top_count = None
+        self.columns = []       # List of ExpressionNodes
+        self.table = None       # IdentifierNode
+        self.table_alias = None
+        self.joins = []         # List of JoinNodes
+        self.where_condition = None
+        self.group_by_cols = []
+        self.having_condition = None
+        self.order_by_terms = [] # List of OrderByNodes
 
-class UpdateStatement(Statement):
+class UpdateStatement:
     def __init__(self):
         self.table = None
-        self.table_alias = None    
-        self.set_clauses = []      # AssignmentNode 列表
-        self.where_condition = None # 🛡️ ZTA 強制性條件
+        self.table_alias = None
+        self.set_clauses = []   # List of AssignmentNodes
+        self.where_condition = None
 
-class DeleteStatement(Statement):
+class DeleteStatement:
     def __init__(self):
         self.table = None
-        self.table_alias = None    
-        self.where_condition = None # 🛡️ ZTA 強制性條件
+        self.table_alias = None
+        self.where_condition = None
 
-class InsertStatement(Statement):
+class InsertStatement:
     def __init__(self):
         self.table = None
-        self.table_alias = None    
-        self.columns = []          # 指定寫入的欄位列表
-        self.values = []           # 表達式列表 (VALUES 部分)
+        self.columns = []       # List of IdentifierNodes
+        self.values = []        # List of ExpressionNodes
 
-class SqlBulkCopyStatement(Statement):
+class SqlBulkCopyStatement:
+    """針對 MSSQL 特化的大批次寫入語句"""
     def __init__(self):
-        self.table = None          
-        self.table_alias = None    
+        self.table = None
 
-# --- 2. 結構化輔助節點 ---
+# --- 2. 表達式基類與推導屬性 ---
 
-class JoinNode(Node):
-    def __init__(self, type, table):
-        self.type = type
-        self.table = table
+class ExpressionNode:
+    """💡 Issue #35: 所有表達式節點的基類，支援類型推導"""
+    def __init__(self):
         self.alias = None
-        self.on_condition = None 
-        self.on_left = None 
-        self.on_right = None
+        # 初始類型為 UNKNOWN，由 Binder 在語意分析階段更新
+        self.inferred_type = "UNKNOWN"
 
-class OrderByNode(Node):
-    """💡 Issue #30: 排序節點"""
-    def __init__(self, column, direction="ASC"):
-        self.column = column       # IdentifierNode 或 Expression
-        self.direction = direction # ASC 或 DESC
+# --- 3. 具體表達式節點 ---
 
-class AssignmentNode(Node):
-    """用於 UPDATE SET 語句的賦值節點"""
-    def __init__(self, column, expression):
-        self.column = column
-        self.right = expression 
-
-# --- 3. 表達式節點 ---
-
-class IdentifierNode(Node):
-    def __init__(self, name, token=None, qualifiers=None, alias=None):
+class IdentifierNode(ExpressionNode):
+    def __init__(self, name, qualifiers=None):
+        super().__init__()
         self.name = name
-        self.token = token
-        self.qualifiers = qualifiers or [] 
-        self.alias = alias
+        self.qualifiers = qualifiers or []
 
     @property
     def qualifier(self):
         return ".".join(self.qualifiers) if self.qualifiers else None
 
-class LiteralNode(Node):
+class LiteralNode(ExpressionNode):
     def __init__(self, value, type):
+        super().__init__()
         self.value = value
-        self.type = type           
+        self.type = type  # Lexer 標記的 TokenType (NUMERIC_LITERAL / STRING_LITERAL)
+        
+        # 💡 基礎類型預映射
+        # 注意：此處需確保不會造成循環引用，或在 Binder 階段再統整映射
+        from birdeye.lexer import TokenType
+        if type == TokenType.NUMERIC_LITERAL:
+            self.inferred_type = "INT"
+        elif type == TokenType.STRING_LITERAL:
+            self.inferred_type = "NVARCHAR"
 
-class BinaryExpressionNode(Node):
+class BinaryExpressionNode(ExpressionNode):
     def __init__(self, left, operator, right):
+        super().__init__()
         self.left = left
-        self.operator = operator   
+        self.operator = operator
         self.right = right
 
-class FunctionCallNode(Node):
-    def __init__(self, name, args=None, alias=None):
+class FunctionCallNode(ExpressionNode):
+    def __init__(self, name, args=None):
+        super().__init__()
         self.name = name
-        self.args = args or []     
-        self.alias = alias
+        self.args = args or []
 
-class CaseExpressionNode(Node):
-    """
-    💡 Issue #33: CASE WHEN 表達式節點。
-    支援兩種模式：
-    1. 簡單式 (Simple): CASE [input_expr] WHEN [val] THEN [res] ...
-    2. 搜尋式 (Searched): CASE WHEN [condition] THEN [res] ...
-    """
-    def __init__(self, input_expr=None, alias=None):
-        self.input_expr = input_expr  # 簡單式 CASE 的輸入表達式
-        self.branches = []            # 列表儲存 (when_expr, then_expr) 元組
-        self.else_expr = None         # ELSE 分支表達式
-        self.alias = alias            # CASE 語句的別名
+class CaseExpressionNode(ExpressionNode):
+    def __init__(self, input_expr=None):
+        super().__init__()
+        self.input_expr = input_expr
+        self.branches = []  # List of (when_expr, then_expr)
+        self.else_expr = None
+
+# --- 4. 結構輔助節點 ---
+
+class JoinNode:
+    def __init__(self, type, table):
+        self.type = type        # INNER, LEFT, RIGHT
+        self.table = table      # IdentifierNode
+        self.alias = None
+        self.on_condition = None
+        # 用於 Join 最佳化的快取屬性
+        self.on_left = None
+        self.on_right = None
+
+class OrderByNode:
+    def __init__(self, column, direction="ASC"):
+        self.column = column    # ExpressionNode
+        self.direction = direction
+
+class AssignmentNode:
+    """用於 UPDATE SET 語句"""
+    def __init__(self, column, expression):
+        self.column = column    # IdentifierNode
+        self.right = expression # ExpressionNode
