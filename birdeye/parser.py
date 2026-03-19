@@ -2,6 +2,8 @@ from dataclasses import dataclass, field
 from typing import List, Optional, Union
 from birdeye.lexer import Token, TokenType
 
+# --- AST 節點定義 ---
+
 @dataclass
 class IdentifierNode:
     name: str; token: Token; qualifiers: List[str] = field(default_factory=list); alias: Optional[str] = None
@@ -12,7 +14,7 @@ class IdentifierNode:
 class LiteralNode:
     value: str; token: Token; type: TokenType
     @property
-    def name(self) -> str: return self.value # 支援表達式測試存取
+    def name(self) -> str: return self.value
 
 @dataclass
 class BinaryExpressionNode:
@@ -39,6 +41,20 @@ class SelectStatement:
     columns: List[any] = field(default_factory=list)
     joins: List[JoinNode] = field(default_factory=list)
     is_select_star: bool = False; star_prefixes: List[str] = field(default_factory=list)
+    where_condition: Optional[any] = None # 確保與 DML 結構對齊
+
+@dataclass
+class UpdateStatement:
+    table: IdentifierNode
+    set_clauses: List[BinaryExpressionNode]
+    where_condition: any
+    table_alias: Optional[str] = None # 補上以修復 AttributeError
+
+@dataclass
+class DeleteStatement:
+    table: IdentifierNode
+    where_condition: any
+    table_alias: Optional[str] = None # 補上以修復 AttributeError
 
 class Parser:
     def __init__(self, tokens: List[Token], source_code: str):
@@ -60,7 +76,10 @@ class Parser:
     def _parse_expression(self):
         node = self._parse_term()
         while True:
-            op_tok = self._match(TokenType.SYMBOL_PLUS) or self._match(TokenType.SYMBOL_MINUS)
+            # 支援 WHERE 子句所需的比較與邏輯運算
+            op_tok = self._match(TokenType.SYMBOL_PLUS) or self._match(TokenType.SYMBOL_MINUS) or \
+                     self._match(TokenType.SYMBOL_EQUAL) or self._match(TokenType.KEYWORD_AND) or \
+                     self._match(TokenType.KEYWORD_OR)
             if not op_tok: break
             node = BinaryExpressionNode(left=node, operator=self._get_text(op_tok), right=self._parse_term())
         return node
@@ -77,12 +96,10 @@ class Parser:
         tok = self._peek()
         if not tok or tok.type not in [TokenType.IDENTIFIER, TokenType.NUMERIC_LITERAL, TokenType.STRING_LITERAL, TokenType.SYMBOL_PAREN_L]:
             raise SyntaxError("Expected identifier")
-
         if tok.type == TokenType.IDENTIFIER:
             next_t = self.tokens[self.current + 1] if self.current + 1 < len(self.tokens) else None
             if next_t and next_t.type == TokenType.SYMBOL_PAREN_L:
-                name_tok = self._advance()
-                self._consume(TokenType.SYMBOL_PAREN_L, "Expected (")
+                name_tok = self._advance(); self._consume(TokenType.SYMBOL_PAREN_L, "Expected (")
                 args = []
                 if not self._match(TokenType.SYMBOL_PAREN_R):
                     while True:
@@ -92,15 +109,12 @@ class Parser:
                         if not self._match(TokenType.SYMBOL_COMMA): break
                     self._consume(TokenType.SYMBOL_PAREN_R, "Expected )")
                 return FunctionCallNode(name=self._get_text(name_tok).upper(), args=args, token=name_tok)
-
         if self._match(TokenType.SYMBOL_PAREN_L):
             node = self._parse_expression(); self._consume(TokenType.SYMBOL_PAREN_R, "Expected )")
             return node
-            
         token = self._advance()
         if token.type == TokenType.NUMERIC_LITERAL: return LiteralNode(token=token, value=self._get_text(token), type=token.type)
         if token.type == TokenType.STRING_LITERAL: return LiteralNode(token=token, value=self._get_text(token).strip("'"), type=token.type)
-
         name = self._get_text(token).replace("]]", "]")
         node = IdentifierNode(name=name, token=token)
         while self._match(TokenType.SYMBOL_DOT):
@@ -128,17 +142,11 @@ class Parser:
                     if alias_tok: node.alias = self._get_text(alias_tok)
                     stmt.columns.append(node)
             if not self._match(TokenType.SYMBOL_COMMA): break
-
         self._consume(TokenType.KEYWORD_FROM, "Expected FROM")
         stmt.table, _ = self._parse_full_identifier_safe()
-        
-        # 阻斷隱含式 JOIN (Issue #23)
-        if self._peek() and self._peek().type == TokenType.SYMBOL_COMMA:
-            raise SyntaxError("Expected FROM")
-            
+        if self._peek() and self._peek().type == TokenType.SYMBOL_COMMA: raise SyntaxError("Expected FROM")
         self._match(TokenType.KEYWORD_AS); alias = self._match(TokenType.IDENTIFIER)
         if alias: stmt.table_alias = self._get_text(alias)
-
         while True:
             jt = None
             if self._match(TokenType.KEYWORD_LEFT): jt = "LEFT"
@@ -155,10 +163,35 @@ class Parser:
                 j_node.on_right, _ = self._parse_full_identifier_safe()
                 stmt.joins.append(j_node)
             else: break
+        if self._match(TokenType.KEYWORD_WHERE): stmt.where_condition = self._parse_expression()
         return stmt
 
+    def _parse_update(self):
+        """解析 UPDATE 並強制執行 ZTA WHERE 策略"""
+        self._consume(TokenType.KEYWORD_UPDATE, "Expected UPDATE")
+        table_node, _ = self._parse_full_identifier_safe()
+        self._consume(TokenType.KEYWORD_SET, "Expected SET")
+        set_clauses = []
+        while True:
+            col, _ = self._parse_full_identifier_safe()
+            self._consume(TokenType.SYMBOL_EQUAL, "Expected =")
+            val = self._parse_expression()
+            set_clauses.append(BinaryExpressionNode(left=col, operator="=", right=val))
+            if not self._match(TokenType.SYMBOL_COMMA): break
+        if not self._match(TokenType.KEYWORD_WHERE): raise SyntaxError("WHERE clause is mandatory for UPDATE/DELETE")
+        where_cond = self._parse_expression()
+        return UpdateStatement(table=table_node, set_clauses=set_clauses, where_condition=where_cond)
+
+    def _parse_delete(self):
+        """解析 DELETE 並強制執行 ZTA WHERE 策略"""
+        self._consume(TokenType.KEYWORD_DELETE, "Expected DELETE")
+        self._match(TokenType.KEYWORD_FROM)
+        table_node, _ = self._parse_full_identifier_safe()
+        if not self._match(TokenType.KEYWORD_WHERE): raise SyntaxError("WHERE clause is mandatory for UPDATE/DELETE")
+        where_cond = self._parse_expression()
+        return DeleteStatement(table=table_node, where_condition=where_cond)
+
     def _parse_full_identifier_safe(self):
-        """統一解構格式，防止 TypeError"""
         token = self._consume(TokenType.IDENTIFIER, "Expected identifier")
         node = IdentifierNode(name=self._get_text(token).replace("]]", "]"), token=token)
         while self._match(TokenType.SYMBOL_DOT):
@@ -167,9 +200,12 @@ class Parser:
         return node, False
 
     def parse(self):
-        stmt = self._parse_select()
+        tok = self._peek()
+        if not tok: raise SyntaxError("Empty source")
+        if tok.type == TokenType.KEYWORD_SELECT: stmt = self._parse_select()
+        elif tok.type == TokenType.KEYWORD_UPDATE: stmt = self._parse_update()
+        elif tok.type == TokenType.KEYWORD_DELETE: stmt = self._parse_delete()
+        else: raise SyntaxError(f"Unexpected token: {self._get_text(tok)}")
         peek = self._peek()
-        if peek and peek.type != TokenType.EOF:
-            # 精準報錯以通過測試
-            raise SyntaxError(f"Unexpected token: {self._get_text(peek)}")
+        if peek and peek.type != TokenType.EOF: raise SyntaxError(f"Unexpected token: {self._get_text(peek)}")
         return stmt

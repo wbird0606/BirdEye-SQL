@@ -3,10 +3,17 @@ from dataclasses import dataclass
 from typing import List
 
 class TokenType(Enum):
-    # Keywords
+    # Keywords - Query
     KEYWORD_SELECT = auto(); KEYWORD_FROM = auto(); KEYWORD_AS = auto()
     KEYWORD_JOIN = auto(); KEYWORD_ON = auto(); KEYWORD_INNER = auto()
     KEYWORD_LEFT = auto(); KEYWORD_RIGHT = auto()
+    
+    # Keywords - DML (Issue #27, #28)
+    KEYWORD_UPDATE = auto(); KEYWORD_SET = auto(); KEYWORD_DELETE = auto()
+    KEYWORD_INSERT = auto(); KEYWORD_INTO = auto(); KEYWORD_VALUES = auto()
+    
+    # Keywords - Logic & Condition (Issue #27)
+    KEYWORD_WHERE = auto(); KEYWORD_AND = auto(); KEYWORD_OR = auto()
     
     # Identifiers & Literals
     IDENTIFIER = auto(); STRING_LITERAL = auto(); NUMERIC_LITERAL = auto()
@@ -14,8 +21,8 @@ class TokenType(Enum):
     # Symbols
     SYMBOL_ASTERISK = auto(); SYMBOL_COMMA = auto(); SYMBOL_DOT = auto()
     SYMBOL_SEMICOLON = auto(); SYMBOL_MINUS = auto(); SYMBOL_EQUAL = auto()
-    SYMBOL_PLUS = auto(); SYMBOL_SLASH = auto(); SYMBOL_PERCENT = auto() # 新增
-    SYMBOL_PAREN_L = auto(); SYMBOL_PAREN_R = auto() # 新增：函數支援
+    SYMBOL_PLUS = auto(); SYMBOL_SLASH = auto(); SYMBOL_PERCENT = auto()
+    SYMBOL_PAREN_L = auto(); SYMBOL_PAREN_R = auto()
     SYMBOL_BRACKET_L = auto(); SYMBOL_BRACKET_R = auto()
     EOF = auto()
 
@@ -50,14 +57,22 @@ class Lexer:
         return Token(TokenType.IDENTIFIER, start_pos, self.position)
 
     def _read_identifier_or_keyword(self) -> Token:
+        """更新：擴充 DML 與條件關鍵字識別"""
         start_pos = self.position
         while self.position < self.length and (self.source[self.position].isalnum() or self.source[self.position] == '_'):
             self.position += 1
         word = self.source[start_pos:self.position].upper()
+        
+        # 完整的關鍵字映射表
         keywords = {
             "SELECT": TokenType.KEYWORD_SELECT, "FROM": TokenType.KEYWORD_FROM, "AS": TokenType.KEYWORD_AS,
             "JOIN": TokenType.KEYWORD_JOIN, "ON": TokenType.KEYWORD_ON, "INNER": TokenType.KEYWORD_INNER,
-            "LEFT": TokenType.KEYWORD_LEFT, "RIGHT": TokenType.KEYWORD_RIGHT
+            "LEFT": TokenType.KEYWORD_LEFT, "RIGHT": TokenType.KEYWORD_RIGHT,
+            # DML
+            "UPDATE": TokenType.KEYWORD_UPDATE, "SET": TokenType.KEYWORD_SET, "DELETE": TokenType.KEYWORD_DELETE,
+            "INSERT": TokenType.KEYWORD_INSERT, "INTO": TokenType.KEYWORD_INTO, "VALUES": TokenType.KEYWORD_VALUES,
+            # Logic
+            "WHERE": TokenType.KEYWORD_WHERE, "AND": TokenType.KEYWORD_AND, "OR": TokenType.KEYWORD_OR
         }
         return Token(keywords.get(word, TokenType.IDENTIFIER), start_pos, self.position)
 
@@ -79,6 +94,7 @@ class Lexer:
             
             if char == '*': tokens.append(Token(TokenType.SYMBOL_ASTERISK, start_pos, start_pos+1)); self.position += 1
             elif char == '+': tokens.append(Token(TokenType.SYMBOL_PLUS, start_pos, start_pos+1)); self.position += 1
+            elif char == '-': tokens.append(Token(TokenType.SYMBOL_MINUS, start_pos, start_pos+1)); self.position += 1
             elif char == '/': tokens.append(Token(TokenType.SYMBOL_SLASH, start_pos, start_pos+1)); self.position += 1
             elif char == '%': tokens.append(Token(TokenType.SYMBOL_PERCENT, start_pos, start_pos+1)); self.position += 1
             elif char == '=': tokens.append(Token(TokenType.SYMBOL_EQUAL, start_pos, start_pos+1)); self.position += 1
@@ -104,18 +120,11 @@ class Lexer:
         return Token(TokenType.STRING_LITERAL, start, self.position)
 
     def _read_numeric_literal(self):
-            """升級版：支援解析包含小數點的浮點數"""
-            start = self.position
-            # 讀取整數部分
-            while self.position < self.length and self.source[self.position].isdigit():
+        """支援浮點數解析"""
+        start = self.position
+        while self.position < self.length and self.source[self.position].isdigit(): self.position += 1
+        if self.position < self.length and self.source[self.position] == '.':
+            if self.position + 1 < self.length and self.source[self.position + 1].isdigit():
                 self.position += 1
-            
-            # 處理小數點 (Float Support)
-            if self.position < self.length and self.source[self.position] == '.':
-                # 確保後面跟著的是數字，而不是表格路徑 (如 Users.ID)
-                if self.position + 1 < self.length and self.source[self.position + 1].isdigit():
-                    self.position += 1
-                    while self.position < self.length and self.source[self.position].isdigit():
-                        self.position += 1
-                        
-            return Token(TokenType.NUMERIC_LITERAL, start, self.position)
+                while self.position < self.length and self.source[self.position].isdigit(): self.position += 1
+        return Token(TokenType.NUMERIC_LITERAL, start, self.position)
