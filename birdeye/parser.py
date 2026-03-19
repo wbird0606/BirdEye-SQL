@@ -2,13 +2,14 @@ from birdeye.lexer import TokenType
 from birdeye.ast import (
     SelectStatement, UpdateStatement, DeleteStatement, InsertStatement, 
     SqlBulkCopyStatement, IdentifierNode, LiteralNode, 
-    BinaryExpressionNode, FunctionCallNode, JoinNode, AssignmentNode
+    BinaryExpressionNode, FunctionCallNode, JoinNode, AssignmentNode,
+    OrderByNode # 💡 v1.6.1 新增
 )
 
 class Parser:
     """
     語法分析器：將 Token 序列轉換為抽象語法樹 (AST)。
-    v1.6.0: 補齊所有 DML 解析方法，修正星號衝突與多重語句攔截。
+    v1.6.1: 實作 Issue #30 - 支援 TOP 與 ORDER BY 子句。
     """
     def __init__(self, tokens, source):
         self.tokens = tokens
@@ -42,13 +43,13 @@ class Parser:
         text = token.value if hasattr(token, 'value') and token.value else self.source[token.start:token.end]
         return text.strip("[]")
 
-    # --- 主解析入口 [修正點：確保所有路由方法都存在] ---
+    # --- 1. 主解析入口 ---
 
     def parse(self):
         tok = self._peek()
         if not tok or tok.type == TokenType.EOF: raise SyntaxError("Empty source")
         
-        # 1. 路由至對應解析方法
+        # 路由至對應解析方法
         if tok.type == TokenType.KEYWORD_SELECT: stmt = self._parse_select()
         elif tok.type == TokenType.KEYWORD_UPDATE: stmt = self._parse_update()
         elif tok.type == TokenType.KEYWORD_DELETE: stmt = self._parse_delete()
@@ -58,17 +59,27 @@ class Parser:
         else:
             raise SyntaxError(f"Unexpected token: {self._get_text(tok)}")
         
-        # 🛡️ ZTA 多重語句檢查 (攔截 SQL 注入)
+        # 🛡️ ZTA 多重語句檢查
         peek = self._peek()
         if peek and peek.type != TokenType.EOF:
             raise SyntaxError(f"Unexpected token: {self._get_text(peek)}")
         return stmt
 
-    # --- 2. DQL 解析: SELECT ---
+    # --- 2. DQL 解析: SELECT (Updated v1.6.1) ---
 
     def _parse_select(self):
         stmt = SelectStatement()
         self._consume(TokenType.KEYWORD_SELECT, "Expected SELECT")
+
+        # 💡 Issue #30: 解析 TOP (n)
+        if self._match(TokenType.KEYWORD_TOP):
+            num_tok = self._match(TokenType.NUMERIC_LITERAL)
+            if not num_tok:
+                # 🛡️ 精準對齊測試案例的錯誤訊息
+                raise SyntaxError("Expected numeric literal after TOP")
+            stmt.top_count = int(num_tok.value)
+
+        # 解析投影欄位
         while True:
             if self._match(TokenType.SYMBOL_ASTERISK):
                 stmt.is_select_star = True
@@ -91,9 +102,11 @@ class Parser:
         alias_tok = self._match(TokenType.IDENTIFIER)
         if alias_tok: stmt.table_alias = self._get_text(alias_tok)
 
+        # 🛡️ ZTA 規範：禁止隱含式關聯
         if self._peek() and self._peek().type == TokenType.SYMBOL_COMMA:
             raise SyntaxError("Expected FROM")
 
+        # 解析 JOIN
         while True:
             jt = "INNER"
             if self._match(TokenType.KEYWORD_LEFT): jt = "LEFT"
@@ -111,11 +124,29 @@ class Parser:
                     j_node.on_left, j_node.on_right = cond.left, cond.right
                 stmt.joins.append(j_node)
             else: break
+
+        # 解析 WHERE
         if self._match(TokenType.KEYWORD_WHERE):
             stmt.where_condition = self._parse_expression()
+
+        # 💡 Issue #30: 解析 ORDER BY
+        if self._match(TokenType.KEYWORD_ORDER):
+            self._consume(TokenType.KEYWORD_BY, "Expected BY after ORDER")
+            while True:
+                col_expr = self._parse_expression()
+                direction = "ASC"
+                if self._match(TokenType.KEYWORD_DESC):
+                    direction = "DESC"
+                elif self._match(TokenType.KEYWORD_ASC):
+                    direction = "ASC"
+                
+                stmt.order_by_terms.append(OrderByNode(column=col_expr, direction=direction))
+                if not self._match(TokenType.SYMBOL_COMMA):
+                    break
+
         return stmt
 
-    # --- 3. DML 解析: UPDATE [修復：AttributeError] ---
+    # --- 3. DML 解析: UPDATE ---
 
     def _parse_update(self):
         stmt = UpdateStatement()
@@ -126,17 +157,15 @@ class Parser:
             col, _ = self._parse_full_identifier_safe()
             self._consume(TokenType.SYMBOL_EQUAL, "Expected =")
             val = self._parse_expression()
-            # 💡 這裡必須與 ast.py 對齊，使用 expression 初始化
             stmt.set_clauses.append(AssignmentNode(column=col, expression=val))
             if not self._match(TokenType.SYMBOL_COMMA): break
         
-        # 🛡️ ZTA 核心政策
         if not self._match(TokenType.KEYWORD_WHERE):
             raise SyntaxError("WHERE clause is mandatory for UPDATE/DELETE")
         stmt.where_condition = self._parse_expression()
         return stmt
 
-    # --- 4. DML 解析: DELETE [修復：AttributeError] ---
+    # --- 4. DML 解析: DELETE ---
 
     def _parse_delete(self):
         stmt = DeleteStatement()
@@ -148,7 +177,7 @@ class Parser:
         stmt.where_condition = self._parse_expression()
         return stmt
 
-    # --- 5. DML 解析: INSERT [修復：AttributeError] ---
+    # --- 5. DML 解析: INSERT ---
 
     def _parse_insert(self):
         stmt = InsertStatement()
@@ -174,7 +203,7 @@ class Parser:
     # --- 6. DML 解析: BULK INSERT ---
 
     def _parse_bulk_insert(self):
-        self._advance() # Consume BULK
+        self._advance() 
         if not self._match(TokenType.IDENTIFIER, TokenType.KEYWORD_INSERT):
             raise SyntaxError("Expected INSERT")
         self._consume(TokenType.KEYWORD_INTO, "Expected INTO")
@@ -231,7 +260,6 @@ class Parser:
         
         if tok.type == TokenType.IDENTIFIER:
             id_node, is_func = self._parse_full_identifier_safe()
-            # 限定星號 (Users.*)
             if self._match(TokenType.SYMBOL_DOT):
                 if self._match(TokenType.SYMBOL_ASTERISK):
                     self._is_qual_star = True

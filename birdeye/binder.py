@@ -1,7 +1,7 @@
 from birdeye.ast import (
     SelectStatement, UpdateStatement, DeleteStatement, InsertStatement,
     SqlBulkCopyStatement, IdentifierNode, BinaryExpressionNode, 
-    FunctionCallNode, LiteralNode
+    FunctionCallNode, LiteralNode, OrderByNode # 💡 v1.6.1 新增
 )
 
 class SemanticError(Exception):
@@ -11,7 +11,7 @@ class SemanticError(Exception):
 class Binder:
     """
     語意綁定器：執行標識符解析、星號展開與 ZTA 政策強制執行。
-    v1.5.9 最終版：支援多層級路徑匹配、BulkCopy 驗證與 Regex 錯誤訊息精準對齊。
+    v1.6.1: 支援 Issue #30 - 排序欄位的作用域綁定與歧義檢查。
     """
     def __init__(self, registry):
         self.registry = registry
@@ -48,14 +48,13 @@ class Binder:
             if join.type == "LEFT":
                 self.nullable_scopes.add(join.alias.upper() if join.alias else join.table.name.upper())
             elif join.type == "RIGHT":
-                # RIGHT JOIN 會讓之前所有表都變成 Nullable
                 self.nullable_scopes.update(self.current_scopes.keys())
 
             self._register_scope(join.table, join.alias)
             if join.on_condition:
                 self._visit_expression(join.on_condition)
 
-        # 3. 處理星號展開 (必須在作用域註冊完成後執行)
+        # 3. 處理星號展開
         if stmt.is_select_star:
             self._expand_global_star(stmt)
         for prefix in stmt.star_prefixes:
@@ -67,11 +66,16 @@ class Binder:
         if stmt.where_condition:
             self._visit_expression(stmt.where_condition)
 
+        # 💡 Issue #30: 綁定 ORDER BY 欄位
+        # 排序欄位必須在已註冊的作用域內，且遵循相同的 ZTA 歧義與別名政策
+        for term in stmt.order_by_terms:
+            self._visit_expression(term.column)
+
     def _bind_update(self, stmt):
         self._register_scope(stmt.table, stmt.table_alias)
         for clause in stmt.set_clauses:
             self._visit_expression(clause.column)
-            self._visit_expression(clause.right) # 對齊 v1.5.7+ ast.py 的 .right 屬性
+            self._visit_expression(clause.right) 
         if stmt.where_condition:
             self._visit_expression(stmt.where_condition)
 
@@ -87,14 +91,13 @@ class Binder:
         for val in stmt.values:
             self._visit_expression(val)
         
-        # 🛡️ ZTA 數量校驗：確保欄位與值對齊
+        # 🛡️ ZTA 數量校驗
         expected = len(stmt.columns) if stmt.columns else self.registry.get_column_count(stmt.table.name)
         actual = len(stmt.values)
         if expected != actual:
             raise SemanticError(f"Column count mismatch: Expected {expected}, got {actual}")
 
     def _bind_bulk_insert(self, stmt):
-        """🛡️ 實作 Bulk 語意校驗，確保目標表存在"""
         if not self.registry.has_table(stmt.table.name):
             raise SemanticError(f"Table '{stmt.table.name}' not found")
 
@@ -115,9 +118,6 @@ class Binder:
     # --- 標識符解析引擎 (ZTA 核心政策) ---
 
     def _resolve_identifier(self, node):
-        """
-        核心修復：處理多層級路徑 (dbo.Users) 並精準對齊 Regex 報錯文字。
-        """
         if node.name == "*": return
 
         full_qual = node.qualifier.upper() if node.qualifier else None
@@ -128,12 +128,10 @@ class Binder:
                 if full_qual == real_table_val and alias_key != real_table_val:
                     raise SemanticError(f"Original table name '{node.qualifier}' cannot be used when alias '{alias_key.lower()}' is defined")
             
-            # 💡 修復：多層級路徑匹配 (如 [Database].[dbo].[Users] 應匹配作用域中的 USERS)
             match_scope = None
             if full_qual in self.current_scopes:
                 match_scope = full_qual
             else:
-                # 拿最後一段作為表名嘗試匹配，以支援 dbo.Users 這種語法
                 parts = full_qual.split('.')
                 if parts[-1] in self.current_scopes:
                     match_scope = parts[-1]
@@ -143,27 +141,22 @@ class Binder:
             
             real_table = self.current_scopes[match_scope]
             if not self.registry.has_column(real_table, node.name):
-                # 💡 精準對齊測試首字母大寫格式：Column 'X' not found in 'Users'
                 raise SemanticError(f"Column '{node.name}' not found in '{real_table.capitalize()}'")
         else:
-            # 無限定符：檢查所有註冊表並攔截歧義
             matches = []
             for scope_name, real_table in self.current_scopes.items():
-                # 避開被別名遮蔽的原始表名
                 if scope_name == real_table and any(v == real_table and k != real_table for k, v in self.current_scopes.items()):
                     continue
                 if self.registry.has_column(real_table, node.name):
                     matches.append(real_table)
             
             if not matches:
-                # 💡 匹配特定的單表報錯 Regex 
                 if len(self.current_scopes) == 1:
                     t_name = list(self.current_scopes.values())[0].capitalize()
                     raise SemanticError(f"Column '{node.name}' not found in '{t_name}'")
                 raise SemanticError(f"Column '{node.name}' not found in any registered tables")
             
             if len(matches) > 1:
-                # 💡 匹配歧義報錯 Regex
                 sorted_m = sorted([m.upper() for m in matches])
                 raise SemanticError(f"Column '{node.name}' is ambiguous. Found in: {', '.join(sorted_m)}")
 
@@ -176,15 +169,12 @@ class Binder:
         
         self.active_tables.append(real_t)
         if alias:
-            # 💡 註冊別名，此時 real_t 本身不進入 scope 以執行失效政策
             self.current_scopes[alias.upper()] = real_t
         else:
             self.current_scopes[real_t] = real_t
 
     def _expand_global_star(self, stmt):
-        """將 SELECT * 展開為所有註冊表的欄位"""
         expanded = []
-        # 依照註冊順序展開 (ZTA 確保順序可預測)
         for scope_name, real_table in self.current_scopes.items():
             if scope_name == real_table and any(v == real_table and k != real_table for k, v in self.current_scopes.items()):
                 continue
@@ -194,9 +184,7 @@ class Binder:
         stmt.columns.extend(expanded)
 
     def _expand_qualified_star(self, stmt, prefix):
-        """處理 Users.* 的展開"""
         up_prefix = prefix.upper()
-        # 支援多層級路徑匹配
         match_scope = up_prefix if up_prefix in self.current_scopes else up_prefix.split('.')[-1]
         
         if match_scope not in self.current_scopes:

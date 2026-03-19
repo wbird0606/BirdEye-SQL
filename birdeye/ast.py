@@ -1,6 +1,7 @@
 """
 BirdEye-SQL AST Nodes Definition
 為 ZTA 零信任架構量身打造的抽象語法樹節點。
+v1.6.1: 新增 ORDER BY 與 TOP 支援。
 """
 
 class Node:
@@ -22,31 +23,34 @@ class SelectStatement(Statement):
         self.table_alias = None    # 主表別名 (Binder 核心)
         self.joins = []            # JoinNode 列表
         self.where_condition = None # 過濾條件
+        # 💡 Issue #30 新增
+        self.top_count = None      # TOP N 的數量
+        self.order_by_terms = []   # OrderByNode 列表
 
 class UpdateStatement(Statement):
     def __init__(self):
         self.table = None
-        self.table_alias = None    # 💡 修復：解決 Binder 存取 AttributeError
+        self.table_alias = None    
         self.set_clauses = []      # AssignmentNode 列表
         self.where_condition = None # 🛡️ ZTA 強制性條件
 
 class DeleteStatement(Statement):
     def __init__(self):
         self.table = None
-        self.table_alias = None    # 💡 修復：解決 Binder 存取 AttributeError
+        self.table_alias = None    
         self.where_condition = None # 🛡️ ZTA 強制性條件
 
 class InsertStatement(Statement):
     def __init__(self):
         self.table = None
-        self.table_alias = None    # 💡 修復：解決 Binder 存取 AttributeError
+        self.table_alias = None    
         self.columns = []          # 指定寫入的欄位列表
         self.values = []           # 表達式列表 (VALUES 部分)
 
 class SqlBulkCopyStatement(Statement):
     def __init__(self):
-        self.table = None          # 針對高效能批次寫入的映射節點
-        self.table_alias = None    # 💡 修復：確保 DML 屬性一致性
+        self.table = None          
+        self.table_alias = None    
 
 # --- 2. 結構化輔助節點 ---
 
@@ -56,15 +60,19 @@ class JoinNode(Node):
         self.table = table
         self.alias = None
         self.on_condition = None 
-        # 💡 下向相容：讓測試案例能找到屬性
         self.on_left = None 
         self.on_right = None
+
+class OrderByNode(Node):
+    """💡 Issue #30: 排序節點"""
+    def __init__(self, column, direction="ASC"):
+        self.column = column       # IdentifierNode 或 Expression
+        self.direction = direction # ASC 或 DESC
 
 class AssignmentNode(Node):
     """用於 UPDATE SET 語句的賦值節點"""
     def __init__(self, column, expression):
         self.column = column
-        # 💡 修復：更名為 .right 以對齊 Expression Suite 的測試需求
         self.right = expression 
 
 # --- 3. 表達式節點 ---
@@ -73,27 +81,26 @@ class IdentifierNode(Node):
     def __init__(self, name, token=None, qualifiers=None, alias=None):
         self.name = name
         self.token = token
-        self.qualifiers = qualifiers or [] # 支援多層級路徑 (如 dbo.Users)
+        self.qualifiers = qualifiers or [] 
         self.alias = alias
 
     @property
     def qualifier(self):
-        """為了相容語意分析測試案例的輔助屬性"""
         return ".".join(self.qualifiers) if self.qualifiers else None
 
 class LiteralNode(Node):
     def __init__(self, value, type):
         self.value = value
-        self.type = type           # TokenType (STRING_LITERAL, NUMERIC_LITERAL)
+        self.type = type           
 
 class BinaryExpressionNode(Node):
     def __init__(self, left, operator, right):
         self.left = left
-        self.operator = operator   # +, *, =, AND, OR
+        self.operator = operator   
         self.right = right
 
 class FunctionCallNode(Node):
     def __init__(self, name, args=None, alias=None):
         self.name = name
-        self.args = args or []     # 支援多參數函數
+        self.args = args or []     
         self.alias = alias

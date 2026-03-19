@@ -2,13 +2,14 @@ from birdeye.ast import (
     SelectStatement, UpdateStatement, DeleteStatement, 
     InsertStatement, SqlBulkCopyStatement,
     IdentifierNode, LiteralNode, BinaryExpressionNode, 
-    FunctionCallNode, JoinNode, AssignmentNode
+    FunctionCallNode, JoinNode, AssignmentNode,
+    OrderByNode # 💡 v1.6.1 新增
 )
 
 class ASTVisualizer:
     """
     將 AST 轉換為樹狀文字結構，支援 DQL 與 DML 語法。
-    修復重點：補齊 JOIN 別名顯示，對齊 AssignmentNode 屬性名稱。
+    v1.6.1: 新增 TOP 與 ORDER BY 節點的視覺化支援。
     """
 
     def __init__(self):
@@ -28,6 +29,10 @@ class ASTVisualizer:
 
         if isinstance(node, SelectStatement):
             self.lines.append(f"{prefix}SELECT_STATEMENT")
+            
+            # 💡 Issue #30: 顯示 TOP 限制
+            if node.top_count is not None:
+                self.lines.append(f"{current_indent}  ├── TOP: {node.top_count}")
             
             # 處理投影欄位
             if node.is_select_star and not node.columns:
@@ -53,6 +58,15 @@ class ASTVisualizer:
             if node.where_condition:
                 self.lines.append(f"{current_indent}  └── WHERE")
                 self._visit(node.where_condition, indent + 2, "COND")
+            
+            # 💡 Issue #30: 顯示 ORDER BY 排序
+            if node.order_by_terms:
+                # 若上方有 WHERE，則 ORDER BY 應使用中間的分支符號或是最後一個
+                order_prefix = "  └── " if not node.where_condition else "  ├── "
+                # 簡單化處理：若有排序，則統一在底部顯示
+                self.lines.append(f"{current_indent}  ├── ORDER BY")
+                for order in node.order_by_terms:
+                    self._visit(order, indent + 2, "ORDER")
 
         elif isinstance(node, UpdateStatement):
             self.lines.append(f"{prefix}UPDATE_STATEMENT")
@@ -64,7 +78,6 @@ class ASTVisualizer:
             for clause in node.set_clauses:
                 self._visit(clause, indent + 2, "CLAUSE")
             
-            # 🛡️ ZTA 特性：強制性 WHERE 標籤
             self.lines.append(f"{current_indent}  └── WHERE (MANDATORY)")
             self._visit(node.where_condition, indent + 2, "COND")
 
@@ -74,7 +87,6 @@ class ASTVisualizer:
             if node.table_alias:
                 self.lines.append(f"{current_indent}  ├── ALIAS: {node.table_alias}")
             
-            # 🛡️ ZTA 特性：強制性 WHERE 標籤
             self.lines.append(f"{current_indent}  └── WHERE (MANDATORY)")
             self._visit(node.where_condition, indent + 2, "COND")
 
@@ -100,21 +112,20 @@ class ASTVisualizer:
         elif isinstance(node, JoinNode):
             self.lines.append(f"{prefix}{node.type}_JOIN")
             self._visit(node.table, indent + 1, "TABLE")
-            
-            # ✨ 修復：解決測試中找不到 ALIAS: o 的問題
             if node.alias:
                 self.lines.append(f"{current_indent}    └── ALIAS: {node.alias}")
-                
             self.lines.append(f"{current_indent}    └── ON")
-            # 💡 對齊：使用單一的 on_condition 表達式渲染
             if node.on_condition:
                 self._visit(node.on_condition, indent + 3, "COND")
 
+        elif isinstance(node, OrderByNode):
+            # 💡 Issue #30: 渲染排序項
+            self.lines.append(f"{prefix}SORT_BY: {node.direction}")
+            self._visit(node.column, indent + 1, "COL")
+
         elif isinstance(node, AssignmentNode):
-            # 用於 UPDATE SET 子句
             self.lines.append(f"{prefix}EXPRESSION: =")
             self._visit(node.column, indent + 1, "LEFT")
-            # 💡 對齊：使用屬性名稱 .right 解決 AttributeError
             self._visit(node.right, indent + 1, "RIGHT")
 
         # --- 3. 基礎表達式節點 ---
@@ -125,7 +136,6 @@ class ASTVisualizer:
             self.lines.append(f"{prefix}IDENTIFIER: {node.name}{qual}{alias}")
 
         elif isinstance(node, LiteralNode):
-            # 顯示數值或字串及其類型
             type_str = f" ({node.type.name})" if hasattr(node.type, 'name') else ""
             self.lines.append(f"{prefix}LITERAL: {node.value}{type_str}")
 
