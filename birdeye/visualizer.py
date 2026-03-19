@@ -3,13 +3,13 @@ from birdeye.ast import (
     InsertStatement, SqlBulkCopyStatement,
     IdentifierNode, LiteralNode, BinaryExpressionNode, 
     FunctionCallNode, JoinNode, AssignmentNode,
-    OrderByNode 
+    OrderByNode, CaseExpressionNode
 )
 
 class ASTVisualizer:
     """
-    將 AST 轉換為樹狀文字結構，支援 DQL 與 DML 語法。
-    v1.6.2: 新增 GROUP BY 與 HAVING 節點的視覺化支援。
+    將 AST 轉換為樹狀文字結構，支援 DQL、DML 與條件分支語法。
+    v1.6.9: 新增 CASE WHEN 節點視覺化支援。
     """
 
     def __init__(self):
@@ -30,11 +30,9 @@ class ASTVisualizer:
         if isinstance(node, SelectStatement):
             self.lines.append(f"{prefix}SELECT_STATEMENT")
             
-            # TOP 限制
             if node.top_count is not None:
                 self.lines.append(f"{current_indent}  ├── TOP: {node.top_count}")
             
-            # 投影欄位
             if node.is_select_star and not node.columns:
                 self.lines.append(f"{current_indent}  ├── COLUMNS: *")
             else:
@@ -42,35 +40,33 @@ class ASTVisualizer:
                 for col in node.columns:
                     self._visit(col, indent + 2, "COL")
             
-            # 主表與別名
-            self.lines.append(f"{current_indent}  ├── FROM")
-            self._visit(node.table, indent + 2, "TABLE")
-            if node.table_alias:
-                self.lines.append(f"{current_indent}    └── ALIAS: {node.table_alias}")
+            if node.table:
+                self.lines.append(f"{current_indent}  ├── FROM")
+                self._visit(node.table, indent + 2, "TABLE")
+                if node.table_alias:
+                    self.lines.append(f"{current_indent}    └── ALIAS: {node.table_alias}")
+            else:
+                # 💡 v1.6.9: 支援 SELECT 常數 (無 FROM)
+                self.lines.append(f"{current_indent}  ├── FROM: <NONE> (Literal SELECT)")
 
-            # JOIN 列表
             if node.joins:
                 self.lines.append(f"{current_indent}  ├── JOINS")
                 for j in node.joins:
                     self._visit(j, indent + 2, "JOIN")
             
-            # WHERE 條件
             if node.where_condition:
                 self.lines.append(f"{current_indent}  ├── WHERE")
                 self._visit(node.where_condition, indent + 2, "COND")
             
-            # 💡 Issue #31: 顯示 GROUP BY
             if node.group_by_cols:
                 self.lines.append(f"{current_indent}  ├── GROUP BY")
                 for g_col in node.group_by_cols:
                     self._visit(g_col, indent + 2, "G_COL")
 
-            # 💡 Issue #31: 顯示 HAVING
             if node.having_condition:
                 self.lines.append(f"{current_indent}  ├── HAVING")
                 self._visit(node.having_condition, indent + 2, "COND")
 
-            # ORDER BY 排序
             if node.order_by_terms:
                 self.lines.append(f"{current_indent}  └── ORDER BY")
                 for order in node.order_by_terms:
@@ -81,11 +77,9 @@ class ASTVisualizer:
             self.lines.append(f"{current_indent}  ├── TABLE: {node.table.name}")
             if node.table_alias:
                 self.lines.append(f"{current_indent}  ├── ALIAS: {node.table_alias}")
-            
             self.lines.append(f"{current_indent}  ├── SET")
             for clause in node.set_clauses:
                 self._visit(clause, indent + 2, "CLAUSE")
-            
             self.lines.append(f"{current_indent}  └── WHERE (MANDATORY)")
             self._visit(node.where_condition, indent + 2, "COND")
 
@@ -94,19 +88,16 @@ class ASTVisualizer:
             self.lines.append(f"{current_indent}  ├── FROM: {node.table.name}")
             if node.table_alias:
                 self.lines.append(f"{current_indent}  ├── ALIAS: {node.table_alias}")
-            
             self.lines.append(f"{current_indent}  └── WHERE (MANDATORY)")
             self._visit(node.where_condition, indent + 2, "COND")
 
         elif isinstance(node, InsertStatement):
             self.lines.append(f"{prefix}INSERT_STATEMENT")
             self.lines.append(f"{current_indent}  ├── INTO: {node.table.name}")
-            
             if node.columns:
                 self.lines.append(f"{current_indent}  ├── COLUMNS")
                 for col in node.columns:
                     self.lines.append(f"{current_indent}  │   └── {col.name}")
-            
             self.lines.append(f"{current_indent}  └── VALUES")
             for val in node.values:
                 self._visit(val, indent + 2, "VAL")
@@ -135,7 +126,25 @@ class ASTVisualizer:
             self._visit(node.column, indent + 1, "LEFT")
             self._visit(node.right, indent + 1, "RIGHT")
 
-        # --- 3. 基礎表達式節點 ---
+        # --- 3. 基礎與複雜表達式節點 ---
+
+        elif isinstance(node, CaseExpressionNode):
+            # 💡 v1.6.9 新增：CASE 視覺化
+            self.lines.append(f"{prefix}CASE_EXPRESSION")
+            if node.input_expr:
+                self._visit(node.input_expr, indent + 2, "INPUT_EXPR")
+            
+            for i, (when_expr, then_expr) in enumerate(node.branches):
+                self.lines.append(f"{current_indent}  ├── BRANCH #{i+1}")
+                self._visit(when_expr, indent + 3, "WHEN")
+                self._visit(then_expr, indent + 3, "THEN")
+            
+            if node.else_expr:
+                self.lines.append(f"{current_indent}  ├── ELSE")
+                self._visit(node.else_expr, indent + 2, "RESULT")
+            
+            if node.alias:
+                self.lines.append(f"{current_indent}  └── ALIAS: {node.alias}")
 
         elif isinstance(node, IdentifierNode):
             qual = f" (Qual: {node.qualifier})" if node.qualifiers else ""
@@ -147,6 +156,7 @@ class ASTVisualizer:
             self.lines.append(f"{prefix}LITERAL: {node.value}{type_str}")
 
         elif isinstance(node, BinaryExpressionNode):
+            # 💡 遞迴顯示子查詢
             self.lines.append(f"{prefix}EXPRESSION: {node.operator}")
             self._visit(node.left, indent + 1, "LEFT")
             self._visit(node.right, indent + 1, "RIGHT")

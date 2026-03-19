@@ -26,9 +26,15 @@ class TokenType(Enum):
     KEYWORD_DESC = auto()       # Issue #30
     KEYWORD_GROUP = auto()      # Issue #31
     KEYWORD_HAVING = auto()     # Issue #31
-    # 💡 v1.6.4 新增：子查詢關鍵字
-    KEYWORD_IN = auto()         
-    KEYWORD_EXISTS = auto()     
+    KEYWORD_IN = auto()         # Issue #32
+    KEYWORD_EXISTS = auto()     # Issue #32
+    
+    # 💡 Issue #33 新增：CASE 邏輯關鍵字
+    KEYWORD_CASE = auto()
+    KEYWORD_WHEN = auto()
+    KEYWORD_THEN = auto()
+    KEYWORD_ELSE = auto()
+    KEYWORD_END = auto()
     
     # Identifiers & Literals
     IDENTIFIER = auto()
@@ -68,7 +74,7 @@ class Token:
 class Lexer:
     """
     詞法分析器：將 SQL 字串轉換為 Token 序列。
-    v1.6.4: 支援 IN 與 EXISTS 關鍵字，為 Issue #32 子查詢重構打底。
+    v1.6.7: 支援 CASE WHEN 邏輯關鍵字，完整支援子查詢與比較運算子。
     """
     def __init__(self, source):
         self.source = source
@@ -87,7 +93,7 @@ class Lexer:
         return char
 
     def tokenize(self):
-        # 💡 v1.6.4: 更新關鍵字清單
+        # 💡 Issue #33: 更新關鍵字映射字典
         keywords = {
             "SELECT": TokenType.KEYWORD_SELECT,
             "FROM": TokenType.KEYWORD_FROM,
@@ -115,6 +121,11 @@ class Lexer:
             "HAVING": TokenType.KEYWORD_HAVING,
             "IN": TokenType.KEYWORD_IN,
             "EXISTS": TokenType.KEYWORD_EXISTS,
+            "CASE": TokenType.KEYWORD_CASE,
+            "WHEN": TokenType.KEYWORD_WHEN,
+            "THEN": TokenType.KEYWORD_THEN,
+            "ELSE": TokenType.KEYWORD_ELSE,
+            "END": TokenType.KEYWORD_END,
         }
 
         while self.pos < len(self.source):
@@ -124,7 +135,7 @@ class Lexer:
                 self._advance()
                 continue
 
-            # 1. 處理註解 (維持 ZTA 審計純淨度)
+            # 1. 處理註解 (確保審計語意乾淨)
             if char == '-' and self._peek(1) == '-':
                 self._advance(); self._advance()
                 while self._peek() and self._peek() != '\n':
@@ -179,7 +190,7 @@ class Lexer:
                 self.tokens.append(Token(TokenType.STRING_LITERAL, text, start, self.pos))
                 continue
 
-            # 5. 處理 MSSQL 中括號 (標識符淨化)
+            # 5. 處理 MSSQL 中括號標識符
             if char == '[':
                 start = self.pos
                 self._advance()
@@ -194,7 +205,7 @@ class Lexer:
                 self.tokens.append(Token(TokenType.IDENTIFIER, inner_text, start, self.pos))
                 continue
 
-            # 6. 處理比較運算子 (v1.6.3 實作)
+            # 6. 處理比較運算子 (GT, LT, GE, LE, NE)
             if char == '=':
                 self.tokens.append(Token(TokenType.SYMBOL_EQUAL, "=", self.pos, self.pos + 1)); self._advance()
             elif char == '>':
@@ -218,7 +229,7 @@ class Lexer:
                     self._advance(); self._advance()
                 else: self._advance()
 
-            # 7. 處理符號與括號平衡
+            # 7. 單一符號與括號平衡檢查
             elif char == '*':
                 self.tokens.append(Token(TokenType.SYMBOL_ASTERISK, "*", self.pos, self.pos + 1)); self._advance()
             elif char == ',':

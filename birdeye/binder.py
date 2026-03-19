@@ -1,7 +1,7 @@
 from birdeye.ast import (
     SelectStatement, UpdateStatement, DeleteStatement, InsertStatement,
     SqlBulkCopyStatement, IdentifierNode, BinaryExpressionNode, 
-    FunctionCallNode, LiteralNode, OrderByNode
+    FunctionCallNode, LiteralNode, OrderByNode, CaseExpressionNode
 )
 
 class SemanticError(Exception):
@@ -11,18 +11,18 @@ class SemanticError(Exception):
 class Binder:
     """
     語意綁定器：執行標識符解析、星號展開與 ZTA 政策強制執行。
-    v1.6.6: 修復作用域棧重構後的 Nullability 狀態保存與錯誤訊息精準度。
+    v1.6.9: 支援 CASE WHEN 遞迴校驗與無表常數查詢 (SELECT 1)。
     """
     def __init__(self, registry):
         self.registry = registry
         self.scopes = [] # Stack: [ {level0}, {level1}, ... ]
         self.nullable_stack = [] 
-        self._last_root_nullables = set() # 💡 用於保存根查詢狀態供測試讀取
+        self._last_root_nullables = set() # 保存根查詢狀態供測試檢查
         self._aggregate_funcs = {"SUM", "COUNT", "AVG", "MIN", "MAX"}
 
     @property
     def nullable_scopes(self):
-        """💡 向下相容屬性：回傳當前棧頂或最後一次根查詢的空值作用域"""
+        """向下相容：讓舊有 JOIN 測試能存取最後一層或根層級的空值作用域"""
         if self.nullable_stack:
             return self.nullable_stack[-1]
         return self._last_root_nullables
@@ -52,8 +52,11 @@ class Binder:
         self.scopes.append({})
         self.nullable_stack.append(set())
 
-        # 1. 註冊作用域 (FROM & JOIN)
-        self._register_scope(stmt.table, stmt.table_alias)
+        # 💡 修復：僅在有來源表時註冊作用域 (支援 SELECT 1)
+        if stmt.table:
+            self._register_scope(stmt.table, stmt.table_alias)
+        
+        # 處理 JOIN 作用域
         for join in stmt.joins:
             current_nullable = self.nullable_stack[-1]
             if join.type == "LEFT":
@@ -65,13 +68,13 @@ class Binder:
             if join.on_condition:
                 self._visit_expression(join.on_condition)
 
-        # 2. 星號展開 (僅限當前作用域)
+        # 星號展開
         if stmt.is_select_star:
             self._expand_global_star(stmt)
         for prefix in stmt.star_prefixes:
             self._expand_qualified_star(stmt, prefix)
 
-        # 3. 處理 WHERE 與 聚合
+        # 條件與分組校驗
         if stmt.where_condition:
             if self._has_aggregate(stmt.where_condition):
                 raise SemanticError("Aggregate functions are not allowed in WHERE clause")
@@ -80,6 +83,7 @@ class Binder:
         for g_col in stmt.group_by_cols:
             self._visit_expression(g_col)
 
+        # 🛡️ ZTA 聚合完整性檢查 (包含 CASE 內部檢查)
         is_agg_query = len(stmt.group_by_cols) > 0 or any(self._has_aggregate(c) for c in stmt.columns)
         for col_expr in stmt.columns:
             self._visit_expression(col_expr)
@@ -89,11 +93,9 @@ class Binder:
         if stmt.having_condition:
             self._visit_expression(stmt.having_condition)
 
-        # 4. 排序
         for term in stmt.order_by_terms:
             self._visit_expression(term.column)
 
-        # 💡 保存根查詢的 Nullability 狀態供測試讀取
         if is_root:
             self._last_root_nullables = set(self.nullable_stack[-1])
 
@@ -121,7 +123,7 @@ class Binder:
         self.scopes.append({})
         self._register_scope(stmt.table, stmt.table_alias)
         for col in stmt.columns:
-            self._visit_expression(col)
+            self._resolve_identifier(col)
         for val in stmt.values:
             self._visit_expression(val)
         
@@ -131,17 +133,15 @@ class Binder:
         self.scopes.pop()
 
     def _bind_bulk_insert(self, stmt):
-        """💡 恢復遺失的方法：驗證 BulkCopy 目標表"""
         if not self.registry.has_table(stmt.table.name):
             raise SemanticError(f"Table '{stmt.table.name}' not found")
 
-    # --- 標識符解析引擎 ---
+    # --- 標識符解析引擎 (Scope Stack) ---
 
     def _visit_expression(self, expr):
         if isinstance(expr, IdentifierNode):
             self._resolve_identifier(expr)
         elif isinstance(expr, BinaryExpressionNode):
-            # 💡 最佳化：對於 IN 子查詢，先解析右側以確保 Table 錯誤優先於 Column 錯誤
             if expr.operator == "IN" and isinstance(expr.right, SelectStatement):
                 self._visit_expression(expr.right)
                 self._visit_expression(expr.left)
@@ -152,6 +152,13 @@ class Binder:
             for arg in expr.args: self._visit_expression(arg)
         elif isinstance(expr, SelectStatement):
             self._bind_select(expr)
+        elif isinstance(expr, CaseExpressionNode):
+            # 💡 CASE 語句遞迴走訪
+            if expr.input_expr: self._visit_expression(expr.input_expr)
+            for w, t in expr.branches:
+                self._visit_expression(w)
+                self._visit_expression(t)
+            if expr.else_expr: self._visit_expression(expr.else_expr)
         elif isinstance(expr, list):
             for e in expr: self._visit_expression(e)
 
@@ -161,6 +168,7 @@ class Binder:
 
         for scope in reversed(self.scopes):
             if full_qual:
+                # 🛡️ ZTA 政策：別名失效檢查
                 for alias_key, real_table_val in scope.items():
                     if full_qual == real_table_val and alias_key != real_table_val:
                         raise SemanticError(f"Original table name '{node.qualifier}' cannot be used when alias '{alias_key.lower()}' is defined")
@@ -181,7 +189,7 @@ class Binder:
                     raise SemanticError(f"Column '{node.name}' is ambiguous. Found in: {', '.join(sorted([m.upper() for m in matches]))}")
                 if len(matches) == 1: return
 
-        # 💡 錯誤訊息精準化：若環境中只有一張表，報錯應指向該表以對齊 Regex 測試
+        # 💡 報錯精準化：若當前作用域只有一張表，錯誤訊息應指向該表
         if not full_qual and len(self.scopes) > 0:
             current_scope = self.scopes[-1]
             if len(current_scope) == 1:
@@ -191,12 +199,7 @@ class Binder:
         if full_qual: raise SemanticError(f"Unknown qualifier '{node.qualifier}'")
         raise SemanticError(f"Column '{node.name}' not found in any registered tables")
 
-    # --- ZTA 輔助功能 ---
-    def _register_scope(self, table_node, alias):
-        real_t = table_node.name.upper()
-        if not self.registry.has_table(real_t):
-            raise SemanticError(f"Table '{table_node.name}' not found")
-        self.scopes[-1][alias.upper() if alias else real_t] = real_t
+    # --- 聚合輔助方法 ---
 
     def _has_aggregate(self, expr):
         if isinstance(expr, FunctionCallNode):
@@ -204,10 +207,16 @@ class Binder:
             return any(self._has_aggregate(arg) for arg in expr.args)
         elif isinstance(expr, BinaryExpressionNode):
             return self._has_aggregate(expr.left) or self._has_aggregate(expr.right)
+        elif isinstance(expr, CaseExpressionNode):
+            if expr.input_expr and self._has_aggregate(expr.input_expr): return True
+            for w, t in expr.branches:
+                if self._has_aggregate(w) or self._has_aggregate(t): return True
+            return self._has_aggregate(expr.else_expr) if expr.else_expr else False
         return False
 
     def _validate_aggregate_integrity(self, expr, group_by_cols):
         if self._has_aggregate(expr): return
+        
         if isinstance(expr, IdentifierNode):
             if expr.name == "*": return
             found = any(isinstance(g, IdentifierNode) and g.name.upper() == expr.name.upper() and g.qualifier == expr.qualifier for g in group_by_cols)
@@ -217,6 +226,20 @@ class Binder:
             self._validate_aggregate_integrity(expr.right, group_by_cols)
         elif isinstance(expr, FunctionCallNode):
             for arg in expr.args: self._validate_aggregate_integrity(arg, group_by_cols)
+        elif isinstance(expr, CaseExpressionNode):
+            if expr.input_expr: self._validate_aggregate_integrity(expr.input_expr, group_by_cols)
+            for w, t in expr.branches:
+                self._validate_aggregate_integrity(w, group_by_cols)
+                self._validate_aggregate_integrity(t, group_by_cols)
+            if expr.else_expr: self._validate_aggregate_integrity(expr.else_expr, group_by_cols)
+
+    # --- ZTA 輔助功能 (展開與註冊) ---
+
+    def _register_scope(self, table_node, alias):
+        real_t = table_node.name.upper()
+        if not self.registry.has_table(real_t):
+            raise SemanticError(f"Table '{table_node.name}' not found")
+        self.scopes[-1][alias.upper() if alias else real_t] = real_t
 
     def _expand_global_star(self, stmt):
         current_scope = self.scopes[-1]

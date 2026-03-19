@@ -1,7 +1,7 @@
 """
 BirdEye-SQL AST Nodes Definition
 為 ZTA 零信任架構量身打造的抽象語法樹節點。
-v1.6.2: 新增 GROUP BY 與 HAVING 支援。
+v1.6.7: 新增 CaseExpressionNode 以支援 CASE WHEN 邏輯分支。
 """
 
 class Node:
@@ -16,7 +16,7 @@ class Statement(Node):
 
 class SelectStatement(Statement):
     def __init__(self):
-        self.columns = []          # 投影欄位列表
+        self.columns = []          # 投影欄位列表 (包含 Identifier, Function, CaseNode)
         self.is_select_star = False # 是否為 SELECT *
         self.star_prefixes = []    # 限定星號列表 (如 Users.*)
         self.table = None          # 主表
@@ -25,10 +25,8 @@ class SelectStatement(Statement):
         self.where_condition = None # 過濾條件
         self.top_count = None      # 💡 Issue #30: TOP N 的數量
         self.order_by_terms = []   # 💡 Issue #30: OrderByNode 列表
-        
-        # 💡 Issue #31 新增
-        self.group_by_cols = []    # 分組欄位列表 (ExpressionNodes)
-        self.having_condition = None # HAVING 過濾條件 (ExpressionNode)
+        self.group_by_cols = []    # 💡 Issue #31: 分組欄位
+        self.having_condition = None # 💡 Issue #31: HAVING 條件
 
 class UpdateStatement(Statement):
     def __init__(self):
@@ -107,3 +105,16 @@ class FunctionCallNode(Node):
         self.name = name
         self.args = args or []     
         self.alias = alias
+
+class CaseExpressionNode(Node):
+    """
+    💡 Issue #33: CASE WHEN 表達式節點。
+    支援兩種模式：
+    1. 簡單式 (Simple): CASE [input_expr] WHEN [val] THEN [res] ...
+    2. 搜尋式 (Searched): CASE WHEN [condition] THEN [res] ...
+    """
+    def __init__(self, input_expr=None, alias=None):
+        self.input_expr = input_expr  # 簡單式 CASE 的輸入表達式
+        self.branches = []            # 列表儲存 (when_expr, then_expr) 元組
+        self.else_expr = None         # ELSE 分支表達式
+        self.alias = alias            # CASE 語句的別名
