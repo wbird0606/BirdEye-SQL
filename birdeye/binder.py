@@ -8,16 +8,27 @@ class Binder:
     def __init__(self, registry):
         self.registry = registry; self.active_scopes = {}; self._forbidden_originals = {}
 
+    # binder.py 修改建議
     def bind(self, stmt):
         self.active_scopes = {}; self._forbidden_originals = {}
+        
+        # 1. 註冊主表
         self._register_scope(stmt.table, stmt.table_alias)
-        for j in stmt.joins: self._register_scope(j.table, j.alias)
-        self._handle_star_expansion(stmt)
-        for col in stmt.columns: self._validate_node(col)
+        
+        # 2. 增量處理 JOIN：每加入一個表，就立刻驗證該表的 ON 條件
         for j in stmt.joins:
-            self._validate_node(j.on_left); self._validate_node(j.on_right)
+            # 先驗證 ON 的左側 (通常是已存在的表) 與右側 (目前的表)
+            # 注意：為了讓右側能看到自己，我們要先註冊 j.table
+            self._register_scope(j.table, j.alias)
+            self._validate_node(j.on_left)
+            self._validate_node(j.on_right)
+        
+        # 3. 處理剩餘的星號與欄位
+        self._handle_star_expansion(stmt)
+        for col in stmt.columns:
+            self._validate_node(col)
+            
         return stmt
-
     def _register_scope(self, table_node, alias):
         real_t = table_node.name.upper()
         if not self.registry.has_table(real_t): raise SemanticError(f"Table '{table_node.name}' not found")
