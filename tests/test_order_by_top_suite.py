@@ -111,3 +111,17 @@ def test_top_missing_number():
     sql = "SELECT TOP * FROM Users"
     with pytest.raises(SyntaxError, match="Expected numeric literal after TOP"):
         run_parse(sql)
+
+# --- 💡 TDD New: ORDER BY Alias Resolution ---
+
+def test_order_by_alias_resolution(bird_reg):
+    """
+    驗證 ORDER BY 是否能正確解析 SELECT 清單中定義的別名 (TDD Regression)
+    """
+    # Score 是別名，不是 Users 的實體欄位
+    sql = "SELECT UserID + 100 AS Score FROM Users ORDER BY Score DESC"
+    ast = run_bind(sql, bird_reg)
+    
+    # 驗證 ORDER BY 成功解析並推導類型為 INT (由 UserID 推導而來)
+    order_node = ast.order_by_terms[0].column
+    assert order_node.inferred_type == "INT"

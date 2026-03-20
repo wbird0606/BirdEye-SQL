@@ -34,43 +34,51 @@ def run_bind(sql, registry):
 
 # --- 2. 標量函數語意檢查測試 ---
 
-def test_scalar_function_binding(func_reg):
-    """驗證常用字串函數是否能正確綁定與解析"""
-    sql = "SELECT UPPER(UserName), LEN(Password) FROM Users"
-    # 如果 Binder 能從 Registry 讀取定義，這就不會拋出錯誤
-    ast = run_bind(sql, func_reg)
+def run_bind_with_runner(sql, runner):
+    """整合 BirdEyeRunner 執行完整驗證"""
+    return runner.run(sql)["ast"]
+
+# --- 2. 標量函數語意檢查測試 ---
+
+def test_scalar_function_binding(global_runner):
+    """驗證常用字串函數是否能正確從內建 Registry 綁定"""
+    # 使用 Person 表 (存在於 data/output.csv)
+    sql = "SELECT UPPER(FirstName), LEN(Suffix) FROM Person"
+    ast = run_bind_with_runner(sql, global_runner)
     assert ast.columns[0].name == "UPPER"
     assert ast.columns[1].name == "LEN"
 
-def test_function_argument_count_mismatch(func_reg):
+def test_function_argument_count_mismatch(global_runner):
     """🛡️ ZTA 政策：驗證函數參數數量必須精準匹配"""
-    # LEN() 預期 1 個參數，給 2 個應報錯
-    sql = "SELECT LEN(UserName, Password) FROM Users"
+    # LEN() 預期 1 個參數
+    sql = "SELECT LEN(FirstName, LastName) FROM Person"
     with pytest.raises(SemanticError, match="Function 'LEN' expects 1 arguments, got 2"):
-        run_bind(sql, func_reg)
+        run_bind_with_runner(sql, global_runner)
 
-def test_no_arg_function_getdate(func_reg):
-    """驗證無參數函數 (如 GETDATE()) 的支援"""
-    sql = "SELECT GETDATE() AS Now"
-    ast = run_bind(sql, func_reg)
-    assert ast.columns[0].name == "GETDATE"
-    assert len(ast.columns[0].args) == 0
+# --- 💡 TDD New: 函數參數類型驗證 ---
+
+def test_function_argument_type_mismatch(global_runner):
+    """🛡️ ZTA 政策：驗證函數參數類型是否嚴格匹配 (Issue #35)"""
+    # SUBSTRING(string, start, length) -> NVARCHAR, INT, INT
+    # 傳入 SUBSTRING(FirstName, 'A', 'B') 應報錯
+    sql = "SELECT SUBSTRING(FirstName, 'A', 'B') FROM Person"
+    with pytest.raises(SemanticError, match="Function 'SUBSTRING' expects INT, but got NVARCHAR"):
+        run_bind_with_runner(sql, global_runner)
 
 # --- 3. ZTA 安全沙箱測試 (Security Sandboxing) ---
 
-def test_block_unregistered_system_function(func_reg):
-    """🛡️ ZTA 核心：禁止調用未在註冊表中的函數 (防止注入高風險系統函數)"""
-    # 假設攻擊者嘗試使用 OPENROWSET 進行跨庫攻擊
-    sql = "SELECT * FROM OPENROWSET('SQLNCLI', 'Server=ATTACKER;Trusted_Connection=yes', 'SELECT * FROM sys.tables')"
-    # 注意：這可能先在 Parser 報錯，或在 Binder 報錯，取決於實作
-    with pytest.raises((SemanticError, SyntaxError)):
-        run_bind(sql, func_reg)
+def test_block_unregistered_system_function(global_runner):
+    """🛡️ ZTA 核心：禁止調用未在註冊表中的函數"""
+    sql = "SELECT GHOST_FUNC(FirstName) FROM Person"
+    with pytest.raises(SemanticError, match="Unknown function 'GHOST_FUNC'"):
+        run_bind_with_runner(sql, global_runner)
 
-def test_block_sensitive_security_function(func_reg):
-    """🛡️ ZTA 政策：明確攔截已知的敏感安全函數"""
-    sql = "SELECT IS_SRVROLEMEMBER('sysadmin') FROM Users"
+def test_block_sensitive_security_function(global_runner):
+    """🛡️ ZTA 政策：明確攔截已知的敏感安全函數 (Restricted List)"""
+    # IS_SRVROLEMEMBER 已在 registry.py 的 restricted_functions 中
+    sql = "SELECT IS_SRVROLEMEMBER('sysadmin')"
     with pytest.raises(SemanticError, match="Function 'IS_SRVROLEMEMBER' is restricted"):
-        run_bind(sql, func_reg)
+        run_bind_with_runner(sql, global_runner)
 
 # --- 4. 嵌套與組合測試 ---
 

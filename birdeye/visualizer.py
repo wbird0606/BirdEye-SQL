@@ -109,15 +109,17 @@ class ASTVisualizer:
         # --- 2. 表達式與函數節點 ---
 
         elif isinstance(node, FunctionCallNode):
-            # 💡 v1.7.1: 優化函數視覺化，處理無參數情況
+            # 💡 v1.7.2: 視覺化類型推導結果 (TDD Fix)
             alias = f" AS {node.alias}" if node.alias else ""
+            type_info = f" [Type: {node.inferred_type}]" if hasattr(node, 'inferred_type') and node.inferred_type != "UNKNOWN" else ""
             arg_info = f" ({len(node.args)} args)" if node.args else " ()"
-            self.lines.append(f"{prefix}FUNCTION: {node.name}{arg_info}{alias}")
+            self.lines.append(f"{prefix}FUNCTION: {node.name}{arg_info}{type_info}{alias}")
             for i, arg in enumerate(node.args):
                 self._visit(arg, indent + 1, f"ARG#{i+1}")
 
         elif isinstance(node, CaseExpressionNode):
-            self.lines.append(f"{prefix}CASE_EXPRESSION")
+            type_info = f" [Type: {node.inferred_type}]" if hasattr(node, 'inferred_type') and node.inferred_type != "UNKNOWN" else ""
+            self.lines.append(f"{prefix}CASE_EXPRESSION{type_info}")
             if node.input_expr:
                 self._visit(node.input_expr, indent + 2, "INPUT")
             for i, (when_expr, then_expr) in enumerate(node.branches):
@@ -131,18 +133,20 @@ class ASTVisualizer:
                 self.lines.append(f"{current_indent}  └── ALIAS: {node.alias}")
 
         elif isinstance(node, BinaryExpressionNode):
-            self.lines.append(f"{prefix}EXPRESSION: {node.operator}")
+            type_info = f" [Type: {node.inferred_type}]" if hasattr(node, 'inferred_type') and node.inferred_type != "UNKNOWN" else ""
+            self.lines.append(f"{prefix}EXPRESSION: {node.operator}{type_info}")
             self._visit(node.left, indent + 1, "LEFT")
             self._visit(node.right, indent + 1, "RIGHT")
 
         elif isinstance(node, IdentifierNode):
             qual = f" (Qual: {node.qualifier})" if node.qualifiers else ""
             alias = f" AS {node.alias}" if node.alias else ""
-            self.lines.append(f"{prefix}IDENTIFIER: {node.name}{qual}{alias}")
+            type_info = f" [Type: {node.inferred_type}]" if hasattr(node, 'inferred_type') and node.inferred_type != "UNKNOWN" else ""
+            self.lines.append(f"{prefix}IDENTIFIER: {node.name}{qual}{type_info}{alias}")
 
         elif isinstance(node, LiteralNode):
-            type_str = f" ({node.type.name})" if hasattr(node.type, 'name') else ""
-            self.lines.append(f"{prefix}LITERAL: {node.value}{type_str}")
+            type_info = f" [Type: {node.inferred_type}]" if hasattr(node, 'inferred_type') and node.inferred_type != "UNKNOWN" else ""
+            self.lines.append(f"{prefix}LITERAL: {node.value}{type_info}")
 
         # --- 3. 結構輔助節點 ---
 

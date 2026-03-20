@@ -28,6 +28,9 @@ class TokenType(Enum):
     KEYWORD_HAVING = auto()     # Issue #31
     KEYWORD_IN = auto()         # Issue #32
     KEYWORD_EXISTS = auto()     # Issue #32
+    KEYWORD_IS = auto()         # For IS NULL
+    KEYWORD_NOT = auto()        # For IS NOT NULL
+    KEYWORD_NULL = auto()       # For IS NULL
     
     # 💡 Issue #33 新增：CASE 邏輯關鍵字
     KEYWORD_CASE = auto()
@@ -41,12 +44,14 @@ class TokenType(Enum):
     STRING_LITERAL = auto()
     NUMERIC_LITERAL = auto()
     
-    # Symbols
+    # Symbols (符號)
     SYMBOL_ASTERISK = auto()   # *
     SYMBOL_COMMA = auto()      # ,
     SYMBOL_DOT = auto()        # .
     SYMBOL_EQUAL = auto()      # =
     SYMBOL_PLUS = auto()       # +
+    SYMBOL_MINUS = auto()      # -
+    SYMBOL_SLASH = auto()      # /
     SYMBOL_LPAREN = auto()     # (
     SYMBOL_RPAREN = auto()     # )
     SYMBOL_SEMICOLON = auto()  # ;
@@ -121,6 +126,9 @@ class Lexer:
             "HAVING": TokenType.KEYWORD_HAVING,
             "IN": TokenType.KEYWORD_IN,
             "EXISTS": TokenType.KEYWORD_EXISTS,
+            "IS": TokenType.KEYWORD_IS,
+            "NOT": TokenType.KEYWORD_NOT,
+            "NULL": TokenType.KEYWORD_NULL,
             "CASE": TokenType.KEYWORD_CASE,
             "WHEN": TokenType.KEYWORD_WHEN,
             "THEN": TokenType.KEYWORD_THEN,
@@ -238,6 +246,10 @@ class Lexer:
                 self.tokens.append(Token(TokenType.SYMBOL_DOT, ".", self.pos, self.pos + 1)); self._advance()
             elif char == '+':
                 self.tokens.append(Token(TokenType.SYMBOL_PLUS, "+", self.pos, self.pos + 1)); self._advance()
+            elif char == '-':
+                self.tokens.append(Token(TokenType.SYMBOL_MINUS, "-", self.pos, self.pos + 1)); self._advance()
+            elif char == '/':
+                self.tokens.append(Token(TokenType.SYMBOL_SLASH, "/", self.pos, self.pos + 1)); self._advance()
             elif char == ';':
                 self.tokens.append(Token(TokenType.SYMBOL_SEMICOLON, ";", self.pos, self.pos + 1)); self._advance()
             elif char == '(':

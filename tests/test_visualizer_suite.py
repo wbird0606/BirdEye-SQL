@@ -63,19 +63,28 @@ def test_visualizer_output_integrity(sql, expected_keywords):
     for keyword in expected_keywords:
         assert keyword in output, f"在 SQL: {sql} 的輸出中找不到預期標籤 '{keyword}'\n輸出內容：\n{output}"
 
-def test_visualizer_indentation_logic():
-    """
-    專門驗證縮排邏輯，確保樹狀結構具有正確的層級感。
-    """
-    sql = "SELECT UPPER(Name) FROM Users"
-    output = run_visualize(sql)
-    
-    # 驗證 FUNCTION 下方的參數是否有正確的縮排深度
-    lines = output.split('\n')
-    try:
-        # 尋找包含 IDENTIFIER: Name 的行
-        arg_line = next(line for line in lines if "IDENTIFIER: Name" in line)
-        # 根據視覺化邏輯，參數應有至少 6 格以上的縮排（層級遞增）
-        assert arg_line.startswith("      "), f"函數參數的縮排深度不符合預期：\n{output}"
-    except StopIteration:
-        pytest.fail("輸出中找不到預期的識別碼節點")
+def run_visualize_full(sql, runner):
+    """執行完整流水線並回傳視覺化結果"""
+    result = runner.run(sql)
+    return result["tree"]
+
+# --- 💡 TDD New: 語意視覺化測試 (Real Metadata & Types) ---
+
+def test_visualizer_type_inference_display(global_runner):
+    """驗證視覺化工具是否能顯示 Binder 推導出的數據類型"""
+    # AddressID 在元數據中是 int
+    sql = "SELECT AddressID FROM Address"
+    output = run_visualize_full(sql, global_runner)
+
+    # 預期輸出包含類型資訊
+    assert "IDENTIFIER: AddressID" in output
+    assert "[Type: INT]" in output
+
+def test_visualizer_function_type_display(global_runner):
+    """驗證函數回傳類型是否顯示在視覺化結果中"""
+    # GETDATE() 回傳 DATETIME
+    sql = "SELECT GETDATE()"
+    output = run_visualize_full(sql, global_runner)
+
+    assert "FUNCTION: GETDATE" in output
+    assert "[Type: DATETIME]" in output

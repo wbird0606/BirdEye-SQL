@@ -236,6 +236,14 @@ class Parser:
     def _parse_comparison(self):
         node = self._parse_term()
         while True:
+            if self._match(TokenType.KEYWORD_IS):
+                is_not = False
+                if self._match(TokenType.KEYWORD_NOT):
+                    is_not = True
+                self._consume(TokenType.KEYWORD_NULL, "Expected NULL after IS")
+                op = "IS NOT NULL" if is_not else "IS NULL"
+                node = BinaryExpressionNode(left=node, operator=op, right=LiteralNode(value="NULL", type=TokenType.IDENTIFIER))
+                continue
             if self._match(TokenType.KEYWORD_IN):
                 self._consume(TokenType.SYMBOL_LPAREN, "Expected ( after IN")
                 if self._peek() and self._peek().type == TokenType.KEYWORD_SELECT:
@@ -259,13 +267,24 @@ class Parser:
 
     def _parse_term(self):
         node = self._parse_factor()
-        while self._match(TokenType.SYMBOL_PLUS):
-            node = BinaryExpressionNode(left=node, operator="+", right=self._parse_factor())
+        while True:
+            if self._match(TokenType.SYMBOL_PLUS):
+                node = BinaryExpressionNode(left=node, operator="+", right=self._parse_factor())
+            elif self._match(TokenType.SYMBOL_MINUS):
+                node = BinaryExpressionNode(left=node, operator="-", right=self._parse_factor())
+            else:
+                break
         return node
+        
     def _parse_factor(self):
         node = self._parse_primary()
-        while self._match(TokenType.SYMBOL_ASTERISK):
-            node = BinaryExpressionNode(left=node, operator="*", right=self._parse_primary())
+        while True:
+            if self._match(TokenType.SYMBOL_ASTERISK):
+                node = BinaryExpressionNode(left=node, operator="*", right=self._parse_primary())
+            elif self._match(TokenType.SYMBOL_SLASH):
+                node = BinaryExpressionNode(left=node, operator="/", right=self._parse_primary())
+            else:
+                break
         return node
 
     def _parse_primary(self):

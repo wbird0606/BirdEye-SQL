@@ -22,12 +22,44 @@ def run_parse_expr_root(sql):
 
 # --- 1. 基礎算術與優先級 (SELECT) ---
 
-@pytest.mark.parametrize("sql, expected_op", [
-    ("SELECT UserID + 100 FROM Users", "+"),
-    ("SELECT (1 + 2) * 3 FROM Users", "*"),
+@pytest.mark.parametrize("sql, top_op, child_op", [
+    ("SELECT UserID + 100 FROM Users", "+", None),
+    ("SELECT (1 + 2) * 3 FROM Users", "*", "+"),
+    # 💡 TDD New: 運算子優先級測試 (應先乘後加，所以頂層是 +)
+    ("SELECT 1 + 2 * 3 FROM Users", "+", "*"),
+    # 💡 TDD New: 減法與除法測試 (Issue: Parser 遺漏 - 與 /)
+    ("SELECT (ListPrice - Cost) / Cost FROM Product", "/", "-"),
 ])
-def test_select_expression_logic(sql, expected_op):
+def test_expression_precedence(sql, top_op, child_op):
+    """驗證運算子優先級 (PEMDAS) 是否正確反映在 AST 層級"""
     node = run_parse_expr_root(sql)
+    assert node.operator == top_op
+    if child_op:
+        # 判斷子節點是否包含預期的運算子
+        found = (hasattr(node.left, 'operator') and node.left.operator == child_op) or \
+                (hasattr(node.right, 'operator') and node.right.operator == child_op)
+        assert found, f"在 SQL: {sql} 的 AST 中找不到預期的子運算子 '{child_op}'"
+
+# --- 2. 比較運算子測試 (New) ---
+
+@pytest.mark.parametrize("sql, expected_op", [
+    ("SELECT * FROM Users WHERE Salary > 5000", ">"),
+    ("SELECT * FROM Users WHERE Age < 18", "<"),
+    ("SELECT * FROM Users WHERE ID >= 10", ">="),
+    ("SELECT * FROM Users WHERE Status != 'Active'", "!="),
+    ("SELECT * FROM Users WHERE Status <> 'Old'", "<>"),
+    # 💡 TDD New: 支援 IS NULL 與 IS NOT NULL 運算子
+    ("SELECT * FROM Users WHERE Status IS NULL", "IS NULL"),
+    ("SELECT * FROM Users WHERE Status IS NOT NULL", "IS NOT NULL"),
+])
+def test_comparison_expression(sql, expected_op):
+    """驗證比較運算子 (GT, LT, GE, LE, NE) 是否正確解析"""
+    # 頂層應為 SelectStatement，WHERE 條件在 where_condition 中
+    lexer = Lexer(sql)
+    parser = Parser(lexer.tokenize(), sql)
+    ast = parser.parse()
+    node = ast.where_condition
+    assert isinstance(node, BinaryExpressionNode)
     assert node.operator == expected_op
 
 # --- 2. DML 表達式整合測試 (Issue #27, #28) ---

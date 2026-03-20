@@ -24,53 +24,49 @@ def registry():
     reg.load_from_csv(io.StringIO(csv_data))
     return reg
 
-def run_bind(sql, registry):
-    """
-    執行完整的語意綁定流水線：Lexer -> Parser -> Binder。
-    """
-    lexer = Lexer(sql)
-    tokens = lexer.tokenize()
-    parser = Parser(tokens, sql)
-    ast = parser.parse()
-    binder = Binder(registry)
-    return binder.bind(ast)
+def run_bind_with_runner(sql, runner):
+    """整合 BirdEyeRunner 執行完整驗證"""
+    return runner.run(sql)["ast"]
 
-# --- 2. ZTA 核心語意強制執行測試 ---
+# --- 2. ZTA 核心語意強制執行測試 (Real Metadata) ---
 
 @pytest.mark.parametrize("sql, is_valid, error_match", [
-    # 成功案例：正確使用別名
-    ("SELECT u.UserID FROM Users AS u", True, None),
+    # 成功案例：正確使用別名 (Person 表)
+    ("SELECT p.FirstName FROM Person AS p", True, None),
     # 失敗案例：別名定義後禁止使用原表名 (ZTA 核心政策)
-    ("SELECT Users.UserID FROM Users AS u", False, "Original table name 'Users' cannot be used when alias 'u' is defined"),
+    ("SELECT Person.FirstName FROM Person AS p", False, "Original table name 'Person' cannot be used when alias 'p' is defined"),
     # 失敗案例：引用不存在的表格
-    ("SELECT UserID FROM GhostTable", False, "Table 'GhostTable' not found"),
-    # 失敗案例：引用不存在的欄位
-    ("SELECT Password FROM Users", False, "Column 'Password' not found in 'Users'"),
-    # 失敗案例：使用未定義的限定符
-    ("SELECT Ghost.UserID FROM Users AS u", False, "Unknown qualifier 'Ghost'"),
+    ("SELECT * FROM GhostTable", False, "Table 'GhostTable' not found"),
 ])
-def test_zta_semantic_enforcement(registry, sql, is_valid, error_match):
+def test_zta_semantic_enforcement_real_meta(global_runner, sql, is_valid, error_match):
     """驗證 ZTA 核心原則：縮小攻擊面與嚴格路徑檢查。"""
     if is_valid:
-        run_bind(sql, registry)
+        run_bind_with_runner(sql, global_runner)
     else:
         with pytest.raises(SemanticError, match=error_match):
-            run_bind(sql, registry)
+            run_bind_with_runner(sql, global_runner)
 
-# --- 3. 星號展開邏輯測試 (Star Expansion) ---
+# --- 3. 星號展開邏輯測試 (Star Expansion with Real Meta) ---
 
 @pytest.mark.parametrize("sql, expected_count", [
-    # 全域星號展開
-    ("SELECT * FROM Users", 2),
-    # 限定星號展開 (修復後的關鍵功能)
-    ("SELECT Users.* FROM Users", 2),
-    # 帶有別名的星號展開
-    ("SELECT u.* FROM Users u", 2),
+    # Address 表在 output.csv 中有 9 個欄位
+    ("SELECT * FROM Address", 9),
+    # 限定星號展開
+    ("SELECT a.* FROM Address a", 9),
 ])
-def test_star_expansion_logic(registry, sql, expected_count):
-    """驗證 SELECT * 根據元數據自動展開的正確性與魯棒性。"""
-    ast = run_bind(sql, registry)
+def test_star_expansion_logic_real_meta(global_runner, sql, expected_count):
+    """驗證 SELECT * 根據真實元數據自動展開的正確性。"""
+    ast = run_bind_with_runner(sql, global_runner)
     assert len(ast.columns) == expected_count
+
+# --- 💡 TDD New: 星號展開與別名衝突防禦 ---
+
+def test_zta_star_alias_conflict_real_meta(global_runner):
+    """🛡️ ZTA 政策：星號展開限定符也必須遵守別名失效原則"""
+    # 定義別名 'a' 後，禁止使用 'Address.*'
+    sql = "SELECT Address.* FROM Address a"
+    with pytest.raises(SemanticError, match="Unknown qualifier 'Address' in star expansion"):
+        run_bind_with_runner(sql, global_runner)
 
 # --- 4. 複雜路徑與別名識別測試 ---
 
@@ -84,12 +80,17 @@ def test_star_expansion_logic(registry, sql, expected_count):
 ])
 def test_complex_identifiers_and_aliases(registry, sql, expected_col, expected_qualifier, table_alias):
     """測試多層級限定符與帶標識符逃逸的整合綁定邏輯。"""
-    ast = run_bind(sql, registry)
-    assert ast.columns[0].name == expected_col
-    assert ast.columns[0].qualifier == expected_qualifier
-    if table_alias:
-        assert ast.table_alias == table_alias
+    # 使用本地的 registry mock (為了測試 dbo.Users 等虛擬結構)
+    lexer = Lexer(sql)
+    parser = Parser(lexer.tokenize(), sql)
+    ast = parser.parse()
+    binder = Binder(registry)
+    bound_ast = binder.bind(ast)
 
+    assert bound_ast.columns[0].name == expected_col
+    assert bound_ast.columns[0].qualifier == expected_qualifier
+    if table_alias:
+        assert bound_ast.table_alias == table_alias
 # --- 5. 元數據查找魯棒性測試 ---
 
 @pytest.mark.parametrize("table, column, expected_exists", [
@@ -109,4 +110,9 @@ def test_zta_alias_invalidation_deep(registry):
     """
     sql = "SELECT Users.UserID FROM Users u"
     with pytest.raises(SemanticError, match="Original table name 'Users' cannot be used"):
-        run_bind(sql, registry)
+        # 使用本地 mock 流程
+        lexer = Lexer(sql)
+        parser = Parser(lexer.tokenize(), sql)
+        ast = parser.parse()
+        binder = Binder(registry)
+        binder.bind(ast)

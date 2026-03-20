@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🦅 BirdEye-SQL Visualizer</title>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background-color: #1e1e1e; color: #fff; margin: 0; padding: 20px; display: flex; flex-direction: column; height: 100vh; }
+        h1 { margin-top: 0; color: #4daafc; }
+        .container { display: flex; gap: 20px; flex: 1; min-height: 0; }
+        .panel { background: #2d2d2d; padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); display: flex; flex-direction: column; }
+        .left-panel { flex: 1; }
+        .right-panel { flex: 2; overflow-y: auto; }
+        textarea { width: 100%; flex: 1; background: #1e1e1e; color: #d4d4d4; border: 1px solid #444; padding: 10px; font-family: 'Consolas', monospace; font-size: 14px; resize: none; margin-bottom: 10px; border-radius: 4px; box-sizing: border-box; }
+        button { background: #007acc; color: white; border: none; padding: 10px 20px; font-size: 16px; cursor: pointer; border-radius: 4px; transition: background 0.3s; }
+        button:hover { background: #005f9e; }
+        .error-box { background: #7a1d1d; border-left: 5px solid #ff4d4d; padding: 10px; margin-top: 10px; display: none; }
+        pre { background: #1e1e1e; padding: 10px; border-radius: 4px; overflow-x: auto; font-family: 'Consolas', monospace; font-size: 12px; color: #9cdcfe; }
+        .tabs { display: flex; gap: 10px; margin-bottom: 10px; border-bottom: 1px solid #444; padding-bottom: 10px; }
+        .tab-btn { background: transparent; color: #aaa; border: none; padding: 5px 10px; cursor: pointer; font-size: 14px; }
+        .tab-btn.active { color: #4daafc; border-bottom: 2px solid #4daafc; }
+        .tab-content { display: none; height: 100%; }
+        .tab-content.active { display: block; }
+        #mermaid-output { background: #fff; padding: 20px; border-radius: 4px; height: 100%; box-sizing: border-box; overflow: auto; }
+    </style>
+</head>
+<body>
+
+    <h1>🦅 BirdEye-SQL Visualizer</h1>
+    
+    <div class="container">
+        <!-- 左側：SQL 編輯器與設定 -->
+        <div class="panel left-panel">
+            <div style="margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid #444;">
+                <h3>Metadata Configuration</h3>
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <input type="file" id="csv-upload" accept=".csv" style="color: #ccc; font-size: 14px;" />
+                    <button onclick="uploadCsv()" style="background: #28a745; padding: 5px 15px; font-size: 14px;">Load CSV</button>
+                </div>
+                <div id="upload-status" style="font-size: 12px; margin-top: 5px; color: #aaa;">Default: data/output.csv loaded.</div>
+            </div>
+
+            <h3>SQL Query</h3>
+            <textarea id="sql-input" placeholder="Type your SQL here...&#10;e.g. SELECT AddressID, City FROM Address"></textarea>
+            <button onclick="parseSql()">Parse & Visualize</button>
+            <div id="error-box" class="error-box"></div>
+        </div>
+
+        <!-- 右側：結果顯示區 -->
+        <div class="panel right-panel">
+            <div class="tabs" style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <button class="tab-btn active" onclick="switchTab('mermaid-tab')">Flowchart (Mermaid)</button>
+                    <button class="tab-btn" onclick="switchTab('tree-tab')">AST Tree</button>
+                    <button class="tab-btn" onclick="switchTab('json-tab')">JSON</button>
+                </div>
+                <div id="toolbar" style="display: none; gap: 5px;">
+                    <button onclick="downloadSVG()" style="background: #555; padding: 5px 10px; font-size: 12px;">⬇️ SVG</button>
+                    <button onclick="downloadPNG()" style="background: #555; padding: 5px 10px; font-size: 12px;">⬇️ PNG</button>
+                </div>
+            </div>
+
+            <div id="mermaid-tab" class="tab-content active" style="position: relative; height: 100%; min-height: 400px; background: #fff; border-radius: 4px; overflow: hidden;">
+                <!-- 加入提示文字與繪圖區 -->
+                <div id="pan-zoom-hint" style="position: absolute; top: 10px; right: 10px; color: #888; font-size: 12px; z-index: 10; display: none;">Scroll to Zoom, Drag to Pan</div>
+                <div class="mermaid" id="mermaid-output" style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center;"></div>
+            </div>
+            
+            <div id="tree-tab" class="tab-content">
+                <pre id="tree-output">No data yet.</pre>
+            </div>
+
+            <div id="json-tab" class="tab-content">
+                <pre id="json-output">No data yet.</pre>
+            </div>
+        </div>
+    </div>
+
+    <!-- 載入 Mermaid.js 與 svg-pan-zoom -->
+    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
+    <script>
+        // 初始化 Mermaid
+        mermaid.initialize({ startOnLoad: false, theme: 'default' });
+        
+        let panZoomInstance = null; // 儲存目前的平移縮放實例
+
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            event.target.classList.add('active');
+            
+            // 只有在 Mermaid 標籤且有資料時才顯示工具列
+            const toolbar = document.getElementById('toolbar');
+            if (tabId === 'mermaid-tab' && document.querySelector('#mermaid-output svg')) {
+                toolbar.style.display = 'flex';
+            } else {
+                toolbar.style.display = 'none';
+            }
+        }
+
+        async function uploadCsv() {
+            const fileInput = document.getElementById('csv-upload');
+            const statusDiv = document.getElementById('upload-status');
+            
+            if (!fileInput.files.length) {
+                statusDiv.textContent = 'Please select a file first.';
+                statusDiv.style.color = '#ff4d4d';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('file', fileInput.files[0]);
+
+            try {
+                statusDiv.textContent = 'Uploading and processing...';
+                statusDiv.style.color = '#aaa';
+
+                const response = await fetch('/api/upload_csv', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {
+                    statusDiv.textContent = '✅ ' + data.message;
+                    statusDiv.style.color = '#28a745';
+                } else {
+                    statusDiv.textContent = '❌ ' + (data.message || 'Upload failed');
+                    statusDiv.style.color = '#ff4d4d';
+                }
+            } catch (err) {
+                statusDiv.textContent = '❌ Network error during upload.';
+                statusDiv.style.color = '#ff4d4d';
+            }
+        }
+
+        async function parseSql() {
+            const sql = document.getElementById('sql-input').value;
+            const errorBox = document.getElementById('error-box');
+            errorBox.style.display = 'none';
+
+            if (!sql.trim()) return;
+
+            try {
+                const response = await fetch('/api/parse', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ sql })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {
+                    // 1. 更新 Tree 與 JSON
+                    document.getElementById('tree-output').textContent = data.result.tree;
+                    document.getElementById('json-output').textContent = data.result.json;
+                    
+                    // 2. 重新渲染 Mermaid
+                    const mermaidDiv = document.getElementById('mermaid-output');
+                    mermaidDiv.removeAttribute('data-processed');
+                    mermaidDiv.textContent = data.result.mermaid;
+                    
+                    // 清除舊的 panZoom 實例
+                    if (panZoomInstance) {
+                        panZoomInstance.destroy();
+                        panZoomInstance = null;
+                    }
+
+                    await mermaid.run({
+                        nodes: [mermaidDiv]
+                    });
+                    
+                    // 3. 綁定 svg-pan-zoom
+                    const svgElement = mermaidDiv.querySelector('svg');
+                    if (svgElement) {
+                        // 強制設定 SVG 長寬為 100% 以適應容器
+                        svgElement.style.width = '100%';
+                        svgElement.style.height = '100%';
+                        svgElement.style.maxWidth = 'none';
+                        
+                        panZoomInstance = svgPanZoom(svgElement, {
+                            zoomEnabled: true,
+                            controlIconsEnabled: true, // 顯示放大縮小按鈕
+                            fit: true,
+                            center: true,
+                            minZoom: 0.1,
+                            maxZoom: 10
+                        });
+                        
+                        // 顯示工具列與提示
+                        document.getElementById('toolbar').style.display = 'flex';
+                        document.getElementById('pan-zoom-hint').style.display = 'block';
+                    }
+                    
+                } else {
+                    // 顯示錯誤
+                    errorBox.style.display = 'block';
+                    errorBox.innerHTML = `<strong>${data.error_type || 'Error'}:</strong><br/>${data.message}`;
+                    document.getElementById('tree-output').textContent = '';
+                    document.getElementById('mermaid-output').innerHTML = '';
+                    document.getElementById('toolbar').style.display = 'none';
+                    document.getElementById('pan-zoom-hint').style.display = 'none';
+                }
+            } catch (err) {
+                errorBox.style.display = 'block';
+                errorBox.textContent = "Network Error: Could not connect to the API.";
+            }
+        }
+
+        // --- 下載功能實作 ---
+        
+        function getSVGString() {
+            const svgElement = document.querySelector('#mermaid-output svg');
+            if (!svgElement) return null;
+            
+            // 複製一份 SVG 避免影響畫面上正在顯示的
+            const clone = svgElement.cloneNode(true);
+            
+            // 移除 svg-pan-zoom 加入的控制元件與變形，恢復原始大小
+            const viewBox = clone.getAttribute('viewBox');
+            if (viewBox) {
+                const parts = viewBox.split(' ');
+                clone.setAttribute('width', parts[2]);
+                clone.setAttribute('height', parts[3]);
+            }
+            const g = clone.querySelector('.svg-pan-zoom_viewport');
+            if (g) {
+                g.removeAttribute('transform');
+            }
+            
+            const serializer = new XMLSerializer();
+            let source = serializer.serializeToString(clone);
+            
+            // 加入 XML 宣告
+            if(!source.match(/^<\?xml[^>]+>/mi)){
+                source = '<?xml version="1.0" standalone="no"?>\r\n' + source;
+            }
+            return source;
+        }
+
+        function downloadSVG() {
+            const source = getSVGString();
+            if (!source) return alert("No flowchart to download.");
+            
+            const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(source);
+            const a = document.createElement("a");
+            a.href = url;
+            a.download = "birdeye-ast.svg";
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+        }
+
+        function downloadPNG() {
+            const source = getSVGString();
+            if (!source) return alert("No flowchart to download.");
+            
+            const svgElement = document.querySelector('#mermaid-output svg');
+            const viewBox = svgElement.getAttribute('viewBox').split(' ');
+            const width = parseInt(viewBox[2]);
+            const height = parseInt(viewBox[3]);
+
+            const canvas = document.createElement("canvas");
+            canvas.width = width;
+            canvas.height = height;
+            const ctx = canvas.getContext("2d");
+            
+            // 設定白色背景 (避免 PNG 透明背景看不清楚)
+            ctx.fillStyle = "white";
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            const img = new Image();
+            const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(source);
+            
+            img.onload = function() {
+                ctx.drawImage(img, 0, 0);
+                const pngUrl = canvas.toDataURL("image/png");
+                const a = document.createElement("a");
+                a.href = pngUrl;
+                a.download = "birdeye-ast.png";
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+            };
+            img.src = url;
+        }
+    </script>
+</body>
+</html>

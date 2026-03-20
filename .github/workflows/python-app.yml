@@ -24,11 +24,9 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pytest
-        # 如果未來有 requirements.txt，再取消下行註釋
-        # pip install -r requirements.txt
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
 
     - name: Test with pytest
       run: |
-        # 讓 GitHub 執行所有的測試檔案
-        pytest
+        # 執行所有測試檔案並確保 Python 尋找路徑包含專案根目錄
+        PYTHONPATH=. pytest tests/

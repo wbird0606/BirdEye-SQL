@@ -25,62 +25,66 @@ def join_registry():
     reg.load_from_csv(io.StringIO(csv_data))
     return reg
 
-def run_bind(sql, registry):
-    """執行 Lexer -> Parser -> Binder 的完整流水線"""
-    lexer = Lexer(sql)
-    tokens = lexer.tokenize()
-    parser = Parser(tokens, sql)
-    ast = parser.parse()
-    binder = Binder(registry)
-    return binder.bind(ast)
+def run_bind_with_runner(sql, runner):
+    """整合 BirdEyeRunner 執行完整驗證"""
+    return runner.run(sql)["ast"]
 
-# --- 2. 基礎 JOIN 語法測試 ---
+# --- 2. 基礎 JOIN 語法測試 (Real Metadata) ---
 
 @pytest.mark.parametrize("sql, expected_joins", [
-    # 標準 JOIN (預設為 INNER)
-    ("SELECT u.UserID FROM Users u JOIN Orders o ON u.UserID = o.UserID", 1),
-    # 顯式 INNER JOIN
-    ("SELECT u.UserID FROM Users u INNER JOIN Orders o ON u.UserID = o.UserID", 1),
-    # 顯式 LEFT JOIN
-    ("SELECT u.UserID FROM Users u LEFT JOIN Orders o ON u.UserID = o.UserID", 1),
+    # 標準 JOIN (SalesOrderHeader h, SalesOrderDetail d)
+    ("SELECT h.SalesOrderID FROM SalesOrderHeader h JOIN SalesOrderDetail d ON h.SalesOrderID = d.SalesOrderID", 1),
+    # 顯式 LEFT JOIN (Address a, StateProvince s)
+    ("SELECT a.AddressID FROM Address a LEFT JOIN StateProvince s ON a.StateProvinceID = s.StateProvinceID", 1),
 ])
-def test_join_basic_syntax(join_registry, sql, expected_joins):
-    """驗證 Parser 是否能正確識別並解析各種 JOIN 關鍵字"""
-    ast = run_bind(sql, join_registry)
+def test_join_basic_syntax(global_runner, sql, expected_joins):
+    """驗證 Parser 是否能正確識別並解析真實元數據下的 JOIN"""
+    ast = run_bind_with_runner(sql, global_runner)
     assert len(ast.joins) == expected_joins
 
 # --- 3. ZTA 欄位歧義防禦 (核心資安點) ---
 
 @pytest.mark.parametrize("sql, error_match", [
-    # UserID 同時存在於兩表，未指定限定符應報錯
-    ("SELECT UserID FROM Users u JOIN Orders o ON u.UserID = o.UserID", "Column 'UserID' is ambiguous"),
-    # 使用了未定義的表別名 (x)
-    ("SELECT x.Total FROM Users u JOIN Orders o ON u.UserID = o.UserID", "Unknown qualifier 'x'"),
+    # SalesOrderID 同時存在於 Header 與 Detail，未指定限定符應報錯
+    ("SELECT SalesOrderID FROM SalesOrderHeader h JOIN SalesOrderDetail d ON h.SalesOrderID = d.SalesOrderID", "Column 'SalesOrderID' is ambiguous"),
+    # ModifiedDate 同時存在於 Address 與 StateProvince
+    ("SELECT ModifiedDate FROM Address a JOIN StateProvince s ON a.StateProvinceID = s.StateProvinceID", "Column 'ModifiedDate' is ambiguous"),
 ])
-def test_join_ambiguity_protection(join_registry, sql, error_match):
-    """驗證 Binder 是否能精準攔截歧義欄位，防止非預期的資料存取"""
+def test_join_ambiguity_protection(global_runner, sql, error_match):
+    """驗證 Binder 是否能精準攔截真實元數據中的歧義欄位"""
     with pytest.raises(SemanticError, match=error_match):
-        run_bind(sql, join_registry)
+        run_bind_with_runner(sql, global_runner)
+
+# --- 4. ZTA 別名強制失效測試 (Alias Shadowing Defense) ---
+
+def test_join_alias_invalidation_real_meta(global_runner):
+    """🛡️ ZTA 政策：定義別名後，原有名稱在 JOIN 作用域中必須失效"""
+    # 定義別名 'h' 後，禁止使用 'SalesOrderHeader'
+    sql = "SELECT SalesOrderHeader.SalesOrderID FROM SalesOrderHeader h JOIN SalesOrderDetail d ON h.SalesOrderID = d.SalesOrderID"
+    with pytest.raises(SemanticError, match="Original table name 'SalesOrderHeader' cannot be used when alias 'h' is defined"):
+        run_bind_with_runner(sql, global_runner)
 
 # --- 4. 隱含式關聯阻斷 (Security Policy) ---
 
-def test_disallow_implicit_comma_join(join_registry):
+def test_disallow_implicit_comma_join(global_runner):
     """
     ZTA 規範：禁止使用 FROM A, B 語法。
     強制要求顯式 JOIN...ON 以利於安全審計與路徑追蹤。
-    修復說明：Parser v1.5.1 應拋出 'Expected FROM' 以對齊測試需求。
     """
-    sql = "SELECT * FROM Users, Orders"
+    # 解析階段 (Parser) 就應阻斷，不論元數據為何
+    sql = "SELECT * FROM SalesOrderHeader, SalesOrderDetail"
     with pytest.raises(SyntaxError, match="Expected FROM"):
-        run_bind(sql, join_registry)
+        run_bind_with_runner(sql, global_runner)
 
 # --- 5. ON 子句作用域驗證 ---
 
-def test_join_on_condition_scope(join_registry):
+def test_join_on_condition_scope(global_runner):
     """驗證 ON 子句中的欄位是否正確綁定到對應的作用域"""
-    sql = "SELECT u.UserName FROM Users u JOIN Orders o ON u.UserID = o.UserID"
-    ast = run_bind(sql, join_registry)
+    sql = "SELECT h.SalesOrderID FROM SalesOrderHeader h JOIN SalesOrderDetail d ON h.SalesOrderID = d.SalesOrderID"
+    ast = run_bind_with_runner(sql, global_runner)
+
     # 驗證第一個 JOIN 的 ON 條件兩側
     join_node = ast.joins[0]
-    assert join_node.on_left.qualifier == "u"
-    assert join_node.on_right.qualifier == "o"
+    # h.SalesOrderID 應綁定到 h，d.SalesOrderID 應綁定到 d
+    assert join_node.on_left.qualifier == "h"
+    assert join_node.on_right.qualifier == "d"

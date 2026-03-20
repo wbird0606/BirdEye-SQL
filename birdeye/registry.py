@@ -34,10 +34,10 @@ class MetadataRegistry:
         🛡️ 註冊內建函數與其類型規則
         格式: name, type, min, max, [expected_types], return_type
         """
-        # --- 聚合函數 ---
-        self.register_function("SUM", "AGGREGATE", 1, 1, ["INT"], "INT")
+        # --- 聚合函數 (SUM/AVG 支援所有數值類型) ---
+        self.register_function("SUM", "AGGREGATE", 1, 1, ["ANY"], "INT")
         self.register_function("COUNT", "AGGREGATE", 0, 1, ["ANY"], "INT")
-        self.register_function("AVG", "AGGREGATE", 1, 1, ["INT"], "INT")
+        self.register_function("AVG", "AGGREGATE", 1, 1, ["ANY"], "INT")
         
         # --- 標量函數: 字串類 (回傳 NVARCHAR 或 INT) ---
         self.register_function("LEN", "SCALAR", 1, 1, ["NVARCHAR"], "INT")
@@ -56,11 +56,37 @@ class MetadataRegistry:
 
     def load_from_csv(self, csv_file_obj):
         """載入表格定義，包含 data_type 欄位"""
-        reader = csv.DictReader(csv_file_obj)
+        # 💡 v1.7.6: 支援無標頭 CSV 與數據類型標準化 (TDD Fix)
+        import io
+        
+        # 讀取內容並確保是字串格式
+        content = csv_file_obj.read()
+        if isinstance(content, bytes):
+            content = content.decode('utf-8')
+        
+        # 使用 StringIO 重新包裝以便重複讀取首行進行偵測
+        f = io.StringIO(content)
+        first_line = f.readline().upper()
+        f.seek(0)
+        
+        # 判斷是否包含標頭標籤 (TABLE_NAME 或 COLUMN_NAME)
+        if "TABLE_NAME" in first_line or "COLUMN_NAME" in first_line:
+            reader = csv.DictReader(f)
+        else:
+            # 針對無標頭 CSV (如 data/output.csv)，手動指定欄位名
+            reader = csv.DictReader(f, fieldnames=['table_name', 'column_name', 'data_type'])
+
         for row in reader:
-            t_name = row['table_name'].upper()
-            c_name = row['column_name'].upper()
-            d_type = row['data_type'].upper()
+            # 略過空行或不完整的列
+            if not row.get('table_name') or not row.get('column_name'):
+                continue
+                
+            # 🛡️ 處理 BOM 與多餘空格 (TDD Fix for AddressID not found)
+            t_name = row['table_name'].lstrip('\ufeff').strip().upper()
+            c_name = row['column_name'].strip().upper()
+            
+            # 💡 保留真實的類型定義 (不再強行轉換 UDT)
+            d_type = (row['data_type'] or "UNKNOWN").strip().upper()
             
             if t_name not in self.tables:
                 self.tables[t_name] = {}

@@ -99,3 +99,20 @@ def test_case_nested_subquery_binding(case_reg):
     # 只要 Binder 的 Scope Stack (Issue #32) 有正確運作，這應該能通過
     ast = run_bind(sql, case_reg)
     assert ast.columns[0].branches[0][0].right.__class__.__name__ == "SelectStatement"
+
+# --- 💡 TDD New: CASE 類型一致性測試 ---
+
+def test_case_type_consistency_valid(case_reg):
+    """驗證 CASE 分支類型一致時能成功推導"""
+    # 所有分支皆為數值
+    sql = "SELECT CASE WHEN Salary > 5000 THEN 100 ELSE 0 END FROM Employees"
+    ast = run_bind(sql, case_reg)
+    assert ast.columns[0].inferred_type == "INT"
+
+def test_case_type_consistency_invalid(case_reg):
+    """🛡️ ZTA 政策：CASE 分支類型不相容時應攔截 (如 INT vs VARCHAR)"""
+    # THEN 分支為 INT，ELSE 分支為 VARCHAR
+    sql = "SELECT CASE WHEN Salary > 5000 THEN 1 ELSE 'Zero' END FROM Employees"
+    # 預期失敗：不相容的類型
+    with pytest.raises(SemanticError, match="CASE branches have incompatible types"):
+        run_bind(sql, case_reg)
