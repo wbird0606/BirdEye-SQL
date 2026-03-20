@@ -53,8 +53,8 @@ python main.py --file my_query.sql --csv custom_schema.csv --format mermaid
 * **Expression Engine**: Supports arithmetic operations (`+`, `-`, `*`, `/`), logical conditions (`AND`, `OR`, `IS NULL`), and nested `CASE WHEN` logic.
 * **Star Expansion**: Automatically expands `SELECT *` or `Table.*` into explicit column lists using metadata.
 
-## 🧪 Testing Strategy (80+ Test Cases)
-We strictly adhere to **Test-Driven Development (TDD)**. The project contains over 80 robust test cases across 11 suites, ensuring both syntactic correctness and semantic security:
+## 🧪 Testing Strategy (135+ Test Cases)
+We strictly adhere to **Test-Driven Development (TDD)**. The project contains over 135 robust test cases across 19 suites, ensuring both syntactic correctness and semantic security:
 
 1. **Lexer & Parser (`test_lexer_suite.py`, `test_parser_suite.py`)**: 
    * Tests tokenization, constants, MSSQL nested comments (`/* /* */ */`), bracket escaping, and syntax boundary checks.
@@ -124,8 +124,8 @@ python main.py --file my_query.sql --csv custom_schema.csv --format mermaid
 * **強大表達式引擎**: 支援算術運算 (`+`, `-`, `*`, `/`)、邏輯條件 (`AND`, `OR`, `IS NULL`) 與多層巢狀 `CASE WHEN` 的精確解析。
 * **星號自動展開**: 利用元數據自動將 `SELECT *` 或 `Table.*` 展開為明確的實體欄位清單。
 
-## 🧪 測試策略 (總計 80+ 測試案例)
-我們嚴格遵守**測試驅動開發 (TDD)**。專案內包含 11 個測試套件、超過 80 個以上的精確測試案例，全面涵蓋語法解析與語意防禦：
+## 🧪 測試策略 (總計 135+ 測試案例)
+我們嚴格遵守**測試驅動開發 (TDD)**。專案內包含 19 個測試套件、超過 135 個以上的精確測試案例，全面涵蓋語法解析與語意防禦：
 
 1. **詞法與語法解析 (`test_lexer_suite.py`, `test_parser_suite.py`)**：
    * 驗證 Token 化、MSSQL 巢狀多行註解 (`/* /* */ */`)、中括號轉義以及語法邊界攔截。
