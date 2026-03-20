@@ -49,6 +49,10 @@ def test_parser_select_structures(sql, is_star, col_count, table_name):
     ("SELECT UserID, , UserName FROM Users", "Expected identifier"),
     ("SELECT UserID Users", "Expected FROM"),
     ("SELECT * FROM Users ; DROP TABLE Users--", "Unexpected token: ;"),
+    # 💡 TDD New: 尾隨逗號防禦 (Trailing Commas)
+    ("SELECT A, B, FROM Users", "Unexpected expression token: FROM"),
+    ("SELECT * FROM Users ORDER BY A, B,", "Unexpected expression token:"),
+    ("SELECT * FROM Users GROUP BY A, B,", "Unexpected expression token:"),
 ])
 def test_parser_zta_strict_errors(sql, error_match):
     """驗證 Parser 對非法語法、隱含關聯及高風險指令的精準攔截。"""

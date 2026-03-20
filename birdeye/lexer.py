@@ -31,6 +31,7 @@ class TokenType(Enum):
     KEYWORD_IS = auto()         # For IS NULL
     KEYWORD_NOT = auto()        # For IS NOT NULL
     KEYWORD_NULL = auto()       # For IS NULL
+    KEYWORD_LIKE = auto()       # For LIKE
     
     # 💡 Issue #33 新增：CASE 邏輯關鍵字
     KEYWORD_CASE = auto()
@@ -129,6 +130,7 @@ class Lexer:
             "IS": TokenType.KEYWORD_IS,
             "NOT": TokenType.KEYWORD_NOT,
             "NULL": TokenType.KEYWORD_NULL,
+            "LIKE": TokenType.KEYWORD_LIKE,
             "CASE": TokenType.KEYWORD_CASE,
             "WHEN": TokenType.KEYWORD_WHEN,
             "THEN": TokenType.KEYWORD_THEN,
@@ -185,15 +187,23 @@ class Lexer:
                 self.tokens.append(Token(TokenType.NUMERIC_LITERAL, self.source[start:self.pos], start, self.pos))
                 continue
 
-            # 4. 處理字串
+            # 4. 處理字串 (包含 '' 轉義支援)
             if char == "'":
                 start = self.pos
                 self._advance()
-                while self._peek() and self._peek() != "'":
-                    self._advance()
+                while self._peek():
+                    if self._peek() == "'":
+                        if self._peek(1) == "'":
+                            # 遇到 '' 代表轉義單引號，跳過兩個字元
+                            self._advance(); self._advance()
+                        else:
+                            # 遇到單個 ' 代表字串結束
+                            break
+                    else:
+                        self._advance()
                 if not self._peek():
                     raise ValueError("Unclosed string literal")
-                self._advance()
+                self._advance() # 消耗最後的關閉引號
                 text = self.source[start:self.pos]
                 self.tokens.append(Token(TokenType.STRING_LITERAL, text, start, self.pos))
                 continue

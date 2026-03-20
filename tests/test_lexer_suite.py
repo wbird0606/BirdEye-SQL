@@ -30,6 +30,16 @@ from birdeye.lexer import Lexer, TokenType
         TokenType.IDENTIFIER, TokenType.SYMBOL_DOT, TokenType.IDENTIFIER, TokenType.SYMBOL_DOT, 
         TokenType.IDENTIFIER, TokenType.EOF
     ]),
+    # 💡 TDD New: 支援 LIKE 運算子
+    ("WHERE Name LIKE '%Bird%'", [
+        TokenType.KEYWORD_WHERE, TokenType.IDENTIFIER, TokenType.KEYWORD_LIKE,
+        TokenType.STRING_LITERAL, TokenType.EOF
+    ]),
+    # 💡 TDD New: 支援單引號字串轉義 (O'Brien)
+    ("SELECT 'O''Brien' FROM Users", [
+        TokenType.KEYWORD_SELECT, TokenType.STRING_LITERAL, TokenType.KEYWORD_FROM,
+        TokenType.IDENTIFIER, TokenType.EOF
+    ]),
 ])
 def test_lexer_token_logic(sql, expected_types):
     """驗證 Lexer 產出的 Token 序列類型與常量識別是否正確"""

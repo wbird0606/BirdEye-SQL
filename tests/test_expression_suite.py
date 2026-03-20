@@ -51,6 +51,9 @@ def test_expression_precedence(sql, top_op, child_op):
     # 💡 TDD New: 支援 IS NULL 與 IS NOT NULL 運算子
     ("SELECT * FROM Users WHERE Status IS NULL", "IS NULL"),
     ("SELECT * FROM Users WHERE Status IS NOT NULL", "IS NOT NULL"),
+    # 💡 TDD New: 支援 LIKE 運算子
+    ("SELECT * FROM Users WHERE Name LIKE '%Bird%'", "LIKE"),
+    ("SELECT * FROM Users WHERE Name NOT LIKE 'Cat%'", "NOT LIKE"),
 ])
 def test_comparison_expression(sql, expected_op):
     """驗證比較運算子 (GT, LT, GE, LE, NE) 是否正確解析"""

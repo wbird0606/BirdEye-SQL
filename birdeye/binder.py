@@ -79,7 +79,7 @@ class Binder:
                 if not self._is_type_compatible(lt, "INT") or not self._is_type_compatible(rt, "INT"):
                     raise SemanticError(f"Operator '{expr.operator}' cannot be applied to {lt} and {rt}")
                 expr.inferred_type = "INT"
-            elif expr.operator in ["=", ">", "<", ">=", "<=", "<>", "IN"]:
+            elif expr.operator in ["=", ">", "<", ">=", "<=", "<>", "IN", "LIKE", "NOT LIKE"]:
                 if not self._is_type_compatible(lt, rt):
                     raise SemanticError(f"Cannot compare {lt} with {rt}")
                 expr.inferred_type = "BIT"

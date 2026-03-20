@@ -244,6 +244,13 @@ class Parser:
                 op = "IS NOT NULL" if is_not else "IS NULL"
                 node = BinaryExpressionNode(left=node, operator=op, right=LiteralNode(value="NULL", type=TokenType.IDENTIFIER))
                 continue
+            if self._match(TokenType.KEYWORD_LIKE):
+                node = BinaryExpressionNode(left=node, operator="LIKE", right=self._parse_term())
+                continue
+            if self._match(TokenType.KEYWORD_NOT):
+                self._consume(TokenType.KEYWORD_LIKE, "Expected LIKE after NOT")
+                node = BinaryExpressionNode(left=node, operator="NOT LIKE", right=self._parse_term())
+                continue
             if self._match(TokenType.KEYWORD_IN):
                 self._consume(TokenType.SYMBOL_LPAREN, "Expected ( after IN")
                 if self._peek() and self._peek().type == TokenType.KEYWORD_SELECT:
