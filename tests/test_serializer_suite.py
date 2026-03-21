@@ -157,3 +157,23 @@ def test_outer_apply_node_serialization():
     data = json.loads(ASTSerializer().to_json(ast))
     apply = data["applies"][0]
     assert apply["apply_type"] == "OUTER"
+
+# --- Issue #55/#56: DISTINCT 與 NULL 序列化測試 ---
+
+def test_distinct_serialization():
+    """SELECT DISTINCT 的 is_distinct 應序列化為 true"""
+    data = json.loads(ASTSerializer().to_json(get_ast("SELECT DISTINCT City FROM T")))
+    assert data["node_type"] == "SelectStatement"
+    assert data["is_distinct"] is True
+
+def test_non_distinct_serialization():
+    """一般 SELECT 的 is_distinct 應序列化為 false"""
+    data = json.loads(ASTSerializer().to_json(get_ast("SELECT City FROM T")))
+    assert data["is_distinct"] is False
+
+def test_null_literal_serialization():
+    """SELECT NULL 應序列化為 LiteralNode，value='NULL'"""
+    data = json.loads(ASTSerializer().to_json(get_ast("SELECT NULL")))
+    col = data["columns"][0]
+    assert col["node_type"] == "LiteralNode"
+    assert col["value"] == "NULL"

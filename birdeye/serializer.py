@@ -38,6 +38,7 @@ class ASTSerializer:
             res.update({
                 "ctes": self._serialize(node.ctes) if hasattr(node, 'ctes') else [],
                 "top": node.top_count,
+                "is_distinct": node.is_distinct if hasattr(node, 'is_distinct') else False,
                 "is_star": node.is_select_star,
                 "columns": self._serialize(node.columns),
                 "table": self._serialize(node.table),

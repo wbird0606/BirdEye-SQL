@@ -38,6 +38,9 @@ class ASTVisualizer:
                 for cte in node.ctes:
                     self._visit(cte, indent + 2, "CTE")
 
+            if hasattr(node, 'is_distinct') and node.is_distinct:
+                self.lines.append(f"{current_indent}  ├── DISTINCT")
+
             if node.top_count is not None:
                 self.lines.append(f"{current_indent}  ├── TOP: {node.top_count}")
             

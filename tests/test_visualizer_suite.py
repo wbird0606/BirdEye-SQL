@@ -173,3 +173,20 @@ def test_visualizer_outer_apply(global_runner):
     )
     output = run_visualize_full(sql, global_runner)
     assert "OUTER_APPLY" in output
+
+# --- Issue #55/#56: DISTINCT 與 NULL 視覺化測試 ---
+
+def test_visualizer_distinct_display(global_runner):
+    """SELECT DISTINCT 應顯示 DISTINCT 標記"""
+    output = run_visualize_full("SELECT DISTINCT City FROM Address", global_runner)
+    assert "DISTINCT" in output
+
+def test_visualizer_null_literal_display():
+    """SELECT NULL 應顯示 LITERAL: NULL"""
+    output = run_visualize("SELECT NULL")
+    assert "LITERAL: NULL" in output
+
+def test_visualizer_null_in_case_else():
+    """CASE ELSE NULL 應顯示 LITERAL: NULL"""
+    output = run_visualize("SELECT CASE WHEN 1=1 THEN 1 ELSE NULL END")
+    assert "LITERAL: NULL" in output

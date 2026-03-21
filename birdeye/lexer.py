@@ -48,6 +48,7 @@ class TokenType(Enum):
     KEYWORD_BETWEEN = auto()    # For BETWEEN
     KEYWORD_CAST = auto()       # For CAST
     KEYWORD_CONVERT = auto()    # For CONVERT
+    KEYWORD_DISTINCT = auto()   # For DISTINCT (Issue #55)
     KEYWORD_DECLARE = auto()    # For DECLARE (Issue #51)
     KEYWORD_GO = auto()         # For GO batch separator (Issue #51)
     KEYWORD_CROSS = auto()      # For CROSS APPLY (Issue #53)
@@ -168,6 +169,7 @@ class Lexer:
             "BETWEEN": TokenType.KEYWORD_BETWEEN,
             "CAST": TokenType.KEYWORD_CAST,
             "CONVERT": TokenType.KEYWORD_CONVERT,
+            "DISTINCT": TokenType.KEYWORD_DISTINCT,
             "DECLARE": TokenType.KEYWORD_DECLARE,
             "GO": TokenType.KEYWORD_GO,
             "CROSS": TokenType.KEYWORD_CROSS,

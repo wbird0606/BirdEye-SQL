@@ -3,6 +3,7 @@
 class SelectStatement:
     def __init__(self):
         self.is_select_star = False
+        self.is_distinct = False    # Issue #55
         self.star_prefixes = []
         self.top_count = None
         self.columns = []       # List of ExpressionNodes

@@ -111,6 +111,9 @@ class Parser:
         stmt = SelectStatement()
         self._consume(TokenType.KEYWORD_SELECT, "Expected SELECT")
 
+        if self._match(TokenType.KEYWORD_DISTINCT):
+            stmt.is_distinct = True
+
         if self._match(TokenType.KEYWORD_TOP):
             num_tok = self._match(TokenType.NUMERIC_LITERAL)
             if not num_tok: raise SyntaxError("Expected numeric literal after TOP")
@@ -451,6 +454,10 @@ class Parser:
 
         if tok.type == TokenType.NUMERIC_LITERAL: return LiteralNode(value=self._get_text(self._advance()), type=tok.type)
         if tok.type == TokenType.STRING_LITERAL: return LiteralNode(value=self._get_text(self._advance()).strip("'"), type=tok.type)
+        # Issue #56: NULL 字面值
+        if tok.type == TokenType.KEYWORD_NULL:
+            self._advance()
+            return LiteralNode(value="NULL", type=TokenType.KEYWORD_NULL)
         
         if tok.type == TokenType.IDENTIFIER:
             id_node, is_func = self._parse_full_identifier_safe()
