@@ -44,6 +44,23 @@ class Parser:
         text = token.value if hasattr(token, 'value') and token.value else self.source[token.start:token.end]
         return text.strip("[]")
 
+    # 可作為別名的「非保留」關鍵字集合（OUTER、INNER 等常被誤用為別名）
+    _UNRESERVED_AS_ALIAS = {
+        TokenType.KEYWORD_OUTER, TokenType.KEYWORD_INNER, TokenType.KEYWORD_FULL,
+        TokenType.KEYWORD_LEFT, TokenType.KEYWORD_RIGHT, TokenType.KEYWORD_CROSS,
+        TokenType.KEYWORD_TOP, TokenType.KEYWORD_ALL, TokenType.KEYWORD_NEXT,
+        TokenType.KEYWORD_ROWS, TokenType.KEYWORD_ONLY, TokenType.KEYWORD_RANGE,
+        TokenType.KEYWORD_CURRENT, TokenType.KEYWORD_FOLLOWING, TokenType.KEYWORD_PRECEDING,
+        TokenType.KEYWORD_OVER, TokenType.KEYWORD_PARTITION,
+    }
+
+    def _match_alias(self):
+        """Match IDENTIFIER 或非保留關鍵字作為別名"""
+        tok = self._peek()
+        if tok and (tok.type == TokenType.IDENTIFIER or tok.type in self._UNRESERVED_AS_ALIAS):
+            return self._advance()
+        return None
+
     # --- 1. 主解析入口 ---
 
     def parse(self):
@@ -141,8 +158,8 @@ class Parser:
                     prefix = expr.name if not expr.qualifiers else ".".join(expr.qualifiers + [expr.name])
                     stmt.star_prefixes.append(prefix)
                 else:
-                    self._match(TokenType.KEYWORD_AS)
-                    alias = self._match(TokenType.IDENTIFIER)
+                    has_as = self._match(TokenType.KEYWORD_AS)
+                    alias = self._match_alias() if has_as else self._match(TokenType.IDENTIFIER)
                     if alias: expr.alias = self._get_text(alias)
                     stmt.columns.append(expr)
             if not self._match(TokenType.SYMBOL_COMMA): break
@@ -158,13 +175,14 @@ class Parser:
                 subq = self._parse_select_with_set_ops()
                 self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after derived table")
                 self._match(TokenType.KEYWORD_AS)
-                alias_tok = self._consume(TokenType.IDENTIFIER, "Derived table must have an alias")
+                alias_tok = self._match_alias()
+                if not alias_tok: raise SyntaxError("Derived table must have an alias")
                 stmt.table = subq
                 stmt.table_alias = self._get_text(alias_tok)
             else:
                 stmt.table, _ = self._parse_full_identifier_safe()
-                self._match(TokenType.KEYWORD_AS)
-                alias_tok = self._match(TokenType.IDENTIFIER)
+                has_as = self._match(TokenType.KEYWORD_AS)
+                alias_tok = self._match_alias() if has_as else self._match(TokenType.IDENTIFIER)
                 if alias_tok: stmt.table_alias = self._get_text(alias_tok)
 
             if self._peek() and self._peek().type == TokenType.SYMBOL_COMMA: raise SyntaxError("Expected FROM")
@@ -180,7 +198,7 @@ class Parser:
                         self._advance()
                         tbl, _ = self._parse_full_identifier_safe()
                         j_node = JoinNode(type="CROSS", table=tbl)
-                        self._match(TokenType.KEYWORD_AS); al = self._match(TokenType.IDENTIFIER)
+                        has_as = self._match(TokenType.KEYWORD_AS); al = self._match_alias() if has_as else self._match(TokenType.IDENTIFIER)
                         if al: j_node.alias = self._get_text(al)
                         stmt.joins.append(j_node)
                         continue
@@ -196,7 +214,7 @@ class Parser:
                     subquery = self._parse_select_with_set_ops()
                     self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after APPLY subquery")
                     self._match(TokenType.KEYWORD_AS)
-                    al = self._match(TokenType.IDENTIFIER)
+                    al = self._match_alias()
                     alias = self._get_text(al) if al else None
                     stmt.applies.append(ApplyNode(type=apply_type, subquery=subquery, alias=alias))
                     continue
@@ -214,13 +232,14 @@ class Parser:
                         subq = self._parse_select_with_set_ops()
                         self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after JOIN subquery")
                         self._match(TokenType.KEYWORD_AS)
-                        al_tok = self._consume(TokenType.IDENTIFIER, "JOIN subquery must have an alias")
+                        al_tok = self._match_alias()
+                        if not al_tok: raise SyntaxError("JOIN subquery must have an alias")
                         j_node = JoinNode(type=jt, table=subq)
                         j_node.alias = self._get_text(al_tok)
                     else:
                         tbl, _ = self._parse_full_identifier_safe()
                         j_node = JoinNode(type=jt, table=tbl)
-                        self._match(TokenType.KEYWORD_AS); al = self._match(TokenType.IDENTIFIER)
+                        has_as = self._match(TokenType.KEYWORD_AS); al = self._match_alias() if has_as else self._match(TokenType.IDENTIFIER)
                         if al: j_node.alias = self._get_text(al)
                     self._consume(TokenType.KEYWORD_ON, "Expected ON")
                     cond = self._parse_expression()
@@ -596,6 +615,34 @@ class Parser:
                     return id_node
                 raise SyntaxError("Expected * after .")
             if is_func:
+                func_name = id_node.name.upper()
+                # TRY_CAST / TRY_CONVERT 使用與 CAST/CONVERT 相同的 AS 語法
+                if func_name == "TRY_CAST":
+                    self._consume(TokenType.SYMBOL_LPAREN, "Expected ( after TRY_CAST")
+                    expr = self._parse_expression()
+                    self._consume(TokenType.KEYWORD_AS, "Expected AS in TRY_CAST")
+                    type_tok = self._consume(TokenType.IDENTIFIER, "Expected target type in TRY_CAST")
+                    target_type = self._get_text(type_tok).upper()
+                    if self._match(TokenType.SYMBOL_LPAREN):
+                        while self._peek() and self._peek().type != TokenType.SYMBOL_RPAREN:
+                            self._advance()
+                        self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after type size")
+                    self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after TRY_CAST")
+                    return CastExpressionNode(expr=expr, target_type=target_type)
+                if func_name == "TRY_CONVERT":
+                    self._consume(TokenType.SYMBOL_LPAREN, "Expected ( after TRY_CONVERT")
+                    type_tok = self._consume(TokenType.IDENTIFIER, "Expected target type in TRY_CONVERT")
+                    target_type = self._get_text(type_tok).upper()
+                    if self._match(TokenType.SYMBOL_LPAREN):
+                        while self._peek() and self._peek().type != TokenType.SYMBOL_RPAREN:
+                            self._advance()
+                        self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after type size")
+                    self._consume(TokenType.SYMBOL_COMMA, "Expected comma in TRY_CONVERT")
+                    expr = self._parse_expression()
+                    if self._match(TokenType.SYMBOL_COMMA):
+                        self._parse_expression()
+                    self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after TRY_CONVERT")
+                    return CastExpressionNode(expr=expr, target_type=target_type, is_convert=True)
                 self._consume(TokenType.SYMBOL_LPAREN, "Expected (")
                 args = []
                 # 吸收 COUNT(DISTINCT ...) 中的 DISTINCT 關鍵字

@@ -409,3 +409,116 @@ def test_correlated_subquery_in_where(global_runner):
         "(SELECT AddressID FROM Address a2 WHERE a2.StateProvinceID = a.StateProvinceID)"
     )
     assert result["status"] == "success"
+import pytest
+
+
+# ─────────────────────────────────────────────
+# TRY_CAST
+# ─────────────────────────────────────────────
+
+def test_try_cast_basic(global_runner):
+    """TRY_CAST(col AS TYPE) 應成功"""
+    result = global_runner.run("SELECT TRY_CAST(City AS INT) FROM Address")
+    assert result["status"] == "success"
+
+
+def test_try_cast_numeric(global_runner):
+    """TRY_CAST(numeric col AS VARCHAR) 應成功"""
+    result = global_runner.run("SELECT TRY_CAST(AddressID AS VARCHAR) FROM Address")
+    assert result["status"] == "success"
+
+
+def test_try_cast_with_length(global_runner):
+    """TRY_CAST(col AS VARCHAR(10)) 應成功"""
+    result = global_runner.run("SELECT TRY_CAST(AddressID AS VARCHAR(10)) FROM Address")
+    assert result["status"] == "success"
+
+
+def test_try_cast_with_alias(global_runner):
+    """TRY_CAST 搭配 alias 應成功"""
+    result = global_runner.run(
+        "SELECT TRY_CAST(City AS INT) AS NumericCity FROM Address"
+    )
+    assert result["status"] == "success"
+
+
+# ─────────────────────────────────────────────
+# TRY_CONVERT
+# ─────────────────────────────────────────────
+
+def test_try_convert_basic(global_runner):
+    """TRY_CONVERT(TYPE, expr) 應成功"""
+    result = global_runner.run("SELECT TRY_CONVERT(INT, City) FROM Address")
+    assert result["status"] == "success"
+
+
+def test_try_convert_with_style(global_runner):
+    """TRY_CONVERT(TYPE, expr, style) 應成功"""
+    result = global_runner.run(
+        "SELECT TRY_CONVERT(VARCHAR, ModifiedDate, 120) FROM Address"
+    )
+    assert result["status"] == "success"
+
+
+def test_try_convert_with_length(global_runner):
+    """TRY_CONVERT(VARCHAR(20), expr) 應成功"""
+    result = global_runner.run(
+        "SELECT TRY_CONVERT(VARCHAR(20), AddressID) FROM Address"
+    )
+    assert result["status"] == "success"
+
+
+# ─────────────────────────────────────────────
+# 巢狀衍生資料表 (nested derived tables)
+# ─────────────────────────────────────────────
+
+def test_nested_derived_table_two_levels(global_runner):
+    """兩層巢狀衍生資料表應成功"""
+    result = global_runner.run(
+        "SELECT Outer2.AddressID FROM "
+        "(SELECT AddressID FROM (SELECT AddressID FROM Address) AS Inner2) AS Outer2"
+    )
+    assert result["status"] == "success"
+
+
+def test_nested_derived_table_with_filter(global_runner):
+    """巢狀衍生資料表搭配 WHERE 應成功"""
+    result = global_runner.run(
+        "SELECT Lvl2.AddressID FROM "
+        "(SELECT AddressID FROM "
+        "(SELECT AddressID FROM Address WHERE StateProvinceID > 0) AS Lvl1"
+        ") AS Lvl2 "
+        "WHERE Lvl2.AddressID > 0"
+    )
+    assert result["status"] == "success"
+
+
+def test_nested_union_derived_table(global_runner):
+    """巢狀 UNION 衍生資料表應成功"""
+    result = global_runner.run(
+        "SELECT Outer3.AddressID FROM "
+        "(SELECT AddressID FROM Address UNION SELECT AddressID FROM Address) AS Outer3"
+    )
+    assert result["status"] == "success"
+
+
+# ─────────────────────────────────────────────
+# Bracket-quoted keyword aliases [Outer]
+# ─────────────────────────────────────────────
+
+def test_bracket_quoted_outer_alias(global_runner):
+    """[Outer] bracket-quoted 別名應成功"""
+    result = global_runner.run(
+        "SELECT [Outer].AddressID FROM "
+        "(SELECT AddressID FROM Address) AS [Outer]"
+    )
+    assert result["status"] == "success"
+
+
+def test_bracket_quoted_inner_alias(global_runner):
+    """[Inner] bracket-quoted 別名應成功"""
+    result = global_runner.run(
+        "SELECT [Inner].AddressID FROM "
+        "(SELECT AddressID FROM Address) AS [Inner]"
+    )
+    assert result["status"] == "success"
