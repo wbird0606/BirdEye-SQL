@@ -536,6 +536,21 @@ class Parser:
             self._advance()
             return LiteralNode(value="NULL", type=TokenType.KEYWORD_NULL)
         
+        # 關鍵字也可能作為函數名稱使用 (如 LEFT、RIGHT、DAY、MONTH、YEAR)
+        _keyword_functions = {
+            TokenType.KEYWORD_LEFT, TokenType.KEYWORD_RIGHT,
+        }
+        if tok.type in _keyword_functions and self._peek(1) and self._peek(1).type == TokenType.SYMBOL_LPAREN:
+            func_name = self._get_text(self._advance()).upper()
+            self._consume(TokenType.SYMBOL_LPAREN, "Expected (")
+            args = []
+            if self._peek() and self._peek().type != TokenType.SYMBOL_RPAREN:
+                while True:
+                    args.append(self._parse_expression())
+                    if not self._match(TokenType.SYMBOL_COMMA): break
+            self._consume(TokenType.SYMBOL_RPAREN, "Expected )")
+            return FunctionCallNode(name=func_name, args=args)
+
         if tok.type == TokenType.IDENTIFIER:
             id_node, is_func = self._parse_full_identifier_safe()
             if self._match(TokenType.SYMBOL_DOT):

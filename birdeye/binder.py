@@ -132,8 +132,19 @@ class Binder:
             raise SemanticError(f"Table '{table_node.name}' not found")
         self.scopes[-1][alias.upper() if alias else rt] = rt
 
+    # T-SQL 日期部分識別符，作為 DATEADD/DATEDIFF/DATEPART 等函數的第一個參數
+    _DATE_PARTS = {
+        "YEAR","QUARTER","MONTH","DAYOFYEAR","DAY","WEEK","WEEKDAY",
+        "HOUR","MINUTE","SECOND","MILLISECOND","MICROSECOND","NANOSECOND",
+        "YY","YYYY","QQ","Q","MM","M","DY","Y","DD","D","WK","WW","DW","W",
+        "HH","MI","N","SS","S","MS","MCS","NS","TZO","ISO_WEEK","ISOWK","ISOWW"
+    }
+
     def _resolve_identifier(self, node):
         if node.name == "*": return
+        # 日期部分識別符：不走欄位解析，直接視為合法字面值
+        if node.name.upper() in self._DATE_PARTS and not node.qualifiers:
+            node.inferred_type = "NVARCHAR"; return
         # Issue #51: @var 走變數作用域，不走欄位解析
         if node.name.startswith("@"):
             key = node.name.upper()

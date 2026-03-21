@@ -41,15 +41,62 @@ class MetadataRegistry:
         self.register_function("MAX", "AGGREGATE", 1, 1, ["ANY"], "ANY")
         self.register_function("MIN", "AGGREGATE", 1, 1, ["ANY"], "ANY")
         
-        # --- 標量函數: 字串類 (回傳 NVARCHAR 或 INT) ---
+        # --- 標量函數: 字串類 ---
         self.register_function("LEN", "SCALAR", 1, 1, ["NVARCHAR"], "INT")
         self.register_function("UPPER", "SCALAR", 1, 1, ["NVARCHAR"], "NVARCHAR")
         self.register_function("LOWER", "SCALAR", 1, 1, ["NVARCHAR"], "NVARCHAR")
         self.register_function("SUBSTRING", "SCALAR", 3, 3, ["NVARCHAR", "INT", "INT"], "NVARCHAR")
-        
+        self.register_function("REPLACE", "SCALAR", 3, 3, ["NVARCHAR", "NVARCHAR", "NVARCHAR"], "NVARCHAR")
+        self.register_function("LTRIM", "SCALAR", 1, 1, ["NVARCHAR"], "NVARCHAR")
+        self.register_function("RTRIM", "SCALAR", 1, 1, ["NVARCHAR"], "NVARCHAR")
+        self.register_function("TRIM", "SCALAR", 1, 1, ["NVARCHAR"], "NVARCHAR")
+        self.register_function("CHARINDEX", "SCALAR", 2, 3, ["NVARCHAR", "NVARCHAR"], "INT")
+        self.register_function("PATINDEX", "SCALAR", 2, 2, ["NVARCHAR", "NVARCHAR"], "INT")
+        self.register_function("STUFF", "SCALAR", 4, 4, ["NVARCHAR", "INT", "INT", "NVARCHAR"], "NVARCHAR")
+        self.register_function("LEFT", "SCALAR", 2, 2, ["NVARCHAR", "INT"], "NVARCHAR")
+        self.register_function("RIGHT", "SCALAR", 2, 2, ["NVARCHAR", "INT"], "NVARCHAR")
+        self.register_function("REPLICATE", "SCALAR", 2, 2, ["NVARCHAR", "INT"], "NVARCHAR")
+        self.register_function("REVERSE", "SCALAR", 1, 1, ["NVARCHAR"], "NVARCHAR")
+        self.register_function("STR", "SCALAR", 1, 3, ["ANY"], "NVARCHAR")
+        self.register_function("STRING_AGG", "AGGREGATE", 2, 2, ["ANY", "NVARCHAR"], "NVARCHAR")
+
+        # --- 標量函數: 數值類 ---
+        self.register_function("ABS", "SCALAR", 1, 1, ["ANY"], "INT")
+        self.register_function("CEILING", "SCALAR", 1, 1, ["ANY"], "INT")
+        self.register_function("FLOOR", "SCALAR", 1, 1, ["ANY"], "INT")
+        self.register_function("ROUND", "SCALAR", 2, 3, ["ANY", "INT"], "DECIMAL")
+        self.register_function("POWER", "SCALAR", 2, 2, ["ANY", "ANY"], "DECIMAL")
+        self.register_function("SQRT", "SCALAR", 1, 1, ["ANY"], "DECIMAL")
+        self.register_function("SQUARE", "SCALAR", 1, 1, ["ANY"], "DECIMAL")
+        self.register_function("LOG", "SCALAR", 1, 2, ["ANY"], "DECIMAL")
+        self.register_function("EXP", "SCALAR", 1, 1, ["ANY"], "DECIMAL")
+        self.register_function("SIGN", "SCALAR", 1, 1, ["ANY"], "INT")
+        self.register_function("RAND", "SCALAR", 0, 1, ["ANY"], "DECIMAL")
+
         # --- 標量函數: 日期類 ---
         self.register_function("GETDATE", "SCALAR", 0, 0, [], "DATETIME")
-        self.register_function("DATEDIFF", "SCALAR", 3, 3, ["ANY", "DATETIME", "DATETIME"], "INT")
+        self.register_function("GETUTCDATE", "SCALAR", 0, 0, [], "DATETIME")
+        self.register_function("SYSDATETIME", "SCALAR", 0, 0, [], "DATETIME")
+        self.register_function("DATEDIFF", "SCALAR", 3, 3, ["ANY", "ANY", "ANY"], "INT")
+        self.register_function("DATEADD", "SCALAR", 3, 3, ["ANY", "INT", "ANY"], "DATETIME")
+        self.register_function("DATEPART", "SCALAR", 2, 2, ["ANY", "ANY"], "INT")
+        self.register_function("DATENAME", "SCALAR", 2, 2, ["ANY", "ANY"], "NVARCHAR")
+        self.register_function("YEAR", "SCALAR", 1, 1, ["ANY"], "INT")
+        self.register_function("MONTH", "SCALAR", 1, 1, ["ANY"], "INT")
+        self.register_function("DAY", "SCALAR", 1, 1, ["ANY"], "INT")
+        self.register_function("EOMONTH", "SCALAR", 1, 2, ["ANY"], "DATE")
+        self.register_function("ISDATE", "SCALAR", 1, 1, ["ANY"], "BIT")
+
+        # --- 標量函數: NULL 處理類 ---
+        self.register_function("ISNULL", "SCALAR", 2, 2, ["ANY", "ANY"], "ANY")
+        self.register_function("COALESCE", "SCALAR", 1, 99, ["ANY"], "ANY")
+        self.register_function("NULLIF", "SCALAR", 2, 2, ["ANY", "ANY"], "ANY")
+        self.register_function("IIF", "SCALAR", 3, 3, ["ANY", "ANY", "ANY"], "ANY")
+
+        # --- 標量函數: 型別轉換/判斷類 ---
+        self.register_function("ISNUMERIC", "SCALAR", 1, 1, ["ANY"], "BIT")
+        self.register_function("TRY_CAST", "SCALAR", 1, 1, ["ANY"], "ANY")
+        self.register_function("TRY_CONVERT", "SCALAR", 2, 3, ["ANY", "ANY"], "ANY")
 
         # --- 特殊結構 ---
         self.register_function("EXISTS", "SCALAR", 1, 1, ["ANY"], "BIT")
