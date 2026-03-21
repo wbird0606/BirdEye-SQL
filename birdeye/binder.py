@@ -1,9 +1,10 @@
 # birdeye/binder.py (v6.7)
 from birdeye.ast import (
     SelectStatement, UpdateStatement, DeleteStatement, InsertStatement,
-    SqlBulkCopyStatement, IdentifierNode, BinaryExpressionNode, 
-    FunctionCallNode, LiteralNode, OrderByNode, CaseExpressionNode, 
-    BetweenExpressionNode, CastExpressionNode, UnionStatement, CTENode, TruncateStatement
+    SqlBulkCopyStatement, IdentifierNode, BinaryExpressionNode,
+    FunctionCallNode, LiteralNode, OrderByNode, CaseExpressionNode,
+    BetweenExpressionNode, CastExpressionNode, UnionStatement, CTENode,
+    TruncateStatement, DeclareStatement
 )
 
 class SemanticError(Exception):
@@ -13,7 +14,9 @@ class Binder:
     def __init__(self, registry):
         self.registry = registry
         self.scopes = []; self.nullable_stack = []; self._last_root_nullables = set()
-        self.cte_schemas = {} 
+        self.cte_schemas = {}
+        self.variable_scope = {}  # Issue #51: @var_name.upper() → type str
+        self.temp_schemas = {}    # Issue #52: #TABLE_NAME.upper() → {COL: type}
 
     @property
     def nullable_scopes(self):
@@ -32,6 +35,7 @@ class Binder:
         elif isinstance(stmt, InsertStatement): self._bind_insert(stmt)
         elif isinstance(stmt, TruncateStatement): self._bind_truncate(stmt)
         elif isinstance(stmt, SqlBulkCopyStatement): self._bind_bulk_insert(stmt)
+        elif isinstance(stmt, DeclareStatement): self._bind_declare(stmt)
         return stmt
 
     def _bind_select(self, stmt):
@@ -68,6 +72,13 @@ class Binder:
                 o.column.inferred_type = projected_aliases[o.column.name.upper()]
             else: self._visit_expression(o.column)
         if is_root: self._last_root_nullables = set(self.nullable_stack[-1])
+        # Issue #52: SELECT INTO → 動態註冊臨時表 schema
+        if hasattr(stmt, 'into_table') and stmt.into_table:
+            schema = {}
+            for col in stmt.columns:
+                col_name = (col.alias if hasattr(col, 'alias') and col.alias else col.name).upper()
+                schema[col_name] = col.inferred_type
+            self.temp_schemas[stmt.into_table.name.upper()] = schema
         self.scopes.pop(); self.nullable_stack.pop()
 
     def _bind_union(self, stmt):
@@ -88,14 +99,28 @@ class Binder:
             new_col.inferred_type = lt if lt != "UNKNOWN" else rt
             stmt.columns.append(new_col)
 
+    def _virtual_schema(self, rt):
+        """Issue #52: 回傳 CTE 或臨時表的 schema dict，兩者皆無則回傳 None。"""
+        if rt in self.cte_schemas: return self.cte_schemas[rt]
+        if rt in self.temp_schemas: return self.temp_schemas[rt]
+        return None
+
     def _register_scope(self, table_node, alias):
         rt = table_node.name.upper()
-        if rt not in self.cte_schemas and not self.registry.has_table(rt):
+        is_temp = rt.startswith('#')
+        if not is_temp and self._virtual_schema(rt) is None and not self.registry.has_table(rt):
             raise SemanticError(f"Table '{table_node.name}' not found")
         self.scopes[-1][alias.upper() if alias else rt] = rt
 
     def _resolve_identifier(self, node):
         if node.name == "*": return
+        # Issue #51: @var 走變數作用域，不走欄位解析
+        if node.name.startswith("@"):
+            key = node.name.upper()
+            if key in self.variable_scope:
+                node.inferred_type = self.variable_scope[key]
+                return
+            raise SemanticError(f"Variable '{node.name}' is not declared")
         f_qual = node.qualifier.upper() if node.qualifier else None
         col_up = node.name.upper(); found_qual = False
         for scope in reversed(self.scopes):
@@ -106,19 +131,21 @@ class Binder:
                 m_key = f_qual if f_qual in scope else f_qual.split('.')[-1]
                 if m_key in scope:
                     found_qual = True; rt = scope[m_key]
-                    if rt in self.cte_schemas:
-                        if col_up in self.cte_schemas[rt]: node.inferred_type = self.cte_schemas[rt][col_up]; return
-                        raise SemanticError(f"Column '{node.name}' not found in CTE '{rt.capitalize()}'")
+                    vs = self._virtual_schema(rt)
+                    if vs is not None:
+                        if col_up in vs: node.inferred_type = vs[col_up]; return
+                        raise SemanticError(f"Column '{node.name}' not found in '{rt.capitalize()}'")
                     if self.registry.has_column(rt, col_up):
                         node.inferred_type = self.registry.get_column_type(rt, col_up); return
                     if self.registry.get_columns(rt):
                         raise SemanticError(f"Column '{node.name}' not found in '{rt.capitalize()}'")
-                    return 
+                    return
             else:
                 matches = []
                 for sn, rt in scope.items():
-                    if rt in self.cte_schemas:
-                        if col_up in self.cte_schemas[rt]: matches.append((sn, rt))
+                    vs = self._virtual_schema(rt)
+                    if vs is not None:
+                        if col_up in vs: matches.append((sn, rt))
                     elif self.registry.has_column(rt, col_up):
                         matches.append((sn, rt))
                 if len(matches) > 1:
@@ -126,15 +153,19 @@ class Binder:
                     raise SemanticError(f"Column '{node.name}' is ambiguous. Found in: {t_str}")
                 if len(matches) == 1:
                     rt = matches[0][1]
-                    node.inferred_type = self.cte_schemas[rt][col_up] if rt in self.cte_schemas else self.registry.get_column_type(rt, col_up)
+                    vs = self._virtual_schema(rt)
+                    node.inferred_type = vs[col_up] if vs is not None else self.registry.get_column_type(rt, col_up)
                     return
                 if len(scope) == 1:
                     sn, rt = list(scope.items())[0]
-                    if rt in self.cte_schemas:
-                        if col_up in self.cte_schemas[rt]:
-                            node.inferred_type = self.cte_schemas[rt][col_up]
+                    vs = self._virtual_schema(rt)
+                    if vs is not None:
+                        if col_up in vs:
+                            node.inferred_type = vs[col_up]
                             return
-                        raise SemanticError(f"Column '{node.name}' not found in CTE '{rt.capitalize()}'")
+                        if vs:  # 有 schema 但欄位不存在
+                            raise SemanticError(f"Column '{node.name}' not found in '{rt.capitalize()}'")
+                        return  # 空 schema (未知臨時表) → 放行
                     elif self.registry.has_column(rt, col_up):
                         node.inferred_type = self.registry.get_column_type(rt, col_up)
                         return
@@ -268,6 +299,12 @@ class Binder:
     def _bind_bulk_insert(self, stmt):
         if not self.registry.has_table(stmt.table.name.upper()): raise SemanticError(f"Table '{stmt.table.name}' not found")
 
+    def _bind_declare(self, stmt):
+        """Issue #51: 將 @var 及其型別寫入 variable_scope"""
+        self.variable_scope[stmt.var_name.upper()] = stmt.var_type
+        if stmt.default_value:
+            self._visit_expression(stmt.default_value)
+
     def _check_type_compatibility(self, lt, rt, ctx):
         if not self._is_type_compatible(lt, rt): raise SemanticError(f"Incompatible types for {ctx}: Cannot compare {lt} with {rt}")
 
@@ -311,18 +348,20 @@ class Binder:
 
     def _expand_global_star(self, stmt):
         for al, rt in self.scopes[-1].items():
-            cols = self.cte_schemas[rt].keys() if rt in self.cte_schemas else self.registry.get_columns(rt)
+            vs = self._virtual_schema(rt)
+            cols = vs.keys() if vs is not None else self.registry.get_columns(rt)
             for c in cols:
                 n = IdentifierNode(name=c, qualifiers=[al])
-                n.inferred_type = self.cte_schemas[rt][c] if rt in self.cte_schemas else self.registry.get_column_type(rt, c)
+                n.inferred_type = vs[c] if vs is not None else self.registry.get_column_type(rt, c)
                 stmt.columns.append(n)
 
     def _expand_qualified_star(self, stmt, prefix):
         up = prefix.upper()
         if up not in self.scopes[-1]: raise SemanticError(f"Unknown qualifier '{prefix}' in star expansion")
         rt = self.scopes[-1][up]
-        cols = self.cte_schemas[rt].keys() if rt in self.cte_schemas else self.registry.get_columns(rt)
+        vs = self._virtual_schema(rt)
+        cols = vs.keys() if vs is not None else self.registry.get_columns(rt)
         for c in cols:
             n = IdentifierNode(name=c, qualifiers=[prefix])
-            n.inferred_type = self.cte_schemas[rt][c] if rt in self.cte_schemas else self.registry.get_column_type(rt, c)
+            n.inferred_type = vs[c] if vs is not None else self.registry.get_column_type(rt, c)
             stmt.columns.append(n)

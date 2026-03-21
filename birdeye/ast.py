@@ -14,6 +14,7 @@ class SelectStatement:
         self.having_condition = None
         self.order_by_terms = [] # List of OrderByNodes
         self.ctes = []          # List of CTENodes
+        self.into_table = None  # 💡 TDD New: 用於 SELECT ... INTO #Table
 
 class CTENode:
     """用於 WITH Name AS (query)"""
@@ -44,6 +45,13 @@ class TruncateStatement:
     """用於 TRUNCATE TABLE 語句"""
     def __init__(self, table):
         self.table = table      # IdentifierNode
+
+class DeclareStatement:
+    """用於 DECLARE @var TYPE [= default_value] 語句 (Issue #51)"""
+    def __init__(self, var_name, var_type, default_value=None):
+        self.var_name = var_name          # str, e.g. "@counter"
+        self.var_type = var_type          # str, e.g. "INT"
+        self.default_value = default_value  # ExpressionNode or None
 
 class SqlBulkCopyStatement:
     """針對 MSSQL 特化的大批次寫入語句"""

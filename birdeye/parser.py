@@ -1,10 +1,10 @@
 from birdeye.lexer import TokenType
 from birdeye.ast import (
-    SelectStatement, UpdateStatement, DeleteStatement, InsertStatement, 
-    SqlBulkCopyStatement, IdentifierNode, LiteralNode, 
+    SelectStatement, UpdateStatement, DeleteStatement, InsertStatement,
+    SqlBulkCopyStatement, IdentifierNode, LiteralNode,
     BinaryExpressionNode, FunctionCallNode, JoinNode, AssignmentNode,
     OrderByNode, CaseExpressionNode, BetweenExpressionNode, CastExpressionNode,
-    UnionStatement, CTENode, TruncateStatement
+    UnionStatement, CTENode, TruncateStatement, DeclareStatement
 )
 
 class Parser:
@@ -64,11 +64,15 @@ class Parser:
         elif tok.type == TokenType.KEYWORD_DELETE: stmt = self._parse_delete()
         elif tok.type == TokenType.KEYWORD_INSERT: stmt = self._parse_insert()
         elif tok.type == TokenType.KEYWORD_TRUNCATE: stmt = self._parse_truncate()
+        elif tok.type == TokenType.KEYWORD_DECLARE: stmt = self._parse_declare()
         elif tok.type == TokenType.IDENTIFIER and self._get_text(tok).upper() == "BULK":
             stmt = self._parse_bulk_insert()
         else:
             raise SyntaxError(f"Unexpected token: {self._get_text(tok)}")
-        
+
+        # 允許尾端分號
+        self._match(TokenType.SYMBOL_SEMICOLON)
+
         peek = self._peek()
         if peek and peek.type != TokenType.EOF:
             raise SyntaxError(f"Unexpected token: {self._get_text(peek)}")
@@ -127,6 +131,10 @@ class Parser:
                     if alias: expr.alias = self._get_text(alias)
                     stmt.columns.append(expr)
             if not self._match(TokenType.SYMBOL_COMMA): break
+
+        # Issue #52: 解析 SELECT ... INTO #table FROM ...
+        if self._match(TokenType.KEYWORD_INTO):
+            stmt.into_table, _ = self._parse_full_identifier_safe()
 
         if self._match(TokenType.KEYWORD_FROM):
             stmt.table, _ = self._parse_full_identifier_safe()
@@ -238,12 +246,30 @@ class Parser:
         return stmt
 
     def _parse_bulk_insert(self):
-        self._advance() 
+        self._advance()
         self._consume(TokenType.KEYWORD_INSERT, "Expected INSERT")
         self._consume(TokenType.KEYWORD_INTO, "Expected INTO")
         stmt = SqlBulkCopyStatement()
         stmt.table, _ = self._parse_full_identifier_safe()
         return stmt
+
+    def _parse_declare(self):
+        """解析 DECLARE @var TYPE [(size)] [= default_value]  (Issue #51)"""
+        self._consume(TokenType.KEYWORD_DECLARE, "Expected DECLARE")
+        var_tok = self._consume(TokenType.IDENTIFIER, "Expected variable name after DECLARE")
+        var_name = self._get_text(var_tok)
+        type_tok = self._consume(TokenType.IDENTIFIER, "Expected type after variable name")
+        var_type = self._get_text(type_tok).upper()
+        # 吸收可選的長度參數，如 NVARCHAR(50)
+        if self._match(TokenType.SYMBOL_LPAREN):
+            while self._peek() and self._peek().type != TokenType.SYMBOL_RPAREN:
+                self._advance()
+            self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after type size")
+        # 吸收可選的預設值，如 = 0
+        default_value = None
+        if self._match(TokenType.SYMBOL_EQUAL):
+            default_value = self._parse_expression()
+        return DeclareStatement(var_name=var_name, var_type=var_type, default_value=default_value)
 
     # --- 7. 表達式解析引擎 ---
 

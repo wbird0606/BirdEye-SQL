@@ -1,3 +1,4 @@
+import re
 from birdeye.lexer import Lexer
 from birdeye.parser import Parser
 from birdeye.binder import Binder
@@ -18,6 +19,8 @@ class BirdEyeRunner:
         self.visualizer = ASTVisualizer()
         self.serializer = ASTSerializer()
         self.exporter = MermaidExporter()
+        # Issue #52: 持久化 Binder，temp_schemas 跨 run() 呼叫保留
+        self._binder = Binder(self.registry)
 
     def load_metadata_from_csv(self, csv_content):
         """從 CSV 字串或檔案載入元數據"""
@@ -41,8 +44,7 @@ class BirdEyeRunner:
         ast = parser.parse()
 
         # 3. Semantic Analysis (ZTA Enforcement & Type Inference)
-        binder = Binder(self.registry)
-        bound_ast = binder.bind(ast)
+        bound_ast = self._binder.bind(ast)
 
         # 4. Generate Outputs
         tree_text = self.visualizer.dump(bound_ast)
@@ -50,8 +52,48 @@ class BirdEyeRunner:
         mermaid_code = self.exporter.export(json.loads(ast_json))
 
         return {
+            "status": "success",
             "ast": bound_ast,
             "tree": tree_text,
             "json": ast_json,
             "mermaid": mermaid_code
         }
+
+    def run_script(self, sql):
+        """
+        Issue #51: 執行多語句腳本。
+        - 以 GO (單獨成行) 分隔批次
+        - 批次內以 ; 分隔語句
+        - 同一個 Binder 實例貫穿整個腳本，variable_scope 跨批次保留
+        """
+        batches_sql = re.split(r'^\s*GO\s*$', sql, flags=re.IGNORECASE | re.MULTILINE)
+        binder = Binder(self.registry)
+        all_batches = []
+
+        # 新語句起始關鍵字 pattern，用於按換行分割語句
+        _stmt_start = re.compile(
+            r'(?=^\s*(?:SELECT|INSERT|UPDATE|DELETE|TRUNCATE|DECLARE|WITH)\b)',
+            re.IGNORECASE | re.MULTILINE
+        )
+
+        for batch_sql in batches_sql:
+            batch_sql = batch_sql.strip()
+            if not batch_sql:
+                continue
+            # 先以分號分割，再對每段以語句起始關鍵字進一步分割
+            raw_parts = batch_sql.split(';')
+            stmts_sql = []
+            for part in raw_parts:
+                sub = [s.strip() for s in _stmt_start.split(part) if s.strip()]
+                stmts_sql.extend(sub)
+            batch_asts = []
+            for stmt_sql in stmts_sql:
+                lexer = Lexer(stmt_sql)
+                tokens = lexer.tokenize()
+                parser = Parser(tokens, stmt_sql)
+                ast = parser.parse()
+                binder.bind(ast)
+                batch_asts.append(ast)
+            all_batches.append(batch_asts)
+
+        return {"status": "success", "batches": all_batches}

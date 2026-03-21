@@ -48,7 +48,7 @@ def test_parser_select_structures(sql, is_star, col_count, table_name):
     # 語法正確性與 SQL 注入垃圾攔截
     ("SELECT UserID, , UserName FROM Users", "Expected identifier"),
     ("SELECT UserID Users", "Expected FROM"),
-    ("SELECT * FROM Users ; DROP TABLE Users--", "Unexpected token: ;"),
+    ("SELECT * FROM Users ; DROP TABLE Users--", "Unexpected token: DROP"),
     # 💡 TDD New: 尾隨逗號防禦 (Trailing Commas)
     ("SELECT A, B, FROM Users", "Unexpected expression token: FROM"),
     ("SELECT * FROM Users ORDER BY A, B,", "Unexpected expression token:"),

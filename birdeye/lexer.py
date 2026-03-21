@@ -48,7 +48,9 @@ class TokenType(Enum):
     KEYWORD_BETWEEN = auto()    # For BETWEEN
     KEYWORD_CAST = auto()       # For CAST
     KEYWORD_CONVERT = auto()    # For CONVERT
-    
+    KEYWORD_DECLARE = auto()    # For DECLARE (Issue #51)
+    KEYWORD_GO = auto()         # For GO batch separator (Issue #51)
+
     # 💡 Issue #33 新增：CASE 邏輯關鍵字
     KEYWORD_CASE = auto()
     KEYWORD_WHEN = auto()
@@ -163,6 +165,8 @@ class Lexer:
             "BETWEEN": TokenType.KEYWORD_BETWEEN,
             "CAST": TokenType.KEYWORD_CAST,
             "CONVERT": TokenType.KEYWORD_CONVERT,
+            "DECLARE": TokenType.KEYWORD_DECLARE,
+            "GO": TokenType.KEYWORD_GO,
             "OVER": TokenType.KEYWORD_OVER,
             "PARTITION": TokenType.KEYWORD_PARTITION,
             "ROWS": TokenType.KEYWORD_ROWS,
@@ -204,10 +208,11 @@ class Lexer:
                     raise ValueError("Unclosed nested block comment")
                 continue
 
-            # 2. 處理標識符與關鍵字
-            if char.isalpha() or char == '_':
+            # 2. 處理標識符與關鍵字 (支援 # 臨時表與 @ 變數)
+            if char.isalpha() or char == '_' or char == '#' or char == '@':
                 start = self.pos
-                while self._peek() and (self._peek().isalnum() or self._peek() == '_'):
+                self._advance()
+                while self._peek() and (self._peek().isalnum() or self._peek() == '_' or self._peek() == '#'):
                     self._advance()
                 text = self.source[start:self.pos]
                 token_type = keywords.get(text.upper(), TokenType.IDENTIFIER)
