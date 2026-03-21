@@ -2,6 +2,7 @@
 
 class SelectStatement:
     def __init__(self):
+        self.inferred_type = "UNKNOWN"  # allows use as scalar subquery expression
         self.is_select_star = False
         self.is_distinct = False    # Issue #55
         self.star_prefixes = []

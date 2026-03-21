@@ -59,6 +59,14 @@ class MetadataRegistry:
         self.register_function("REVERSE", "SCALAR", 1, 1, ["NVARCHAR"], "NVARCHAR")
         self.register_function("STR", "SCALAR", 1, 3, ["ANY"], "NVARCHAR")
         self.register_function("STRING_AGG", "AGGREGATE", 2, 2, ["ANY", "NVARCHAR"], "NVARCHAR")
+        self.register_function("CONCAT", "SCALAR", 1, 99, ["ANY"], "NVARCHAR")
+        self.register_function("CONCAT_WS", "SCALAR", 2, 99, ["NVARCHAR"], "NVARCHAR")
+        self.register_function("FORMAT", "SCALAR", 2, 3, ["ANY", "NVARCHAR"], "NVARCHAR")
+        self.register_function("SPACE", "SCALAR", 1, 1, ["INT"], "NVARCHAR")
+        self.register_function("UNICODE", "SCALAR", 1, 1, ["NVARCHAR"], "INT")
+        self.register_function("CHAR", "SCALAR", 1, 1, ["INT"], "NVARCHAR")
+        self.register_function("ASCII", "SCALAR", 1, 1, ["NVARCHAR"], "INT")
+        self.register_function("NCHAR", "SCALAR", 1, 1, ["INT"], "NVARCHAR")
 
         # --- 標量函數: 數值類 ---
         self.register_function("ABS", "SCALAR", 1, 1, ["ANY"], "INT")

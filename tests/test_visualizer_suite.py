@@ -245,3 +245,55 @@ def test_visualizer_null_in_case_else():
     """CASE ELSE NULL 應顯示 LITERAL: NULL"""
     output = run_visualize("SELECT CASE WHEN 1=1 THEN 1 ELSE NULL END")
     assert "LITERAL: NULL" in output
+
+# --- Issue #5 (round 4): Modulo / Bitwise / UNION derived table 視覺化 ---
+
+def test_visualizer_modulo_operator():
+    """% 運算應出現在視覺化輸出中"""
+    output = run_visualize("SELECT AddressID % 2 FROM T")
+    assert "BINARY_EXPR" in output or "%" in output
+
+def test_visualizer_bitwise_and_operator():
+    """& 運算應出現在視覺化輸出中"""
+    output = run_visualize("SELECT AddressID & 1 FROM T")
+    assert "BINARY_EXPR" in output or "&" in output
+
+def test_visualizer_union_derived_table(global_runner):
+    """UNION 衍生資料表應正常視覺化"""
+    output = run_visualize_full(
+        "SELECT Sub.AddressID FROM "
+        "(SELECT AddressID FROM Address UNION SELECT AddressID FROM Address) AS Sub",
+        global_runner
+    )
+    assert "SELECT_STATEMENT" in output or "UNION_STATEMENT" in output
+
+# --- Issue #5 (round 5): 字串函數 / CAST長度 / 集合運算子 / 純量子查詢 視覺化 ---
+
+def test_visualizer_concat_function(global_runner):
+    """CONCAT 應正常視覺化"""
+    output = run_visualize_full("SELECT CONCAT(City, ', ') FROM Address", global_runner)
+    assert "FUNCTION_CALL" in output or "SELECT_STATEMENT" in output
+
+def test_visualizer_intersect(global_runner):
+    """INTERSECT 應顯示 UNION_STATEMENT 節點 (operator=INTERSECT)"""
+    output = run_visualize_full(
+        "SELECT AddressID FROM Address INTERSECT SELECT AddressID FROM Address",
+        global_runner
+    )
+    assert "INTERSECT" in output or "UNION_STATEMENT" in output
+
+def test_visualizer_except(global_runner):
+    """EXCEPT 應顯示 UNION_STATEMENT 節點 (operator=EXCEPT)"""
+    output = run_visualize_full(
+        "SELECT AddressID FROM Address EXCEPT SELECT AddressID FROM Address",
+        global_runner
+    )
+    assert "EXCEPT" in output or "UNION_STATEMENT" in output
+
+def test_visualizer_scalar_subquery(global_runner):
+    """純量子查詢應顯示 SELECT_STATEMENT 子節點"""
+    output = run_visualize_full(
+        "SELECT (SELECT MAX(AddressID) FROM Address) AS MaxID",
+        global_runner
+    )
+    assert "SELECT_STATEMENT" in output

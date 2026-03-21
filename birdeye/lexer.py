@@ -60,6 +60,8 @@ class TokenType(Enum):
     KEYWORD_CROSS = auto()      # For CROSS APPLY (Issue #53)
     KEYWORD_APPLY = auto()      # For APPLY (Issue #53)
     KEYWORD_OUTER = auto()      # For OUTER APPLY (Issue #53)
+    KEYWORD_INTERSECT = auto()  # For INTERSECT set operator
+    KEYWORD_EXCEPT = auto()     # For EXCEPT set operator
 
     # 💡 Issue #33 新增：CASE 邏輯關鍵字
     KEYWORD_CASE = auto()
@@ -91,7 +93,12 @@ class TokenType(Enum):
     SYMBOL_GE = auto()         # >=
     SYMBOL_LE = auto()         # <=
     SYMBOL_NE = auto()         # != 或 <>
-    
+    SYMBOL_PERCENT = auto()    # % (modulo)
+    SYMBOL_AMPERSAND = auto()  # & (bitwise AND)
+    SYMBOL_PIPE = auto()       # | (bitwise OR)
+    SYMBOL_CARET = auto()      # ^ (bitwise XOR)
+    SYMBOL_TILDE = auto()      # ~ (bitwise NOT)
+
     # Meta
     EOF = auto()
 
@@ -187,6 +194,8 @@ class Lexer:
             "CROSS": TokenType.KEYWORD_CROSS,
             "APPLY": TokenType.KEYWORD_APPLY,
             "OUTER": TokenType.KEYWORD_OUTER,
+            "INTERSECT": TokenType.KEYWORD_INTERSECT,
+            "EXCEPT": TokenType.KEYWORD_EXCEPT,
             "OVER": TokenType.KEYWORD_OVER,
             "PARTITION": TokenType.KEYWORD_PARTITION,
             "ROWS": TokenType.KEYWORD_ROWS,
@@ -334,6 +343,16 @@ class Lexer:
                 self.tokens.append(Token(TokenType.SYMBOL_MINUS, "-", self.pos, self.pos + 1)); self._advance()
             elif char == '/':
                 self.tokens.append(Token(TokenType.SYMBOL_SLASH, "/", self.pos, self.pos + 1)); self._advance()
+            elif char == '%':
+                self.tokens.append(Token(TokenType.SYMBOL_PERCENT, "%", self.pos, self.pos + 1)); self._advance()
+            elif char == '&':
+                self.tokens.append(Token(TokenType.SYMBOL_AMPERSAND, "&", self.pos, self.pos + 1)); self._advance()
+            elif char == '|':
+                self.tokens.append(Token(TokenType.SYMBOL_PIPE, "|", self.pos, self.pos + 1)); self._advance()
+            elif char == '^':
+                self.tokens.append(Token(TokenType.SYMBOL_CARET, "^", self.pos, self.pos + 1)); self._advance()
+            elif char == '~':
+                self.tokens.append(Token(TokenType.SYMBOL_TILDE, "~", self.pos, self.pos + 1)); self._advance()
             elif char == ';':
                 self.tokens.append(Token(TokenType.SYMBOL_SEMICOLON, ";", self.pos, self.pos + 1)); self._advance()
             elif char == '(':

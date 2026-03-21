@@ -99,7 +99,10 @@ class Binder:
             lt, rt = left_cols[i].inferred_type, right_cols[i].inferred_type
             if not self._is_type_compatible(lt, rt):
                 raise SemanticError(f"Incompatible types in {stmt.operator}: Column {i+1} has types {lt} and {rt}")
-            new_col = IdentifierNode(name=left_cols[i].alias or f"col_{i+1}")
+            lc = left_cols[i]
+            col_name = (lc.alias if lc.alias else
+                        (lc.name if isinstance(lc, IdentifierNode) else None) or f"col_{i+1}")
+            new_col = IdentifierNode(name=col_name)
             new_col.inferred_type = lt if lt != "UNKNOWN" else rt
             stmt.columns.append(new_col)
 
@@ -230,7 +233,7 @@ class Binder:
             lt = self._visit_expression(expr.left)
             rt = lt if rt_raw == "TABLE" else rt_raw
             
-            if expr.operator in ["+", "-", "*", "/"]:
+            if expr.operator in ["+", "-", "*", "/", "%", "&", "|", "^", "~"]:
                 if expr.operator == "+":
                     is_num = self._is_type_compatible(lt, "INT") and self._is_type_compatible(rt, "INT")
                     is_str = self._is_type_compatible(lt, "NVARCHAR") and self._is_type_compatible(rt, "NVARCHAR")
@@ -305,7 +308,14 @@ class Binder:
             expr.inferred_type = b_types[0] if b_types else "UNKNOWN"; return expr.inferred_type
         elif isinstance(expr, BetweenExpressionNode): return self._visit_between(expr)
         elif isinstance(expr, CastExpressionNode): return self._visit_cast(expr)
-        elif isinstance(expr, SelectStatement): self._bind_select(expr); return "TABLE"
+        elif isinstance(expr, SelectStatement):
+            self._bind_select(expr)
+            # 純量子查詢：取第一個投影欄位的型別
+            if expr.columns and len(expr.columns) == 1:
+                expr.inferred_type = expr.columns[0].inferred_type
+            else:
+                expr.inferred_type = "UNKNOWN"
+            return expr.inferred_type
         elif isinstance(expr, UnionStatement): self._bind_union(expr); return "TABLE"
         return "UNKNOWN"
 

@@ -232,3 +232,47 @@ def test_null_literal_serialization():
     col = data["columns"][0]
     assert col["node_type"] == "LiteralNode"
     assert col["value"] == "NULL"
+
+# --- Issue #5 (round 4): Modulo / Bitwise / UNION derived table 序列化 ---
+
+def test_modulo_serialization():
+    """% 運算應序列化為 BinaryExpressionNode，op='%'"""
+    data = json.loads(ASTSerializer().to_json(get_ast("SELECT AddressID % 2 FROM T")))
+    col = data["columns"][0]
+    assert col["node_type"] == "BinaryExpressionNode"
+    assert col["op"] == "%"
+
+def test_bitwise_and_serialization():
+    """& 運算應序列化為 BinaryExpressionNode，op='&'"""
+    data = json.loads(ASTSerializer().to_json(get_ast("SELECT AddressID & 1 FROM T")))
+    col = data["columns"][0]
+    assert col["node_type"] == "BinaryExpressionNode"
+    assert col["op"] == "&"
+
+# --- Issue #5 (round 5): 字串函數 / CAST長度 / 集合運算子 序列化 ---
+
+def test_concat_serialization():
+    """CONCAT 應序列化為 FunctionCallNode"""
+    data = json.loads(ASTSerializer().to_json(get_ast("SELECT CONCAT(City, ', ') FROM T")))
+    col = data["columns"][0]
+    assert col["node_type"] == "FunctionCallNode"
+    assert col["name"] == "CONCAT"
+
+def test_cast_with_length_serialization():
+    """CAST(x AS VARCHAR(10)) 應序列化為 CastExpressionNode，target='VARCHAR'"""
+    data = json.loads(ASTSerializer().to_json(get_ast("SELECT CAST(A AS VARCHAR(10)) FROM T")))
+    col = data["columns"][0]
+    assert col["node_type"] == "CastExpressionNode"
+    assert col["target"] == "VARCHAR"
+
+def test_intersect_serialization():
+    """INTERSECT 應序列化為 UnionStatement，op=INTERSECT"""
+    data = json.loads(ASTSerializer().to_json(get_ast("SELECT A FROM T INTERSECT SELECT A FROM T")))
+    assert data["node_type"] == "UnionStatement"
+    assert data["op"] == "INTERSECT"
+
+def test_except_serialization():
+    """EXCEPT 應序列化為 UnionStatement，op=EXCEPT"""
+    data = json.loads(ASTSerializer().to_json(get_ast("SELECT A FROM T EXCEPT SELECT A FROM T")))
+    assert data["node_type"] == "UnionStatement"
+    assert data["op"] == "EXCEPT"

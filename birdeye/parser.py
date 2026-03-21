@@ -108,6 +108,12 @@ class Parser:
                 if self._match(TokenType.KEYWORD_ALL): op = "UNION ALL"
                 right = self._parse_single_select()
                 node = UnionStatement(left=node, operator=op, right=right)
+            elif self._match(TokenType.KEYWORD_INTERSECT):
+                right = self._parse_single_select()
+                node = UnionStatement(left=node, operator="INTERSECT", right=right)
+            elif self._match(TokenType.KEYWORD_EXCEPT):
+                right = self._parse_single_select()
+                node = UnionStatement(left=node, operator="EXCEPT", right=right)
             else: break
         return node
 
@@ -467,6 +473,14 @@ class Parser:
                 node = BinaryExpressionNode(left=node, operator="*", right=self._parse_primary())
             elif self._match(TokenType.SYMBOL_SLASH):
                 node = BinaryExpressionNode(left=node, operator="/", right=self._parse_primary())
+            elif self._match(TokenType.SYMBOL_PERCENT):
+                node = BinaryExpressionNode(left=node, operator="%", right=self._parse_primary())
+            elif self._match(TokenType.SYMBOL_AMPERSAND):
+                node = BinaryExpressionNode(left=node, operator="&", right=self._parse_primary())
+            elif self._match(TokenType.SYMBOL_PIPE):
+                node = BinaryExpressionNode(left=node, operator="|", right=self._parse_primary())
+            elif self._match(TokenType.SYMBOL_CARET):
+                node = BinaryExpressionNode(left=node, operator="^", right=self._parse_primary())
             else: break
         return node
 
@@ -481,6 +495,11 @@ class Parser:
             self._consume(TokenType.KEYWORD_AS, "Expected AS in CAST")
             type_tok = self._consume(TokenType.IDENTIFIER, "Expected target type in CAST")
             target_type = self._get_text(type_tok).upper()
+            # 吸收可選的型別長度，如 VARCHAR(10) 或 DECIMAL(18,2)
+            if self._match(TokenType.SYMBOL_LPAREN):
+                while self._peek() and self._peek().type != TokenType.SYMBOL_RPAREN:
+                    self._advance()
+                self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after type size")
             self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after CAST type")
             return CastExpressionNode(expr=expr, target_type=target_type)
 
@@ -489,8 +508,16 @@ class Parser:
             self._consume(TokenType.SYMBOL_LPAREN, "Expected ( after CONVERT")
             type_tok = self._consume(TokenType.IDENTIFIER, "Expected target type in CONVERT")
             target_type = self._get_text(type_tok).upper()
+            # 吸收可選的型別長度，如 VARCHAR(20)
+            if self._match(TokenType.SYMBOL_LPAREN):
+                while self._peek() and self._peek().type != TokenType.SYMBOL_RPAREN:
+                    self._advance()
+                self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after type size")
             self._consume(TokenType.SYMBOL_COMMA, "Expected comma in CONVERT")
             expr = self._parse_expression()
+            # 吸收可選的第三個參數 (style)
+            if self._match(TokenType.SYMBOL_COMMA):
+                self._parse_expression()  # consume style arg
             self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after CONVERT")
             return CastExpressionNode(expr=expr, target_type=target_type, is_convert=True)
 
@@ -520,6 +547,12 @@ class Parser:
             self._consume(TokenType.SYMBOL_RPAREN, "Expected )")
             return node
         
+        # Issue #Boundary: 一元位元補數 (bitwise NOT)，如 ~1
+        if tok.type == TokenType.SYMBOL_TILDE:
+            self._advance()
+            operand = self._parse_primary()
+            return BinaryExpressionNode(left=LiteralNode(value="0", type=TokenType.NUMERIC_LITERAL), operator="~", right=operand)
+
         if self._match(TokenType.SYMBOL_ASTERISK): return IdentifierNode(name="*", qualifiers=[])
 
         if tok.type == TokenType.SYMBOL_COMMA: raise SyntaxError("Expected identifier")
@@ -565,6 +598,8 @@ class Parser:
             if is_func:
                 self._consume(TokenType.SYMBOL_LPAREN, "Expected (")
                 args = []
+                # 吸收 COUNT(DISTINCT ...) 中的 DISTINCT 關鍵字
+                self._match(TokenType.KEYWORD_DISTINCT)
                 if self._peek() and self._peek().type != TokenType.SYMBOL_RPAREN:
                     while True:
                         args.append(self._parse_expression())
