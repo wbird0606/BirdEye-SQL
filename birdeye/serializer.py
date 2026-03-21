@@ -38,6 +38,7 @@ class ASTSerializer:
             res.update({
                 "ctes": self._serialize(node.ctes) if hasattr(node, 'ctes') else [],
                 "top": node.top_count,
+                "top_percent": node.top_percent if hasattr(node, 'top_percent') else False,
                 "is_distinct": node.is_distinct if hasattr(node, 'is_distinct') else False,
                 "is_star": node.is_select_star,
                 "columns": self._serialize(node.columns),

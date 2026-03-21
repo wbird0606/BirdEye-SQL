@@ -174,6 +174,19 @@ def test_visualizer_outer_apply(global_runner):
     output = run_visualize_full(sql, global_runner)
     assert "OUTER_APPLY" in output
 
+# --- Issue #59: TOP N PERCENT 視覺化測試 ---
+
+def test_visualizer_top_percent():
+    """TOP N PERCENT 應顯示 TOP: N PERCENT"""
+    output = run_visualize("SELECT TOP 10 PERCENT AddressID FROM T")
+    assert "TOP: 10 PERCENT" in output
+
+def test_visualizer_top_without_percent():
+    """TOP N (無 PERCENT) 應顯示 TOP: N，不含 PERCENT"""
+    output = run_visualize("SELECT TOP 5 AddressID FROM T")
+    assert "TOP: 5" in output
+    assert "PERCENT" not in output
+
 # --- Issue #57/#58: INSERT-SELECT 與 Multi-row VALUES 視覺化測試 ---
 
 def test_visualizer_insert_select():

@@ -158,6 +158,20 @@ def test_outer_apply_node_serialization():
     apply = data["applies"][0]
     assert apply["apply_type"] == "OUTER"
 
+# --- Issue #59: TOP N PERCENT 序列化測試 ---
+
+def test_top_percent_serialization():
+    """TOP N PERCENT 應序列化為 top_percent = true"""
+    data = json.loads(ASTSerializer().to_json(get_ast("SELECT TOP 10 PERCENT A FROM T")))
+    assert data["top"] == 10
+    assert data["top_percent"] is True
+
+def test_top_without_percent_serialization():
+    """TOP N (無 PERCENT) 應序列化為 top_percent = false"""
+    data = json.loads(ASTSerializer().to_json(get_ast("SELECT TOP 5 A FROM T")))
+    assert data["top"] == 5
+    assert data["top_percent"] is False
+
 # --- Issue #57/#58: INSERT-SELECT 與 Multi-row VALUES 序列化測試 ---
 
 def test_insert_select_serialization():

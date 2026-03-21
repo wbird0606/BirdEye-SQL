@@ -42,7 +42,8 @@ class ASTVisualizer:
                 self.lines.append(f"{current_indent}  ├── DISTINCT")
 
             if node.top_count is not None:
-                self.lines.append(f"{current_indent}  ├── TOP: {node.top_count}")
+                percent_str = " PERCENT" if getattr(node, 'top_percent', False) else ""
+                self.lines.append(f"{current_indent}  ├── TOP: {node.top_count}{percent_str}")
             
             if node.is_select_star and not node.columns:
                 self.lines.append(f"{current_indent}  ├── COLUMNS: *")

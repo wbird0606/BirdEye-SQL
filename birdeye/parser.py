@@ -118,6 +118,8 @@ class Parser:
             num_tok = self._match(TokenType.NUMERIC_LITERAL)
             if not num_tok: raise SyntaxError("Expected numeric literal after TOP")
             stmt.top_count = int(num_tok.value)
+            if self._match(TokenType.KEYWORD_PERCENT):
+                stmt.top_percent = True
 
         while True:
             if self._match(TokenType.SYMBOL_ASTERISK):

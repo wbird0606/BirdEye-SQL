@@ -6,6 +6,7 @@ class SelectStatement:
         self.is_distinct = False    # Issue #55
         self.star_prefixes = []
         self.top_count = None
+        self.top_percent = False    # Issue #59
         self.columns = []       # List of ExpressionNodes
         self.table = None       # IdentifierNode
         self.table_alias = None

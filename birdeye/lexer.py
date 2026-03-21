@@ -49,6 +49,7 @@ class TokenType(Enum):
     KEYWORD_CAST = auto()       # For CAST
     KEYWORD_CONVERT = auto()    # For CONVERT
     KEYWORD_DISTINCT = auto()   # For DISTINCT (Issue #55)
+    KEYWORD_PERCENT = auto()    # For TOP N PERCENT (Issue #59)
     KEYWORD_DECLARE = auto()    # For DECLARE (Issue #51)
     KEYWORD_GO = auto()         # For GO batch separator (Issue #51)
     KEYWORD_CROSS = auto()      # For CROSS APPLY (Issue #53)
@@ -170,6 +171,7 @@ class Lexer:
             "CAST": TokenType.KEYWORD_CAST,
             "CONVERT": TokenType.KEYWORD_CONVERT,
             "DISTINCT": TokenType.KEYWORD_DISTINCT,
+            "PERCENT": TokenType.KEYWORD_PERCENT,
             "DECLARE": TokenType.KEYWORD_DECLARE,
             "GO": TokenType.KEYWORD_GO,
             "CROSS": TokenType.KEYWORD_CROSS,
