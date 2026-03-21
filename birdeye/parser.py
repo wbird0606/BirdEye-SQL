@@ -439,7 +439,16 @@ class Parser:
         if self._match(TokenType.SYMBOL_ASTERISK): return IdentifierNode(name="*", qualifiers=[])
 
         if tok.type == TokenType.SYMBOL_COMMA: raise SyntaxError("Expected identifier")
-        
+
+        # Issue #Boundary: 支援一元負號 (unary minus)，如 -1, -3.14
+        if tok.type == TokenType.SYMBOL_MINUS:
+            self._advance()
+            operand = self._parse_primary()
+            if isinstance(operand, LiteralNode) and operand.type == TokenType.NUMERIC_LITERAL:
+                operand.value = "-" + operand.value
+                return operand
+            return BinaryExpressionNode(left=LiteralNode(value="0", type=TokenType.NUMERIC_LITERAL), operator="-", right=operand)
+
         if tok.type == TokenType.NUMERIC_LITERAL: return LiteralNode(value=self._get_text(self._advance()), type=tok.type)
         if tok.type == TokenType.STRING_LITERAL: return LiteralNode(value=self._get_text(self._advance()).strip("'"), type=tok.type)
         
