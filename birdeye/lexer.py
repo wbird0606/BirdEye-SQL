@@ -18,6 +18,7 @@ class TokenType(Enum):
     KEYWORD_RIGHT = auto()
     KEYWORD_UNION = auto()      # For UNION
     KEYWORD_ALL = auto()        # For UNION ALL
+    KEYWORD_WITH = auto()       # For CTE
     KEYWORD_ON = auto()
     KEYWORD_AND = auto()
     KEYWORD_OR = auto()
@@ -122,6 +123,7 @@ class Lexer:
             "RIGHT": TokenType.KEYWORD_RIGHT,
             "UNION": TokenType.KEYWORD_UNION,
             "ALL": TokenType.KEYWORD_ALL,
+            "WITH": TokenType.KEYWORD_WITH,
             "ON": TokenType.KEYWORD_ON,
             "AND": TokenType.KEYWORD_AND,
             "OR": TokenType.KEYWORD_OR,

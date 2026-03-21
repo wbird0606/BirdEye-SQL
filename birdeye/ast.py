@@ -13,6 +13,13 @@ class SelectStatement:
         self.group_by_cols = []
         self.having_condition = None
         self.order_by_terms = [] # List of OrderByNodes
+        self.ctes = []          # 💡 TDD New: List of CTENodes
+
+class CTENode:
+    """用於 WITH Name AS (query)"""
+    def __init__(self, name, query):
+        self.name = name
+        self.query = query      # SelectStatement or UnionStatement
 
 class UpdateStatement:
     def __init__(self):

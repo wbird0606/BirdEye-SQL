@@ -4,13 +4,13 @@ from birdeye.ast import (
     SqlBulkCopyStatement, IdentifierNode, LiteralNode, 
     BinaryExpressionNode, FunctionCallNode, JoinNode, AssignmentNode,
     OrderByNode, CaseExpressionNode, BetweenExpressionNode, CastExpressionNode,
-    UnionStatement
+    UnionStatement, CTENode
 )
 
 class Parser:
     """
     語法分析器：將 Token 序列轉換為抽象語法樹 (AST)。
-    v1.8.0: 支援 UNION / UNION ALL 集合運算與 CAST/CONVERT。
+    v1.9.0: 支援 CTE (WITH 子句)、UNION 與 CAST/CONVERT。
     """
     def __init__(self, tokens, source):
         self.tokens = tokens
@@ -50,9 +50,15 @@ class Parser:
         tok = self._peek()
         if not tok or tok.type == TokenType.EOF: raise SyntaxError("Empty source")
         
+        # 💡 v1.9.0: 處理 WITH 子句 (CTE)
+        ctes = []
+        if tok.type == TokenType.KEYWORD_WITH:
+            ctes = self._parse_ctes()
+            tok = self._peek() # 更新 tok 到 WITH 之後的關鍵字 (應為 SELECT)
+
         if tok.type == TokenType.KEYWORD_SELECT:
-            # 💡 v1.8.0: 支援集合運算 (UNION)
             stmt = self._parse_select_with_set_ops()
+            if ctes: stmt.ctes = ctes
         elif tok.type == TokenType.KEYWORD_UPDATE: stmt = self._parse_update()
         elif tok.type == TokenType.KEYWORD_DELETE: stmt = self._parse_delete()
         elif tok.type == TokenType.KEYWORD_INSERT: stmt = self._parse_insert()
@@ -66,26 +72,36 @@ class Parser:
             raise SyntaxError(f"Unexpected token: {self._get_text(peek)}")
         return stmt
 
-    # --- 2. DQL 解析: SELECT & UNION ---
+    # --- 2. CTE 解析 ---
+
+    def _parse_ctes(self):
+        self._consume(TokenType.KEYWORD_WITH, "Expected WITH")
+        ctes = []
+        while True:
+            name_tok = self._consume(TokenType.IDENTIFIER, "Expected CTE name")
+            name = self._get_text(name_tok).upper()
+            self._consume(TokenType.KEYWORD_AS, "Expected AS after CTE name")
+            self._consume(TokenType.SYMBOL_LPAREN, "Expected ( before CTE query")
+            query = self._parse_select_with_set_ops()
+            self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after CTE query")
+            ctes.append(CTENode(name=name, query=query))
+            if not self._match(TokenType.SYMBOL_COMMA): break
+        return ctes
+
+    # --- 3. DQL 解析: SELECT & UNION ---
 
     def _parse_select_with_set_ops(self):
-        """解析可能包含 UNION 的 SELECT 語句"""
         node = self._parse_single_select()
-        
         while True:
             if self._match(TokenType.KEYWORD_UNION):
                 op = "UNION"
-                if self._match(TokenType.KEYWORD_ALL):
-                    op = "UNION ALL"
-                
+                if self._match(TokenType.KEYWORD_ALL): op = "UNION ALL"
                 right = self._parse_single_select()
                 node = UnionStatement(left=node, operator=op, right=right)
-            else:
-                break
+            else: break
         return node
 
     def _parse_single_select(self):
-        """原有的單一 SELECT 解析邏輯"""
         stmt = SelectStatement()
         self._consume(TokenType.KEYWORD_SELECT, "Expected SELECT")
 
@@ -94,7 +110,6 @@ class Parser:
             if not num_tok: raise SyntaxError("Expected numeric literal after TOP")
             stmt.top_count = int(num_tok.value)
 
-        # 1. 解析投影欄位
         while True:
             if self._match(TokenType.SYMBOL_ASTERISK):
                 stmt.is_select_star = True
@@ -111,15 +126,13 @@ class Parser:
                     stmt.columns.append(expr)
             if not self._match(TokenType.SYMBOL_COMMA): break
 
-        # 2. FROM 與 JOIN
         if self._match(TokenType.KEYWORD_FROM):
             stmt.table, _ = self._parse_full_identifier_safe()
             self._match(TokenType.KEYWORD_AS)
             alias_tok = self._match(TokenType.IDENTIFIER)
             if alias_tok: stmt.table_alias = self._get_text(alias_tok)
 
-            if self._peek() and self._peek().type == TokenType.SYMBOL_COMMA:
-                raise SyntaxError("Expected FROM")
+            if self._peek() and self._peek().type == TokenType.SYMBOL_COMMA: raise SyntaxError("Expected FROM")
 
             while True:
                 jt = "INNER"
@@ -142,16 +155,13 @@ class Parser:
             needs_from = stmt.is_select_star or any(self._contains_identifier(c) for c in stmt.columns)
             if needs_from: self._consume(TokenType.KEYWORD_FROM, "Expected FROM")
 
-        # 3. 其餘子句
-        if self._match(TokenType.KEYWORD_WHERE):
-            stmt.where_condition = self._parse_expression()
+        if self._match(TokenType.KEYWORD_WHERE): stmt.where_condition = self._parse_expression()
         if self._match(TokenType.KEYWORD_GROUP):
             self._consume(TokenType.KEYWORD_BY, "Expected BY after GROUP")
             while True:
                 stmt.group_by_cols.append(self._parse_expression())
                 if not self._match(TokenType.SYMBOL_COMMA): break
-        if self._match(TokenType.KEYWORD_HAVING):
-            stmt.having_condition = self._parse_expression()
+        if self._match(TokenType.KEYWORD_HAVING): stmt.having_condition = self._parse_expression()
         if self._match(TokenType.KEYWORD_ORDER):
             self._consume(TokenType.KEYWORD_BY, "Expected BY after ORDER")
             while True:
@@ -174,7 +184,7 @@ class Parser:
             return self._contains_identifier(node.else_expr) if node.else_expr else False
         return False
 
-    # --- 3. DML 解析 ---
+    # --- 4. DML 解析 ---
 
     def _parse_update(self):
         stmt = UpdateStatement()
@@ -287,8 +297,7 @@ class Parser:
                 TokenType.SYMBOL_EQUAL, TokenType.SYMBOL_GT, TokenType.SYMBOL_LT,
                 TokenType.SYMBOL_GE, TokenType.SYMBOL_LE, TokenType.SYMBOL_NE
             )
-            if op_tok:
-                node = BinaryExpressionNode(left=node, operator=self._get_text(op_tok), right=self._parse_term())
+            if op_tok: node = BinaryExpressionNode(left=node, operator=self._get_text(op_tok), right=self._parse_term())
             else: break
         return node
 
@@ -352,15 +361,12 @@ class Parser:
             self._consume(TokenType.SYMBOL_RPAREN, "Expected )")
             return node
         
-        if self._match(TokenType.SYMBOL_ASTERISK):
-            return IdentifierNode(name="*", qualifiers=[])
+        if self._match(TokenType.SYMBOL_ASTERISK): return IdentifierNode(name="*", qualifiers=[])
 
         if tok.type == TokenType.SYMBOL_COMMA: raise SyntaxError("Expected identifier")
         
-        if tok.type == TokenType.NUMERIC_LITERAL:
-            return LiteralNode(value=self._get_text(self._advance()), type=tok.type)
-        if tok.type == TokenType.STRING_LITERAL:
-            return LiteralNode(value=self._get_text(self._advance()).strip("'"), type=tok.type)
+        if tok.type == TokenType.NUMERIC_LITERAL: return LiteralNode(value=self._get_text(self._advance()), type=tok.type)
+        if tok.type == TokenType.STRING_LITERAL: return LiteralNode(value=self._get_text(self._advance()).strip("'"), type=tok.type)
         
         if tok.type == TokenType.IDENTIFIER:
             id_node, is_func = self._parse_full_identifier_safe()
@@ -394,10 +400,8 @@ class Parser:
             then_expr = self._parse_expression()
             case_node.branches.append((when_expr, then_expr))
         
-        if not case_node.branches:
-            raise SyntaxError("CASE expression must have at least one WHEN branch")
-        if self._match(TokenType.KEYWORD_ELSE):
-            case_node.else_expr = self._parse_expression()
+        if not case_node.branches: raise SyntaxError("CASE expression must have at least one WHEN branch")
+        if self._match(TokenType.KEYWORD_ELSE): case_node.else_expr = self._parse_expression()
         self._consume(TokenType.KEYWORD_END, "Expected END at the end of CASE")
         return case_node
 
