@@ -4,7 +4,7 @@ from birdeye.ast import (
     SqlBulkCopyStatement, IdentifierNode, LiteralNode,
     BinaryExpressionNode, FunctionCallNode, JoinNode, AssignmentNode,
     OrderByNode, CaseExpressionNode, BetweenExpressionNode, CastExpressionNode,
-    UnionStatement, CTENode, TruncateStatement, DeclareStatement
+    UnionStatement, CTENode, TruncateStatement, DeclareStatement, ApplyNode
 )
 
 class Parser:
@@ -145,6 +145,28 @@ class Parser:
             if self._peek() and self._peek().type == TokenType.SYMBOL_COMMA: raise SyntaxError("Expected FROM")
 
             while True:
+                # Issue #53: 檢查 CROSS APPLY / OUTER APPLY
+                apply_type = None
+                if self._match(TokenType.KEYWORD_CROSS):
+                    if self._peek() and self._peek().type == TokenType.KEYWORD_APPLY:
+                        self._advance(); apply_type = "CROSS"
+                    else:
+                        raise SyntaxError("Expected APPLY after CROSS")
+                elif self._match(TokenType.KEYWORD_OUTER):
+                    if self._peek() and self._peek().type == TokenType.KEYWORD_APPLY:
+                        self._advance(); apply_type = "OUTER"
+                    else:
+                        raise SyntaxError("Expected APPLY after OUTER")
+                if apply_type:
+                    self._consume(TokenType.SYMBOL_LPAREN, "Expected ( after APPLY")
+                    subquery = self._parse_select_with_set_ops()
+                    self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after APPLY subquery")
+                    self._match(TokenType.KEYWORD_AS)
+                    al = self._match(TokenType.IDENTIFIER)
+                    alias = self._get_text(al) if al else None
+                    stmt.applies.append(ApplyNode(type=apply_type, subquery=subquery, alias=alias))
+                    continue
+
                 jt = "INNER"
                 if self._match(TokenType.KEYWORD_LEFT): jt = "LEFT"
                 elif self._match(TokenType.KEYWORD_RIGHT): jt = "RIGHT"

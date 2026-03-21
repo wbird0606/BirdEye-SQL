@@ -4,7 +4,7 @@ from birdeye.ast import (
     SqlBulkCopyStatement, IdentifierNode, BinaryExpressionNode,
     FunctionCallNode, LiteralNode, OrderByNode, CaseExpressionNode,
     BetweenExpressionNode, CastExpressionNode, UnionStatement, CTENode,
-    TruncateStatement, DeclareStatement
+    TruncateStatement, DeclareStatement, ApplyNode
 )
 
 class SemanticError(Exception):
@@ -58,6 +58,9 @@ class Binder:
             elif j.type == "RIGHT": self.nullable_stack[-1].update(self.scopes[-1].keys())
             self._register_scope(j.table, j.alias)
             if j.on_condition: self._visit_expression(j.on_condition)
+        # Issue #53: APPLY — 橫向作用域：子查詢在外側 scope 已存在時綁定，可見外側欄位
+        for apply in (stmt.applies if hasattr(stmt, 'applies') else []):
+            self._bind_apply(apply)
         if stmt.is_select_star: self._expand_global_star(stmt)
         for p in stmt.star_prefixes: self._expand_qualified_star(stmt, p)
         if stmt.where_condition and self._is_agg_raw(stmt.where_condition): raise SemanticError("Aggregate functions are not allowed in WHERE clause")
@@ -304,6 +307,29 @@ class Binder:
         self.variable_scope[stmt.var_name.upper()] = stmt.var_type
         if stmt.default_value:
             self._visit_expression(stmt.default_value)
+
+    def _bind_apply(self, apply):
+        """
+        Issue #53: 綁定 CROSS/OUTER APPLY 子查詢。
+        橫向作用域：子查詢在外側 scope 仍在堆疊上時進行綁定，
+        因此子查詢的 WHERE 條件可以參照外側表的欄位。
+        綁定完成後，將子查詢投影欄位注冊為 cte_schemas，使外側查詢可存取。
+        """
+        # 直接呼叫 _bind_select（不呼叫 bind() 以免重置 scope stack）
+        self._bind_select(apply.subquery)
+        # 收集子查詢的投影欄位作為 schema
+        schema = {}
+        for col in apply.subquery.columns:
+            col_name = (col.alias if hasattr(col, 'alias') and col.alias else col.name).upper()
+            schema[col_name] = col.inferred_type
+        apply.columns = list(apply.subquery.columns)
+        # 用 alias 注冊到 cte_schemas，讓外側 SELECT 可以 sub.City 方式存取
+        if apply.alias:
+            alias_up = apply.alias.upper()
+            self.cte_schemas[alias_up] = schema
+            self.scopes[-1][alias_up] = alias_up
+            if apply.type == "OUTER":
+                self.nullable_stack[-1].add(alias_up)
 
     def _check_type_compatibility(self, lt, rt, ctx):
         if not self._is_type_compatible(lt, rt): raise SemanticError(f"Incompatible types for {ctx}: Cannot compare {lt} with {rt}")

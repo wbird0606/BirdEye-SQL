@@ -50,6 +50,9 @@ class TokenType(Enum):
     KEYWORD_CONVERT = auto()    # For CONVERT
     KEYWORD_DECLARE = auto()    # For DECLARE (Issue #51)
     KEYWORD_GO = auto()         # For GO batch separator (Issue #51)
+    KEYWORD_CROSS = auto()      # For CROSS APPLY (Issue #53)
+    KEYWORD_APPLY = auto()      # For APPLY (Issue #53)
+    KEYWORD_OUTER = auto()      # For OUTER APPLY (Issue #53)
 
     # 💡 Issue #33 新增：CASE 邏輯關鍵字
     KEYWORD_CASE = auto()
@@ -167,6 +170,9 @@ class Lexer:
             "CONVERT": TokenType.KEYWORD_CONVERT,
             "DECLARE": TokenType.KEYWORD_DECLARE,
             "GO": TokenType.KEYWORD_GO,
+            "CROSS": TokenType.KEYWORD_CROSS,
+            "APPLY": TokenType.KEYWORD_APPLY,
+            "OUTER": TokenType.KEYWORD_OUTER,
             "OVER": TokenType.KEYWORD_OVER,
             "PARTITION": TokenType.KEYWORD_PARTITION,
             "ROWS": TokenType.KEYWORD_ROWS,

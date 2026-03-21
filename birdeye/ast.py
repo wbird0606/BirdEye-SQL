@@ -15,6 +15,7 @@ class SelectStatement:
         self.order_by_terms = [] # List of OrderByNodes
         self.ctes = []          # List of CTENodes
         self.into_table = None  # 💡 TDD New: 用於 SELECT ... INTO #Table
+        self.applies = []       # List of ApplyNodes (Issue #53)
 
 class CTENode:
     """用於 WITH Name AS (query)"""
@@ -145,6 +146,14 @@ class JoinNode:
         self.on_condition = None
         self.on_left = None
         self.on_right = None
+
+class ApplyNode:
+    """用於 CROSS APPLY / OUTER APPLY 關聯子查詢 (Issue #53)"""
+    def __init__(self, type, subquery, alias=None):
+        self.type = type        # "CROSS" or "OUTER"
+        self.subquery = subquery  # SelectStatement or UnionStatement
+        self.alias = alias      # str or None
+        self.columns = []       # 由 Binder 填入的投影欄位
 
 class OrderByNode:
     def __init__(self, column, direction="ASC"):
