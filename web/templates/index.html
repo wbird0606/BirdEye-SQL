@@ -40,9 +40,26 @@
                 <div id="upload-status" style="font-size: 12px; margin-top: 5px; color: #aaa;">Default: data/output.csv loaded.</div>
             </div>
 
-            <h3>SQL Query</h3>
-            <textarea id="sql-input" placeholder="Type your SQL here...&#10;e.g. SELECT AddressID, City FROM Address"></textarea>
-            <button onclick="parseSql()">Parse & Visualize</button>
+            <!-- 模式切換 -->
+            <div style="display: flex; gap: 0; margin-bottom: 15px; border: 1px solid #444; border-radius: 4px; overflow: hidden;">
+                <button id="mode-sql2ast" onclick="switchMode('sql2ast')" style="flex:1; background:#007acc; color:#fff; border:none; padding:8px; font-size:13px; cursor:pointer; border-radius:0;">SQL → AST</button>
+                <button id="mode-ast2sql" onclick="switchMode('ast2sql')" style="flex:1; background:#2d2d2d; color:#aaa; border:none; padding:8px; font-size:13px; cursor:pointer; border-radius:0;">AST → SQL</button>
+            </div>
+
+            <!-- SQL → AST 面板 -->
+            <div id="panel-sql2ast" style="display:flex; flex-direction:column; flex:1; min-height:0;">
+                <h3 style="margin:0 0 8px;">SQL Query</h3>
+                <textarea id="sql-input" placeholder="Type your SQL here...&#10;e.g. SELECT AddressID, City FROM Address"></textarea>
+                <button onclick="parseSql()">Parse & Visualize</button>
+            </div>
+
+            <!-- AST → SQL 面板 -->
+            <div id="panel-ast2sql" style="display:none; flex-direction:column; flex:1; min-height:0;">
+                <h3 style="margin:0 0 8px;">AST JSON</h3>
+                <textarea id="ast-input" placeholder='Paste AST JSON here...&#10;e.g. {"node_type": "SelectStatement", ...}'></textarea>
+                <button onclick="reconstructSql()" style="background:#9b59b6;">Reconstruct SQL</button>
+            </div>
+
             <div id="error-box" class="error-box"></div>
         </div>
 
@@ -53,6 +70,7 @@
                     <button class="tab-btn active" onclick="switchTab('mermaid-tab')">Flowchart (Mermaid)</button>
                     <button class="tab-btn" onclick="switchTab('tree-tab')">AST Tree</button>
                     <button class="tab-btn" onclick="switchTab('json-tab')">JSON</button>
+                    <button id="tab-btn-sql" class="tab-btn" onclick="switchTab('sql-tab')" style="display:none; color:#ce9178;">SQL</button>
                 </div>
                 <div id="toolbar" style="display: none; gap: 5px;">
                     <button onclick="downloadSVG()" style="background: #555; padding: 5px 10px; font-size: 12px;">⬇️ SVG</button>
@@ -67,11 +85,24 @@
             </div>
             
             <div id="tree-tab" class="tab-content">
+                <div style="display:flex; justify-content:flex-end; margin-bottom:6px;">
+                    <button id="copy-tree-btn" onclick="copyContent('tree-output','copy-tree-btn')" style="background:#555; padding:4px 12px; font-size:12px;">📋 Copy</button>
+                </div>
                 <pre id="tree-output">No data yet.</pre>
             </div>
 
             <div id="json-tab" class="tab-content">
+                <div style="display:flex; justify-content:flex-end; margin-bottom:6px;">
+                    <button id="copy-json-btn" onclick="copyContent('json-output','copy-json-btn')" style="background:#555; padding:4px 12px; font-size:12px;">📋 Copy</button>
+                </div>
                 <pre id="json-output">No data yet.</pre>
+            </div>
+
+            <div id="sql-tab" class="tab-content">
+                <div style="display:flex; justify-content:flex-end; margin-bottom:6px;">
+                    <button id="copy-sql-btn" onclick="copySql()" style="background:#555; padding:4px 12px; font-size:12px;">📋 Copy</button>
+                </div>
+                <pre id="sql-output" style="color: #ce9178; font-size: 14px; white-space: pre-wrap; word-break: break-all;">No data yet.</pre>
             </div>
         </div>
     </div>
@@ -82,8 +113,44 @@
     <script>
         // 初始化 Mermaid
         mermaid.initialize({ startOnLoad: false, theme: 'default' });
-        
+
         let panZoomInstance = null; // 儲存目前的平移縮放實例
+
+        // ── 模式切換 ────────────────────────────────
+        let currentMode = 'sql2ast';
+
+        function switchMode(mode) {
+            currentMode = mode;
+            const isSql2Ast = mode === 'sql2ast';
+
+            document.getElementById('panel-sql2ast').style.display = isSql2Ast ? 'flex' : 'none';
+            document.getElementById('panel-ast2sql').style.display = isSql2Ast ? 'none' : 'flex';
+
+            document.getElementById('mode-sql2ast').style.background = isSql2Ast ? '#007acc' : '#2d2d2d';
+            document.getElementById('mode-sql2ast').style.color = isSql2Ast ? '#fff' : '#aaa';
+            document.getElementById('mode-ast2sql').style.background = isSql2Ast ? '#2d2d2d' : '#9b59b6';
+            document.getElementById('mode-ast2sql').style.color = isSql2Ast ? '#aaa' : '#fff';
+
+            // 切換 AST→SQL 模式時，顯示 SQL tab；反之隱藏
+            const sqlTabBtn = document.getElementById('tab-btn-sql');
+            if (isSql2Ast) {
+                sqlTabBtn.style.display = 'none';
+                switchTab('mermaid-tab', document.querySelector('.tab-btn'));
+            } else {
+                sqlTabBtn.style.display = 'inline-block';
+                switchTabById('sql-tab', sqlTabBtn);
+            }
+
+            document.getElementById('error-box').style.display = 'none';
+        }
+
+        function switchTabById(tabId, btn) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
+            document.getElementById(tabId).classList.add('active');
+            if (btn) btn.classList.add('active');
+            document.getElementById('toolbar').style.display = 'none';
+        }
 
         function switchTab(tabId) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
@@ -209,6 +276,71 @@
                 errorBox.textContent = "Network Error: Could not connect to the API.";
             }
         }
+
+        // ── AST → SQL ────────────────────────────────
+        async function reconstructSql() {
+            const astText = document.getElementById('ast-input').value.trim();
+            const errorBox = document.getElementById('error-box');
+            errorBox.style.display = 'none';
+
+            if (!astText) return;
+
+            let astPayload;
+            try {
+                astPayload = JSON.parse(astText);
+            } catch (e) {
+                // 讓後端去處理，或顯示 JSON 格式錯誤
+                errorBox.style.display = 'block';
+                errorBox.innerHTML = '<strong>JSON Parse Error:</strong><br/>' + e.message;
+                return;
+            }
+
+            try {
+                const response = await fetch('/api/reconstruct', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ast: astPayload })
+                });
+
+                const data = await response.json();
+
+                if (response.ok && data.status === 'success') {
+                    document.getElementById('sql-output').textContent = data.sql;
+                    switchTabById('sql-tab', document.getElementById('tab-btn-sql'));
+                } else {
+                    errorBox.style.display = 'block';
+                    errorBox.innerHTML = `<strong>${data.error_type || 'Error'}:</strong><br/>${data.message}`;
+                }
+            } catch (err) {
+                errorBox.style.display = 'block';
+                errorBox.textContent = 'Network Error: Could not connect to the API.';
+            }
+        }
+
+        function copyContent(outputId, btnId) {
+            const text = document.getElementById(outputId).textContent;
+            if (!text || text === 'No data yet.') return;
+            const btn = document.getElementById(btnId);
+            const confirm = () => {
+                btn.textContent = '✅ Copied!';
+                setTimeout(() => btn.textContent = '📋 Copy', 1500);
+            };
+            if (navigator.clipboard && window.isSecureContext) {
+                navigator.clipboard.writeText(text).then(confirm);
+            } else {
+                const el = document.createElement('textarea');
+                el.value = text;
+                el.style.position = 'fixed';
+                el.style.opacity = '0';
+                document.body.appendChild(el);
+                el.select();
+                document.execCommand('copy');
+                document.body.removeChild(el);
+                confirm();
+            }
+        }
+
+        function copySql() { copyContent('sql-output', 'copy-sql-btn'); }
 
         // --- 下載功能實作 ---
         
