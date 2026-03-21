@@ -56,6 +56,7 @@ class Binder:
             al = (j.alias or j.table.name).upper()
             if j.type == "LEFT": self.nullable_stack[-1].add(al)
             elif j.type == "RIGHT": self.nullable_stack[-1].update(self.scopes[-1].keys())
+            elif j.type == "FULL": self.nullable_stack[-1].add(al); self.nullable_stack[-1].update(self.scopes[-1].keys())
             self._register_scope(j.table, j.alias)
             if j.on_condition: self._visit_expression(j.on_condition)
         # Issue #53: APPLY — 橫向作用域：子查詢在外側 scope 已存在時綁定，可見外側欄位
@@ -211,7 +212,7 @@ class Binder:
                 else:
                     if not self._is_type_compatible(lt, "INT") or not self._is_type_compatible(rt, "INT"): raise SemanticError(f"Operator '{expr.operator}' cannot be applied")
                     expr.inferred_type = "INT"
-            elif expr.operator in ["=", ">", "<", ">=", "<=", "<>", "IN", "LIKE", "NOT LIKE", "IS NULL", "IS NOT NULL"] or " ANY" in expr.operator or " ALL" in expr.operator:
+            elif expr.operator in ["=", ">", "<", ">=", "<=", "<>", "IN", "NOT IN", "LIKE", "NOT LIKE", "IS NULL", "IS NOT NULL"] or " ANY" in expr.operator or " ALL" in expr.operator:
                 # 💡 TDD Fix: 針對 ANY / ALL 進行深度型別解析
                 if " ANY" in expr.operator or " ALL" in expr.operator:
                     if isinstance(expr.right, list):
@@ -226,6 +227,16 @@ class Binder:
                             sub_rt = expr.right.columns[0].inferred_type
                             if not self._is_type_compatible(lt, sub_rt):
                                 raise SemanticError(f"Incompatible types in {expr.operator}: {lt} vs {sub_rt}")
+                    expr.inferred_type = "BIT"
+                elif expr.operator in ["IN", "NOT IN"]:
+                    # Issue #60: IN / NOT IN list or subquery
+                    if isinstance(expr.right, list):
+                        for item in expr.right:
+                            it = self._visit_expression(item)
+                            if not self._is_type_compatible(lt, it):
+                                raise SemanticError(f"Incompatible types in {expr.operator}: {lt} vs {it}")
+                    elif isinstance(expr.right, (SelectStatement, UnionStatement)):
+                        self._bind_node(expr.right)
                     expr.inferred_type = "BIT"
                 elif expr.operator not in ["IS NULL", "IS NOT NULL"]:
                     if not self._is_type_compatible(lt, rt):

@@ -50,7 +50,9 @@ class ASTSerializer:
                 "where": self._serialize(node.where_condition),
                 "group_by": self._serialize(node.group_by_cols),
                 "having": self._serialize(node.having_condition),
-                "order_by": self._serialize(node.order_by_terms)
+                "order_by": self._serialize(node.order_by_terms),
+                "offset_count": node.offset_count if hasattr(node, 'offset_count') else None,
+                "fetch_count": node.fetch_count if hasattr(node, 'fetch_count') else None,
             })
 
         elif isinstance(node, UnionStatement):

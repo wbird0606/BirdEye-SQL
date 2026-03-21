@@ -87,9 +87,14 @@ class ASTVisualizer:
                 self._visit(node.having_condition, indent + 2, "COND")
 
             if node.order_by_terms:
-                self.lines.append(f"{current_indent}  └── ORDER BY")
+                self.lines.append(f"{current_indent}  ├── ORDER BY")
                 for order in node.order_by_terms:
                     self._visit(order, indent + 2, "ORDER")
+
+            if hasattr(node, 'offset_count') and node.offset_count is not None:
+                self.lines.append(f"{current_indent}  ├── OFFSET: {node.offset_count}")
+            if hasattr(node, 'fetch_count') and node.fetch_count is not None:
+                self.lines.append(f"{current_indent}  └── FETCH NEXT: {node.fetch_count}")
 
         elif isinstance(node, UnionStatement):
             self.lines.append(f"{prefix}SET_OPERATION: {node.operator}")

@@ -51,6 +51,7 @@ class MetadataRegistry:
 
         # --- 特殊結構 ---
         self.register_function("EXISTS", "SCALAR", 1, 1, ["ANY"], "BIT")
+        self.register_function("NOT EXISTS", "SCALAR", 1, 1, ["ANY"], "BIT")
 
         # --- UUID 函數 (Issue #54) ---
         self.register_function("NEWID", "SCALAR", 0, 0, [], "UNIQUEIDENTIFIER")

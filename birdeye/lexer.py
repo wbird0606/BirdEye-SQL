@@ -50,6 +50,11 @@ class TokenType(Enum):
     KEYWORD_CONVERT = auto()    # For CONVERT
     KEYWORD_DISTINCT = auto()   # For DISTINCT (Issue #55)
     KEYWORD_PERCENT = auto()    # For TOP N PERCENT (Issue #59)
+    KEYWORD_FULL = auto()       # For FULL OUTER JOIN (Issue #63)
+    KEYWORD_OFFSET = auto()     # For OFFSET FETCH (Issue #64)
+    KEYWORD_FETCH = auto()      # For OFFSET FETCH (Issue #64)
+    KEYWORD_NEXT = auto()       # For FETCH NEXT (Issue #64)
+    KEYWORD_ONLY = auto()       # For ROWS ONLY (Issue #64)
     KEYWORD_DECLARE = auto()    # For DECLARE (Issue #51)
     KEYWORD_GO = auto()         # For GO batch separator (Issue #51)
     KEYWORD_CROSS = auto()      # For CROSS APPLY (Issue #53)
@@ -172,6 +177,11 @@ class Lexer:
             "CONVERT": TokenType.KEYWORD_CONVERT,
             "DISTINCT": TokenType.KEYWORD_DISTINCT,
             "PERCENT": TokenType.KEYWORD_PERCENT,
+            "FULL": TokenType.KEYWORD_FULL,
+            "OFFSET": TokenType.KEYWORD_OFFSET,
+            "FETCH": TokenType.KEYWORD_FETCH,
+            "NEXT": TokenType.KEYWORD_NEXT,
+            "ONLY": TokenType.KEYWORD_ONLY,
             "DECLARE": TokenType.KEYWORD_DECLARE,
             "GO": TokenType.KEYWORD_GO,
             "CROSS": TokenType.KEYWORD_CROSS,

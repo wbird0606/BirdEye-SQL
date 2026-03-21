@@ -158,6 +158,21 @@ def test_outer_apply_node_serialization():
     apply = data["applies"][0]
     assert apply["apply_type"] == "OUTER"
 
+# --- Issue #60-#64: NOT IN / OFFSET FETCH 序列化測試 ---
+
+def test_not_in_operator_serialization():
+    """NOT IN 應序列化為 op='NOT IN' 的 BinaryExpressionNode"""
+    ast = get_ast("SELECT A FROM T WHERE A NOT IN (1, 2)")
+    data = json.loads(ASTSerializer().to_json(ast))
+    assert data["where"]["op"] == "NOT IN"
+
+def test_offset_fetch_serialization():
+    """OFFSET FETCH 應序列化為含 offset_count / fetch_count 的 JSON"""
+    ast = get_ast("SELECT A FROM T ORDER BY A OFFSET 10 ROWS FETCH NEXT 5 ROWS ONLY")
+    data = json.loads(ASTSerializer().to_json(ast))
+    assert data["offset_count"] == 10
+    assert data["fetch_count"] == 5
+
 # --- Issue #59: TOP N PERCENT 序列化測試 ---
 
 def test_top_percent_serialization():

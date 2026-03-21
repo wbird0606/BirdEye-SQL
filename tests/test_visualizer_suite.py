@@ -174,6 +174,26 @@ def test_visualizer_outer_apply(global_runner):
     output = run_visualize_full(sql, global_runner)
     assert "OUTER_APPLY" in output
 
+# --- Issue #60-#64: NOT IN / NOT EXISTS / JOIN / OFFSET FETCH 視覺化測試 ---
+
+def test_visualizer_offset_fetch():
+    """OFFSET FETCH 應顯示 OFFSET 與 FETCH NEXT 節點"""
+    output = run_visualize(
+        "SELECT A FROM T ORDER BY A OFFSET 10 ROWS FETCH NEXT 5 ROWS ONLY"
+    )
+    assert "OFFSET: 10" in output
+    assert "FETCH NEXT: 5" in output
+
+def test_visualizer_cross_join():
+    """CROSS JOIN 視覺化應顯示 CROSS_JOIN"""
+    output = run_visualize("SELECT A FROM T CROSS JOIN T2")
+    assert "CROSS_JOIN" in output
+
+def test_visualizer_full_outer_join():
+    """FULL OUTER JOIN 視覺化應顯示 FULL_JOIN"""
+    output = run_visualize("SELECT A FROM T FULL OUTER JOIN T2 ON T.A = T2.A")
+    assert "FULL_JOIN" in output
+
 # --- Issue #59: TOP N PERCENT 視覺化測試 ---
 
 def test_visualizer_top_percent():

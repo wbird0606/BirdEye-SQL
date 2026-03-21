@@ -155,8 +155,17 @@ class Parser:
                 if self._match(TokenType.KEYWORD_CROSS):
                     if self._peek() and self._peek().type == TokenType.KEYWORD_APPLY:
                         self._advance(); apply_type = "CROSS"
+                    elif self._peek() and self._peek().type == TokenType.KEYWORD_JOIN:
+                        # Issue #62: CROSS JOIN（笛卡兒積）
+                        self._advance()
+                        tbl, _ = self._parse_full_identifier_safe()
+                        j_node = JoinNode(type="CROSS", table=tbl)
+                        self._match(TokenType.KEYWORD_AS); al = self._match(TokenType.IDENTIFIER)
+                        if al: j_node.alias = self._get_text(al)
+                        stmt.joins.append(j_node)
+                        continue
                     else:
-                        raise SyntaxError("Expected APPLY after CROSS")
+                        raise SyntaxError("Expected APPLY or JOIN after CROSS")
                 elif self._match(TokenType.KEYWORD_OUTER):
                     if self._peek() and self._peek().type == TokenType.KEYWORD_APPLY:
                         self._advance(); apply_type = "OUTER"
@@ -175,7 +184,9 @@ class Parser:
                 jt = "INNER"
                 if self._match(TokenType.KEYWORD_LEFT): jt = "LEFT"
                 elif self._match(TokenType.KEYWORD_RIGHT): jt = "RIGHT"
+                elif self._match(TokenType.KEYWORD_FULL): jt = "FULL"  # Issue #63
                 self._match(TokenType.KEYWORD_INNER)
+                self._match(TokenType.KEYWORD_OUTER)  # 吸收可選的 OUTER
                 if self._match(TokenType.KEYWORD_JOIN):
                     tbl, _ = self._parse_full_identifier_safe()
                     j_node = JoinNode(type=jt, table=tbl)
@@ -208,6 +219,17 @@ class Parser:
                 elif self._match(TokenType.KEYWORD_ASC): direction = "ASC"
                 stmt.order_by_terms.append(OrderByNode(column=col_expr, direction=direction))
                 if not self._match(TokenType.SYMBOL_COMMA): break
+        # Issue #64: OFFSET n ROWS [FETCH NEXT n ROWS ONLY]
+        if self._match(TokenType.KEYWORD_OFFSET):
+            num_tok = self._consume(TokenType.NUMERIC_LITERAL, "Expected number after OFFSET")
+            stmt.offset_count = int(num_tok.value)
+            self._match(TokenType.KEYWORD_ROWS)  # 吸收可選 ROWS
+            if self._match(TokenType.KEYWORD_FETCH):
+                self._match(TokenType.KEYWORD_NEXT)  # 吸收可選 NEXT
+                fetch_tok = self._consume(TokenType.NUMERIC_LITERAL, "Expected number after FETCH")
+                stmt.fetch_count = int(fetch_tok.value)
+                self._match(TokenType.KEYWORD_ROWS)  # 吸收可選 ROWS
+                self._match(TokenType.KEYWORD_ONLY)  # 吸收可選 ONLY
         return stmt
 
     def _contains_identifier(self, node) -> bool:
@@ -347,8 +369,20 @@ class Parser:
                     self._consume(TokenType.KEYWORD_AND, "Expected AND after BETWEEN low")
                     high = self._parse_term()
                     node = BetweenExpressionNode(expr=node, low=low, high=high, is_not=True)
+                elif self._match(TokenType.KEYWORD_IN):
+                    # Issue #60: NOT IN
+                    self._consume(TokenType.SYMBOL_LPAREN, "Expected ( after NOT IN")
+                    if self._peek() and self._peek().type == TokenType.KEYWORD_SELECT:
+                        right_node = self._parse_select_with_set_ops()
+                    else:
+                        right_node = []
+                        while True:
+                            right_node.append(self._parse_expression())
+                            if not self._match(TokenType.SYMBOL_COMMA): break
+                    self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after NOT IN list")
+                    node = BinaryExpressionNode(left=node, operator="NOT IN", right=right_node)
                 else:
-                    raise SyntaxError("Expected LIKE or BETWEEN after NOT")
+                    raise SyntaxError("Expected LIKE, BETWEEN, or IN after NOT")
                 continue
             if self._match(TokenType.KEYWORD_LIKE):
                 node = BinaryExpressionNode(left=node, operator="LIKE", right=self._parse_term())
@@ -444,6 +478,16 @@ class Parser:
             subquery = self._parse_select_with_set_ops()
             self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after EXISTS")
             return FunctionCallNode(name="EXISTS", args=[subquery])
+
+        # Issue #61: NOT EXISTS / NOT (前置否定)
+        if tok.type == TokenType.KEYWORD_NOT:
+            self._advance()
+            if self._match(TokenType.KEYWORD_EXISTS):
+                self._consume(TokenType.SYMBOL_LPAREN, "Expected ( after NOT EXISTS")
+                subquery = self._parse_select_with_set_ops()
+                self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after NOT EXISTS")
+                return FunctionCallNode(name="NOT EXISTS", args=[subquery])
+            raise SyntaxError("Expected EXISTS after NOT")
 
         if self._match(TokenType.SYMBOL_LPAREN):
             if self._peek() and self._peek().type == TokenType.KEYWORD_SELECT:
