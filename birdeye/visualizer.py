@@ -128,9 +128,18 @@ class ASTVisualizer:
                 self.lines.append(f"{current_indent}  ├── COLUMNS")
                 for col in node.columns:
                     self.lines.append(f"{current_indent}  │   └── {col.name}")
-            self.lines.append(f"{current_indent}  └── VALUES")
-            for val in node.values:
-                self._visit(val, indent + 2, "VAL")
+            if node.source is not None:
+                self.lines.append(f"{current_indent}  └── SOURCE")
+                self._visit(node.source, indent + 2, "SELECT")
+            elif node.value_rows:
+                for i, row in enumerate(node.value_rows):
+                    self.lines.append(f"{current_indent}  ├── VALUES ROW #{i+1}")
+                    for val in row:
+                        self._visit(val, indent + 3, "VAL")
+            else:
+                self.lines.append(f"{current_indent}  └── VALUES")
+                for val in node.values:
+                    self._visit(val, indent + 2, "VAL")
 
         elif isinstance(node, TruncateStatement):
             self.lines.append(f"{prefix}TRUNCATE_STATEMENT")

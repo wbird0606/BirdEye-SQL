@@ -174,6 +174,20 @@ def test_visualizer_outer_apply(global_runner):
     output = run_visualize_full(sql, global_runner)
     assert "OUTER_APPLY" in output
 
+# --- Issue #57/#58: INSERT-SELECT 與 Multi-row VALUES 視覺化測試 ---
+
+def test_visualizer_insert_select():
+    """INSERT-SELECT 應顯示 SOURCE 節點"""
+    output = run_visualize("INSERT INTO Address (AddressID) SELECT AddressID FROM Address")
+    assert "INSERT_STATEMENT" in output
+    assert "SOURCE" in output
+
+def test_visualizer_multirow_values():
+    """Multi-row VALUES 應顯示多組 VALUES ROW"""
+    output = run_visualize("INSERT INTO Address (AddressID, City) VALUES (1, 'A'), (2, 'B')")
+    assert "VALUES ROW #1" in output
+    assert "VALUES ROW #2" in output
+
 # --- Issue #55/#56: DISTINCT 與 NULL 視覺化測試 ---
 
 def test_visualizer_distinct_display(global_runner):

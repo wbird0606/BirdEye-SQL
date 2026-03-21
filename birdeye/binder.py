@@ -292,13 +292,27 @@ class Binder:
                 if self.registry.get_columns(tn) and not self.registry.has_column(tn, c.name.upper()):
                     raise SemanticError(f"Column '{c.name}' not found in '{tn.capitalize()}'")
         col_names = [c.name.upper() for c in stmt.columns] if stmt.columns else self.registry.get_columns(tn)
-        if len(col_names) != len(stmt.values):
-            raise SemanticError(f"Column count mismatch: Expected {len(col_names)}, got {len(stmt.values)}")
-        for i, v in enumerate(stmt.values):
-            rt = self._visit_expression(v)
-            if col_names:
-                lt = self.registry.get_column_type(tn, col_names[i])
-                self._check_type_compatibility(lt, rt, f"INSERT into '{col_names[i]}'")
+        # Issue #57: INSERT-SELECT
+        if stmt.source is not None:
+            self._bind_node(stmt.source)
+            src_cols = stmt.source.columns if hasattr(stmt.source, 'columns') else []
+            if col_names and len(col_names) != len(src_cols):
+                raise SemanticError(f"Column count mismatch: Expected {len(col_names)}, got {len(src_cols)}")
+            for i, col in enumerate(src_cols):
+                if col_names:
+                    lt = self.registry.get_column_type(tn, col_names[i])
+                    self._check_type_compatibility(lt, col.inferred_type, f"INSERT into '{col_names[i]}'")
+            self.scopes.pop(); return
+        # Issue #58: Multi-row VALUES
+        rows = stmt.value_rows if stmt.value_rows else [stmt.values]
+        for row in rows:
+            if col_names and len(col_names) != len(row):
+                raise SemanticError(f"Column count mismatch: Expected {len(col_names)}, got {len(row)}")
+            for i, v in enumerate(row):
+                rt = self._visit_expression(v)
+                if col_names:
+                    lt = self.registry.get_column_type(tn, col_names[i])
+                    self._check_type_compatibility(lt, rt, f"INSERT into '{col_names[i]}'")
         self.scopes.pop()
 
     def _bind_truncate(self, stmt):

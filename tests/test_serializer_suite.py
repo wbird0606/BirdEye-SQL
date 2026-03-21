@@ -158,6 +158,23 @@ def test_outer_apply_node_serialization():
     apply = data["applies"][0]
     assert apply["apply_type"] == "OUTER"
 
+# --- Issue #57/#58: INSERT-SELECT 與 Multi-row VALUES 序列化測試 ---
+
+def test_insert_select_serialization():
+    """INSERT-SELECT 應序列化為含 source 欄位的 JSON"""
+    ast = get_ast("INSERT INTO Address (AddressID) SELECT AddressID FROM Address")
+    data = json.loads(ASTSerializer().to_json(ast))
+    assert data["source"] is not None
+    assert data["source"]["node_type"] == "SelectStatement"
+    assert data["values"] is None
+
+def test_multirow_values_serialization():
+    """Multi-row VALUES 應序列化為含 value_rows 的 JSON"""
+    ast = get_ast("INSERT INTO Address (AddressID, City) VALUES (1, 'A'), (2, 'B')")
+    data = json.loads(ASTSerializer().to_json(ast))
+    assert isinstance(data["value_rows"], list)
+    assert len(data["value_rows"]) == 2
+
 # --- Issue #55/#56: DISTINCT 與 NULL 序列化測試 ---
 
 def test_distinct_serialization():

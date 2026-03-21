@@ -41,7 +41,9 @@ class InsertStatement:
     def __init__(self):
         self.table = None
         self.columns = []       # List of IdentifierNodes
-        self.values = []        # List of ExpressionNodes
+        self.values = []        # List of ExpressionNodes (single-row, backward compat)
+        self.value_rows = []    # Issue #58: List of List[ExpressionNode] (multi-row)
+        self.source = None      # Issue #57: SelectStatement (INSERT-SELECT)
 
 class TruncateStatement:
     """用於 TRUNCATE TABLE 語句"""

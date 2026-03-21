@@ -100,7 +100,9 @@ class ASTSerializer:
             res.update({
                 "table": self._serialize(node.table),
                 "columns": self._serialize(node.columns),
-                "values": self._serialize(node.values)
+                "values": None if node.source else (self._serialize(node.values) if not node.value_rows or len(node.value_rows) <= 1 else None),
+                "value_rows": self._serialize(node.value_rows) if node.value_rows else None,
+                "source": self._serialize(node.source) if node.source else None,
             })
 
         elif isinstance(node, TruncateStatement):

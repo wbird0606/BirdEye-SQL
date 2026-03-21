@@ -262,12 +262,23 @@ class Parser:
                 stmt.columns.append(col)
                 if not self._match(TokenType.SYMBOL_COMMA): break
             self._consume(TokenType.SYMBOL_RPAREN, "Unclosed bracket")
+        # Issue #57: INSERT-SELECT
+        if self._peek() and self._peek().type == TokenType.KEYWORD_SELECT:
+            stmt.source = self._parse_select_with_set_ops()
+            return stmt
+        # Issue #58: Multi-row VALUES
         self._consume(TokenType.KEYWORD_VALUES, "Expected VALUES")
-        self._consume(TokenType.SYMBOL_LPAREN, "Expected (")
         while True:
-            stmt.values.append(self._parse_expression())
+            self._consume(TokenType.SYMBOL_LPAREN, "Expected (")
+            row = []
+            while True:
+                row.append(self._parse_expression())
+                if not self._match(TokenType.SYMBOL_COMMA): break
+            self._consume(TokenType.SYMBOL_RPAREN, "Expected )")
+            stmt.value_rows.append(row)
             if not self._match(TokenType.SYMBOL_COMMA): break
-        self._consume(TokenType.SYMBOL_RPAREN, "Expected )")
+        # 向後相容：保留 values 指向第一列
+        stmt.values = stmt.value_rows[0] if stmt.value_rows else []
         return stmt
 
     def _parse_bulk_insert(self):
