@@ -2,7 +2,7 @@
 from birdeye.ast import (
     SelectStatement, UpdateStatement, DeleteStatement, InsertStatement,
     SqlBulkCopyStatement, IdentifierNode, BinaryExpressionNode, 
-    FunctionCallNode, LiteralNode, OrderByNode, CaseExpressionNode
+    FunctionCallNode, LiteralNode, OrderByNode, CaseExpressionNode, BetweenExpressionNode
 )
 
 class SemanticError(Exception):
@@ -28,6 +28,19 @@ class Binder:
         elif isinstance(stmt, InsertStatement): self._bind_insert(stmt)
         elif isinstance(stmt, SqlBulkCopyStatement): self._bind_bulk_insert(stmt)
         return stmt
+
+    def _visit_between(self, node):
+        """🛡️ ZTA 政策：驗證 BETWEEN 三元運算子的型別相容性"""
+        target_type = self._visit_expression(node.expr)
+        low_type = self._visit_expression(node.low)
+        high_type = self._visit_expression(node.high)
+        
+        # 檢查中間值與低/高邊界是否相容
+        if not self._is_type_compatible(target_type, low_type) or not self._is_type_compatible(target_type, high_type):
+            raise SemanticError(f"Incompatible types in BETWEEN: Cannot compare {target_type} with {low_type} and {high_type}")
+            
+        node.inferred_type = "BIT"
+        return "BIT"
 
     def _is_type_compatible(self, type1, type2):
         """
@@ -115,6 +128,10 @@ class Binder:
                     raise SemanticError(f"CASE branches have incompatible types: {' and '.join(reversed(u))}")
             
             expr.inferred_type = b_types[0] if b_types else "UNKNOWN"; return expr.inferred_type
+        
+        elif isinstance(expr, BetweenExpressionNode):
+            return self._visit_between(expr)
+
         elif isinstance(expr, SelectStatement):
             self._bind_select(expr); return "TABLE"
         return "UNKNOWN"

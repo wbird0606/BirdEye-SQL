@@ -66,7 +66,6 @@ class LiteralNode(ExpressionNode):
         self.type = type  # Lexer 標記的 TokenType (NUMERIC_LITERAL / STRING_LITERAL)
         
         # 💡 基礎類型預映射
-        # 注意：此處需確保不會造成循環引用，或在 Binder 階段再統整映射
         from birdeye.lexer import TokenType
         if type == TokenType.NUMERIC_LITERAL:
             self.inferred_type = "INT"
@@ -92,6 +91,23 @@ class CaseExpressionNode(ExpressionNode):
         self.input_expr = input_expr
         self.branches = []  # List of (when_expr, then_expr)
         self.else_expr = None
+
+class BetweenExpressionNode(ExpressionNode):
+    """用於 expr [NOT] BETWEEN low AND high"""
+    def __init__(self, expr, low, high, is_not=False):
+        super().__init__()
+        self.expr = expr
+        self.low = low
+        self.high = high
+        self.is_not = is_not
+
+class CastExpressionNode(ExpressionNode):
+    """用於 CAST(expr AS type) 或 CONVERT(type, expr)"""
+    def __init__(self, expr, target_type, is_convert=False):
+        super().__init__()
+        self.expr = expr
+        self.target_type = target_type
+        self.is_convert = is_convert
 
 # --- 4. 結構輔助節點 ---
 

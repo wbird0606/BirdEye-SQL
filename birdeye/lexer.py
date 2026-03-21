@@ -32,6 +32,7 @@ class TokenType(Enum):
     KEYWORD_NOT = auto()        # For IS NOT NULL
     KEYWORD_NULL = auto()       # For IS NULL
     KEYWORD_LIKE = auto()       # For LIKE
+    KEYWORD_BETWEEN = auto()    # For BETWEEN
     
     # 💡 Issue #33 新增：CASE 邏輯關鍵字
     KEYWORD_CASE = auto()
@@ -131,6 +132,7 @@ class Lexer:
             "NOT": TokenType.KEYWORD_NOT,
             "NULL": TokenType.KEYWORD_NULL,
             "LIKE": TokenType.KEYWORD_LIKE,
+            "BETWEEN": TokenType.KEYWORD_BETWEEN,
             "CASE": TokenType.KEYWORD_CASE,
             "WHEN": TokenType.KEYWORD_WHEN,
             "THEN": TokenType.KEYWORD_THEN,

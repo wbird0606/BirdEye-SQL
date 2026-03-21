@@ -3,7 +3,7 @@ from birdeye.ast import (
     SelectStatement, UpdateStatement, DeleteStatement, InsertStatement, 
     SqlBulkCopyStatement, IdentifierNode, LiteralNode, 
     BinaryExpressionNode, FunctionCallNode, JoinNode, AssignmentNode,
-    OrderByNode, CaseExpressionNode
+    OrderByNode, CaseExpressionNode, BetweenExpressionNode
 )
 
 class Parser:
@@ -157,7 +157,6 @@ class Parser:
         if isinstance(node, BinaryExpressionNode):
             return self._contains_identifier(node.left) or self._contains_identifier(node.right)
         if isinstance(node, FunctionCallNode):
-            # 內建函數如 GETDATE() 參數為空，或參數皆為字面量，則回傳 False
             return any(self._contains_identifier(arg) for arg in node.args)
         if isinstance(node, CaseExpressionNode):
             if node.input_expr and self._contains_identifier(node.input_expr): return True
@@ -238,18 +237,30 @@ class Parser:
         while True:
             if self._match(TokenType.KEYWORD_IS):
                 is_not = False
-                if self._match(TokenType.KEYWORD_NOT):
-                    is_not = True
+                if self._match(TokenType.KEYWORD_NOT): is_not = True
                 self._consume(TokenType.KEYWORD_NULL, "Expected NULL after IS")
                 op = "IS NOT NULL" if is_not else "IS NULL"
                 node = BinaryExpressionNode(left=node, operator=op, right=LiteralNode(value="NULL", type=TokenType.IDENTIFIER))
                 continue
-            if self._match(TokenType.KEYWORD_LIKE):
-                node = BinaryExpressionNode(left=node, operator="LIKE", right=self._parse_term())
+            if self._match(TokenType.KEYWORD_BETWEEN):
+                low = self._parse_term()
+                self._consume(TokenType.KEYWORD_AND, "Expected AND after BETWEEN low")
+                high = self._parse_term()
+                node = BetweenExpressionNode(expr=node, low=low, high=high, is_not=False)
                 continue
             if self._match(TokenType.KEYWORD_NOT):
-                self._consume(TokenType.KEYWORD_LIKE, "Expected LIKE after NOT")
-                node = BinaryExpressionNode(left=node, operator="NOT LIKE", right=self._parse_term())
+                if self._match(TokenType.KEYWORD_LIKE):
+                    node = BinaryExpressionNode(left=node, operator="NOT LIKE", right=self._parse_term())
+                elif self._match(TokenType.KEYWORD_BETWEEN):
+                    low = self._parse_term()
+                    self._consume(TokenType.KEYWORD_AND, "Expected AND after BETWEEN low")
+                    high = self._parse_term()
+                    node = BetweenExpressionNode(expr=node, low=low, high=high, is_not=True)
+                else:
+                    raise SyntaxError("Expected LIKE or BETWEEN after NOT")
+                continue
+            if self._match(TokenType.KEYWORD_LIKE):
+                node = BinaryExpressionNode(left=node, operator="LIKE", right=self._parse_term())
                 continue
             if self._match(TokenType.KEYWORD_IN):
                 self._consume(TokenType.SYMBOL_LPAREN, "Expected ( after IN")
@@ -279,8 +290,7 @@ class Parser:
                 node = BinaryExpressionNode(left=node, operator="+", right=self._parse_factor())
             elif self._match(TokenType.SYMBOL_MINUS):
                 node = BinaryExpressionNode(left=node, operator="-", right=self._parse_factor())
-            else:
-                break
+            else: break
         return node
         
     def _parse_factor(self):
@@ -290,8 +300,7 @@ class Parser:
                 node = BinaryExpressionNode(left=node, operator="*", right=self._parse_primary())
             elif self._match(TokenType.SYMBOL_SLASH):
                 node = BinaryExpressionNode(left=node, operator="/", right=self._parse_primary())
-            else:
-                break
+            else: break
         return node
 
     def _parse_primary(self):
