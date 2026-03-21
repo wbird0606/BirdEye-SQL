@@ -88,3 +88,46 @@ def test_visualizer_function_type_display(global_runner):
 
     assert "FUNCTION: GETDATE" in output
     assert "[Type: DATETIME]" in output
+
+# --- 💡 TDD New: 進階語法視覺化測試 (Issue #45-48) ---
+
+def test_visualizer_cte_display(global_runner):
+    """驗證 CTE (WITH 子句) 的視覺化呈現"""
+    sql = "WITH MyCTE AS (SELECT 1 AS A) SELECT A FROM MyCTE"
+    output = run_visualize_full(sql, global_runner)
+    assert "WITH (CTEs)" in output
+    assert "CTE: MYCTE" in output
+    assert "SELECT_STATEMENT" in output
+
+def test_visualizer_union_display(global_runner):
+    """驗證 UNION 集合運算的視覺化呈現"""
+    sql = "SELECT 1 UNION ALL SELECT 2"
+    output = run_visualize_full(sql, global_runner)
+    assert "SET_OPERATION: UNION ALL" in output
+    assert "LEFT" in output
+    assert "RIGHT" in output
+
+def test_visualizer_cast_display(global_runner):
+    """驗證 CAST 轉型的視覺化呈現"""
+    sql = "SELECT CAST(123 AS NVARCHAR)"
+    output = run_visualize_full(sql, global_runner)
+    assert "CAST TO NVARCHAR" in output
+    assert "LITERAL: 123" in output
+
+def test_visualizer_between_display(global_runner):
+    """驗證 BETWEEN 範圍比較的視覺化呈現"""
+    sql = "SELECT * FROM Address WHERE AddressID BETWEEN 1 AND 10"
+    output = run_visualize_full(sql, global_runner)
+    assert "EXPRESSION: BETWEEN" in output
+    assert "TARGET" in output
+    assert "LOW" in output
+    assert "HIGH" in output
+
+def test_visualizer_any_list_display(global_runner):
+    """驗證 ANY 後接值列表的視覺化呈現 (LIST 標籤)"""
+    sql = "SELECT * FROM Address WHERE AddressID > ANY (1, 2, 3)"
+    output = run_visualize_full(sql, global_runner)
+    assert "EXPRESSION: > ANY" in output
+    assert "LIST" in output
+    assert "ITEM#1" in output
+    assert "LITERAL: 1" in output

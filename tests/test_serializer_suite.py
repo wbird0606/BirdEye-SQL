@@ -18,7 +18,6 @@ def test_basic_select_serialization():
     data = json.loads(serializer.to_json(ast))
     
     assert data["node_type"] == "SelectStatement"
-    # 💡 修正點：使用 .upper() 進行不分大小寫的比較
     assert data["table"]["name"].upper() == "USERS"
     assert len(data["columns"]) == 1
     assert data["columns"][0]["name"].upper() == "USERID"
@@ -34,7 +33,6 @@ def test_case_when_serialization():
     
     assert case_node["node_type"] == "CaseExpressionNode"
     assert len(case_node["branches"]) == 1
-    # 這裡的 op 是關鍵字通常已經是全大寫，或是直接匹配 "="
     assert case_node["branches"][0]["when"]["op"] == "="
     assert case_node["else"]["value"] == "N"
 
@@ -58,7 +56,50 @@ def test_function_call_serialization():
     func_node = data["columns"][0]
     
     assert func_node["node_type"] == "FunctionCallNode"
-    # 💡 修正點：同樣使用 .upper()
     assert func_node["name"].upper() == "LEN"
     assert isinstance(func_node["args"], list)
     assert func_node["args"][0]["name"].upper() == "USERNAME"
+
+# --- 💡 TDD New: 進階語法序列化測試 ---
+
+def test_cte_serialization():
+    """驗證 CTE (WITH) 的 JSON 結構"""
+    sql = "WITH CTE1 AS (SELECT 1 AS A) SELECT A FROM CTE1"
+    ast = get_ast(sql)
+    serializer = ASTSerializer()
+    data = json.loads(serializer.to_json(ast))
+    
+    assert "ctes" in data
+    assert len(data["ctes"]) == 1
+    assert data["ctes"][0]["name"] == "CTE1"
+    assert data["ctes"][0]["query"]["node_type"] == "SelectStatement"
+
+def test_union_serialization():
+    """驗證 UNION 的 JSON 結構"""
+    sql = "SELECT 1 UNION SELECT 2"
+    ast = get_ast(sql)
+    serializer = ASTSerializer()
+    data = json.loads(serializer.to_json(ast))
+    
+    assert data["node_type"] == "UnionStatement"
+    assert data["op"] == "UNION"
+    assert data["left"]["node_type"] == "SelectStatement"
+    assert data["right"]["node_type"] == "SelectStatement"
+
+def test_between_cast_serialization():
+    """驗證 BETWEEN 與 CAST 的 JSON 結構"""
+    sql = "SELECT CAST(Price AS INT) FROM T WHERE Price BETWEEN 1 AND 10"
+    ast = get_ast(sql)
+    serializer = ASTSerializer()
+    data = json.loads(serializer.to_json(ast))
+    
+    # 檢查 CAST
+    cast_node = data["columns"][0]
+    assert cast_node["node_type"] == "CastExpressionNode"
+    assert cast_node["target"] == "INT"
+    
+    # 檢查 BETWEEN
+    between_node = data["where"]
+    assert between_node["node_type"] == "BetweenExpressionNode"
+    assert between_node["low"]["value"] == "1"
+    assert between_node["high"]["value"] == "10"

@@ -4,13 +4,14 @@ from birdeye.ast import (
     InsertStatement, SqlBulkCopyStatement,
     IdentifierNode, LiteralNode, BinaryExpressionNode, 
     FunctionCallNode, JoinNode, AssignmentNode,
-    OrderByNode, CaseExpressionNode
+    OrderByNode, CaseExpressionNode, BetweenExpressionNode,
+    CastExpressionNode, UnionStatement, CTENode, TruncateStatement
 )
 
 class ASTSerializer:
     """
     將 AST 轉換為標準 JSON 格式。
-    v1.7.2: 支援全節點遞迴序列化，適用於圖形化工具對接。
+    v1.8.0: 支援全節點遞迴序列化，包括 UNION, CTE, CAST, BETWEEN。
     """
 
     def to_json(self, node, indent=2) -> str:
@@ -34,6 +35,7 @@ class ASTSerializer:
 
         if isinstance(node, SelectStatement):
             res.update({
+                "ctes": self._serialize(node.ctes) if hasattr(node, 'ctes') else [],
                 "top": node.top_count,
                 "is_star": node.is_select_star,
                 "columns": self._serialize(node.columns),
@@ -44,6 +46,35 @@ class ASTSerializer:
                 "group_by": self._serialize(node.group_by_cols),
                 "having": self._serialize(node.having_condition),
                 "order_by": self._serialize(node.order_by_terms)
+            })
+
+        elif isinstance(node, UnionStatement):
+            res.update({
+                "op": node.operator,
+                "left": self._serialize(node.left),
+                "right": self._serialize(node.right),
+                "columns": self._serialize(node.columns)
+            })
+
+        elif isinstance(node, CTENode):
+            res.update({
+                "name": node.name,
+                "query": self._serialize(node.query)
+            })
+
+        elif isinstance(node, BetweenExpressionNode):
+            res.update({
+                "target": self._serialize(node.expr),
+                "low": self._serialize(node.low),
+                "high": self._serialize(node.high),
+                "is_not": node.is_not
+            })
+
+        elif isinstance(node, CastExpressionNode):
+            res.update({
+                "expr": self._serialize(node.expr),
+                "target": node.target_type,
+                "is_convert": node.is_convert
             })
 
         elif isinstance(node, UpdateStatement):
@@ -66,6 +97,11 @@ class ASTSerializer:
                 "table": self._serialize(node.table),
                 "columns": self._serialize(node.columns),
                 "values": self._serialize(node.values)
+            })
+
+        elif isinstance(node, TruncateStatement):
+            res.update({
+                "table": self._serialize(node.table)
             })
 
         elif isinstance(node, IdentifierNode):

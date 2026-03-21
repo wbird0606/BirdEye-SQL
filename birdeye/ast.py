@@ -13,7 +13,7 @@ class SelectStatement:
         self.group_by_cols = []
         self.having_condition = None
         self.order_by_terms = [] # List of OrderByNodes
-        self.ctes = []          # 💡 TDD New: List of CTENodes
+        self.ctes = []          # List of CTENodes
 
 class CTENode:
     """用於 WITH Name AS (query)"""
@@ -40,6 +40,11 @@ class InsertStatement:
         self.columns = []       # List of IdentifierNodes
         self.values = []        # List of ExpressionNodes
 
+class TruncateStatement:
+    """用於 TRUNCATE TABLE 語句"""
+    def __init__(self, table):
+        self.table = table      # IdentifierNode
+
 class SqlBulkCopyStatement:
     """針對 MSSQL 特化的大批次寫入語句"""
     def __init__(self):
@@ -57,10 +62,9 @@ class UnionStatement:
 # --- 2. 表達式基類與推導屬性 ---
 
 class ExpressionNode:
-    """💡 Issue #35: 所有表達式節點的基類，支援類型推導"""
+    """所有表達式節點的基類，支援類型推導"""
     def __init__(self):
         self.alias = None
-        # 初始類型為 UNKNOWN，由 Binder 在語意分析階段更新
         self.inferred_type = "UNKNOWN"
 
 # --- 3. 具體表達式節點 ---
@@ -79,9 +83,7 @@ class LiteralNode(ExpressionNode):
     def __init__(self, value, type):
         super().__init__()
         self.value = value
-        self.type = type  # Lexer 標記的 TokenType (NUMERIC_LITERAL / STRING_LITERAL)
-        
-        # 💡 基礎類型預映射
+        self.type = type
         from birdeye.lexer import TokenType
         if type == TokenType.NUMERIC_LITERAL:
             self.inferred_type = "INT"
@@ -105,7 +107,7 @@ class CaseExpressionNode(ExpressionNode):
     def __init__(self, input_expr=None):
         super().__init__()
         self.input_expr = input_expr
-        self.branches = []  # List of (when_expr, then_expr)
+        self.branches = []
         self.else_expr = None
 
 class BetweenExpressionNode(ExpressionNode):
@@ -129,21 +131,19 @@ class CastExpressionNode(ExpressionNode):
 
 class JoinNode:
     def __init__(self, type, table):
-        self.type = type        # INNER, LEFT, RIGHT
-        self.table = table      # IdentifierNode
+        self.type = type
+        self.table = table
         self.alias = None
         self.on_condition = None
-        # 用於 Join 最佳化的快取屬性
         self.on_left = None
         self.on_right = None
 
 class OrderByNode:
     def __init__(self, column, direction="ASC"):
-        self.column = column    # ExpressionNode
+        self.column = column
         self.direction = direction
 
 class AssignmentNode:
-    """用於 UPDATE SET 語句"""
     def __init__(self, column, expression):
-        self.column = column    # IdentifierNode
-        self.right = expression # ExpressionNode
+        self.column = column
+        self.right = expression

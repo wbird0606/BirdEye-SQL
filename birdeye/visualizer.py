@@ -3,13 +3,14 @@ from birdeye.ast import (
     InsertStatement, SqlBulkCopyStatement,
     IdentifierNode, LiteralNode, BinaryExpressionNode, 
     FunctionCallNode, JoinNode, AssignmentNode,
-    OrderByNode, CaseExpressionNode
+    OrderByNode, CaseExpressionNode, BetweenExpressionNode,
+    CastExpressionNode, UnionStatement, CTENode, TruncateStatement
 )
 
 class ASTVisualizer:
     """
-    將 AST 轉換為樹狀文字結構，支援 DQL、DML、條件分支與函數擴展。
-    v1.7.1: 強化函數呼叫與無來源表查詢的視覺化呈現。
+    將 AST 轉換為樹狀文字結構，支援 DQL、DML、集合運算與 CTE。
+    v1.9.0: 支援 UNION, CTE, CAST, BETWEEN 的視覺化呈現。
     """
 
     def __init__(self):
@@ -30,6 +31,12 @@ class ASTVisualizer:
         if isinstance(node, SelectStatement):
             self.lines.append(f"{prefix}SELECT_STATEMENT")
             
+            # 💡 視覺化 CTE
+            if hasattr(node, 'ctes') and node.ctes:
+                self.lines.append(f"{current_indent}  ├── WITH (CTEs)")
+                for cte in node.ctes:
+                    self._visit(cte, indent + 2, "CTE")
+
             if node.top_count is not None:
                 self.lines.append(f"{current_indent}  ├── TOP: {node.top_count}")
             
@@ -46,7 +53,6 @@ class ASTVisualizer:
                 if node.table_alias:
                     self.lines.append(f"{current_indent}    └── ALIAS: {node.table_alias}")
             else:
-                # 💡 v1.7.1: 明確標示無來源查詢 (例如 SELECT GETDATE())
                 self.lines.append(f"{current_indent}  ├── FROM: <DUAL/NONE> (Scalar/Literal Query)")
 
             if node.joins:
@@ -71,6 +77,18 @@ class ASTVisualizer:
                 self.lines.append(f"{current_indent}  └── ORDER BY")
                 for order in node.order_by_terms:
                     self._visit(order, indent + 2, "ORDER")
+
+        elif isinstance(node, UnionStatement):
+            self.lines.append(f"{prefix}SET_OPERATION: {node.operator}")
+            self.lines.append(f"{current_indent}  ├── LEFT")
+            self._visit(node.left, indent + 2, "QUERY")
+            self.lines.append(f"{current_indent}  └── RIGHT")
+            self._visit(node.right, indent + 2, "QUERY")
+
+        elif isinstance(node, CTENode):
+            self.lines.append(f"{prefix}CTE: {node.name}")
+            self.lines.append(f"{current_indent}  └── QUERY")
+            self._visit(node.query, indent + 2, "SUBQUERY")
 
         elif isinstance(node, UpdateStatement):
             self.lines.append(f"{prefix}UPDATE_STATEMENT")
@@ -102,6 +120,10 @@ class ASTVisualizer:
             for val in node.values:
                 self._visit(val, indent + 2, "VAL")
 
+        elif isinstance(node, TruncateStatement):
+            self.lines.append(f"{prefix}TRUNCATE_STATEMENT")
+            self.lines.append(f"{current_indent}  └── TABLE: {node.table.name}")
+
         elif isinstance(node, SqlBulkCopyStatement):
             self.lines.append(f"{prefix}BULK_COPY_STATEMENT")
             self.lines.append(f"{current_indent}  └── TARGET TABLE: {node.table.name}")
@@ -109,8 +131,7 @@ class ASTVisualizer:
         # --- 2. 表達式與函數節點 ---
 
         elif isinstance(node, FunctionCallNode):
-            # 💡 v1.7.2: 視覺化類型推導結果 (TDD Fix)
-            alias = f" AS {node.alias}" if node.alias else ""
+            alias = f" AS {node.alias}" if hasattr(node, 'alias') and node.alias else ""
             type_info = f" [Type: {node.inferred_type}]" if hasattr(node, 'inferred_type') and node.inferred_type != "UNKNOWN" else ""
             arg_info = f" ({len(node.args)} args)" if node.args else " ()"
             self.lines.append(f"{prefix}FUNCTION: {node.name}{arg_info}{type_info}{alias}")
@@ -129,18 +150,43 @@ class ASTVisualizer:
             if node.else_expr:
                 self.lines.append(f"{current_indent}  ├── ELSE")
                 self._visit(node.else_expr, indent + 2, "RESULT")
-            if node.alias:
+            if hasattr(node, 'alias') and node.alias:
                 self.lines.append(f"{current_indent}  └── ALIAS: {node.alias}")
 
         elif isinstance(node, BinaryExpressionNode):
             type_info = f" [Type: {node.inferred_type}]" if hasattr(node, 'inferred_type') and node.inferred_type != "UNKNOWN" else ""
             self.lines.append(f"{prefix}EXPRESSION: {node.operator}{type_info}")
             self._visit(node.left, indent + 1, "LEFT")
-            self._visit(node.right, indent + 1, "RIGHT")
+            # 💡 TDD Fix: 處理右側可能是列表的情況 (如 IN 或 ANY/ALL)
+            if isinstance(node.right, list):
+                self.lines.append(f"  " * (indent + 1) + "└── LIST")
+                for i, item in enumerate(node.right):
+                    self.lines.append(f"  " * (indent + 2) + f"├── ITEM#{i+1}")
+                    self._visit(item, indent + 3, "")
+            else:
+                self._visit(node.right, indent + 1, "RIGHT")
+
+        elif isinstance(node, BetweenExpressionNode):
+            type_info = f" [Type: {node.inferred_type}]" if hasattr(node, 'inferred_type') and node.inferred_type != "UNKNOWN" else ""
+            op = "NOT BETWEEN" if node.is_not else "BETWEEN"
+            self.lines.append(f"{prefix}EXPRESSION: {op}{type_info}")
+            self.lines.append(f"{current_indent}  ├── TARGET")
+            self._visit(node.expr, indent + 2, "TARGET")
+            self.lines.append(f"{current_indent}  ├── LOW")
+            self._visit(node.low, indent + 2, "LOW")
+            self.lines.append(f"{current_indent}  └── HIGH")
+            self._visit(node.high, indent + 2, "HIGH")
+
+        elif isinstance(node, CastExpressionNode):
+            type_info = f" [Type: {node.inferred_type}]" if hasattr(node, 'inferred_type') and node.inferred_type != "UNKNOWN" else ""
+            func = "CONVERT" if node.is_convert else "CAST"
+            self.lines.append(f"{prefix}{func} TO {node.target_type}{type_info}")
+            self.lines.append(f"{current_indent}  └── EXPR")
+            self._visit(node.expr, indent + 2, "EXPR")
 
         elif isinstance(node, IdentifierNode):
             qual = f" (Qual: {node.qualifier})" if node.qualifiers else ""
-            alias = f" AS {node.alias}" if node.alias else ""
+            alias = f" AS {node.alias}" if hasattr(node, 'alias') and node.alias else ""
             type_info = f" [Type: {node.inferred_type}]" if hasattr(node, 'inferred_type') and node.inferred_type != "UNKNOWN" else ""
             self.lines.append(f"{prefix}IDENTIFIER: {node.name}{qual}{type_info}{alias}")
 

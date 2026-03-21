@@ -4,13 +4,13 @@ from birdeye.ast import (
     SqlBulkCopyStatement, IdentifierNode, LiteralNode, 
     BinaryExpressionNode, FunctionCallNode, JoinNode, AssignmentNode,
     OrderByNode, CaseExpressionNode, BetweenExpressionNode, CastExpressionNode,
-    UnionStatement, CTENode
+    UnionStatement, CTENode, TruncateStatement
 )
 
 class Parser:
     """
     語法分析器：將 Token 序列轉換為抽象語法樹 (AST)。
-    v1.9.0: 支援 CTE (WITH 子句)、UNION 與 CAST/CONVERT。
+    v1.10.0: 支援 TRUNCATE TABLE、CTE、UNION、CAST 等完整語法。
     """
     def __init__(self, tokens, source):
         self.tokens = tokens
@@ -50,11 +50,12 @@ class Parser:
         tok = self._peek()
         if not tok or tok.type == TokenType.EOF: raise SyntaxError("Empty source")
         
-        # 💡 v1.9.0: 處理 WITH 子句 (CTE)
         ctes = []
         if tok.type == TokenType.KEYWORD_WITH:
             ctes = self._parse_ctes()
-            tok = self._peek() # 更新 tok 到 WITH 之後的關鍵字 (應為 SELECT)
+            tok = self._peek()
+
+        if not tok: raise SyntaxError("Unexpected end of input")
 
         if tok.type == TokenType.KEYWORD_SELECT:
             stmt = self._parse_select_with_set_ops()
@@ -62,6 +63,7 @@ class Parser:
         elif tok.type == TokenType.KEYWORD_UPDATE: stmt = self._parse_update()
         elif tok.type == TokenType.KEYWORD_DELETE: stmt = self._parse_delete()
         elif tok.type == TokenType.KEYWORD_INSERT: stmt = self._parse_insert()
+        elif tok.type == TokenType.KEYWORD_TRUNCATE: stmt = self._parse_truncate()
         elif tok.type == TokenType.IDENTIFIER and self._get_text(tok).upper() == "BULK":
             stmt = self._parse_bulk_insert()
         else:
@@ -186,6 +188,12 @@ class Parser:
 
     # --- 4. DML 解析 ---
 
+    def _parse_truncate(self):
+        self._consume(TokenType.KEYWORD_TRUNCATE, "Expected TRUNCATE")
+        self._consume(TokenType.KEYWORD_TABLE, "Expected TABLE after TRUNCATE")
+        table, _ = self._parse_full_identifier_safe()
+        return TruncateStatement(table=table)
+
     def _parse_update(self):
         stmt = UpdateStatement()
         self._consume(TokenType.KEYWORD_UPDATE, "Expected UPDATE")
@@ -293,11 +301,30 @@ class Parser:
                 self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after IN list")
                 node = BinaryExpressionNode(left=node, operator="IN", right=right_node)
                 continue
+            
+            # 💡 TDD New: 支援比較運算子後接 ANY 或 ALL
             op_tok = self._match(
                 TokenType.SYMBOL_EQUAL, TokenType.SYMBOL_GT, TokenType.SYMBOL_LT,
                 TokenType.SYMBOL_GE, TokenType.SYMBOL_LE, TokenType.SYMBOL_NE
             )
-            if op_tok: node = BinaryExpressionNode(left=node, operator=self._get_text(op_tok), right=self._parse_term())
+            if op_tok:
+                op_str = self._get_text(op_tok)
+                mod_tok = self._match(TokenType.KEYWORD_ANY, TokenType.KEYWORD_ALL)
+                if mod_tok:
+                    op_str = f"{op_str} {self._get_text(mod_tok).upper()}"
+                    self._consume(TokenType.SYMBOL_LPAREN, f"Expected ( after {op_str}")
+                    if self._peek() and self._peek().type == TokenType.KEYWORD_SELECT:
+                        right_node = self._parse_select_with_set_ops()
+                    else:
+                        right_node = []
+                        while True:
+                            right_node.append(self._parse_expression())
+                            if not self._match(TokenType.SYMBOL_COMMA): break
+                        if not right_node: raise SyntaxError(f"Expected expression list after {op_str}")
+                    self._consume(TokenType.SYMBOL_RPAREN, f"Expected ) after {op_str} list")
+                    node = BinaryExpressionNode(left=node, operator=op_str, right=right_node)
+                else:
+                    node = BinaryExpressionNode(left=node, operator=op_str, right=self._parse_term())
             else: break
         return node
 

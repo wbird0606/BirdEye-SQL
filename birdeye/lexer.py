@@ -19,6 +19,16 @@ class TokenType(Enum):
     KEYWORD_UNION = auto()      # For UNION
     KEYWORD_ALL = auto()        # For UNION ALL
     KEYWORD_WITH = auto()       # For CTE
+    KEYWORD_TRUNCATE = auto()   # For TRUNCATE
+    KEYWORD_TABLE = auto()      # For TABLE
+    KEYWORD_ANY = auto()        # For ANY
+    KEYWORD_OVER = auto()       # For Window Functions
+    KEYWORD_PARTITION = auto()  # For Window Functions
+    KEYWORD_ROWS = auto()       # For Window Functions
+    KEYWORD_RANGE = auto()      # For Window Functions
+    KEYWORD_PRECEDING = auto()  # For Window Functions
+    KEYWORD_FOLLOWING = auto()  # For Window Functions
+    KEYWORD_CURRENT = auto()    # For Window Functions
     KEYWORD_ON = auto()
     KEYWORD_AND = auto()
     KEYWORD_OR = auto()
@@ -124,8 +134,18 @@ class Lexer:
             "UNION": TokenType.KEYWORD_UNION,
             "ALL": TokenType.KEYWORD_ALL,
             "WITH": TokenType.KEYWORD_WITH,
-            "ON": TokenType.KEYWORD_ON,
-            "AND": TokenType.KEYWORD_AND,
+            "TRUNCATE": TokenType.KEYWORD_TRUNCATE,
+            "TABLE": TokenType.KEYWORD_TABLE,
+            "ANY": TokenType.KEYWORD_ANY,
+            "ALL": TokenType.KEYWORD_ALL,
+            "OVER": TokenType.KEYWORD_OVER,
+            "PARTITION": TokenType.KEYWORD_PARTITION,
+            "ROWS": TokenType.KEYWORD_ROWS,
+            "RANGE": TokenType.KEYWORD_RANGE,
+            "PRECEDING": TokenType.KEYWORD_PRECEDING,
+            "FOLLOWING": TokenType.KEYWORD_FOLLOWING,
+            "CURRENT": TokenType.KEYWORD_CURRENT,
+            "ON": TokenType.KEYWORD_ON,            "AND": TokenType.KEYWORD_AND,
             "OR": TokenType.KEYWORD_OR,
             "TOP": TokenType.KEYWORD_TOP,
             "ORDER": TokenType.KEYWORD_ORDER,
@@ -143,6 +163,13 @@ class Lexer:
             "BETWEEN": TokenType.KEYWORD_BETWEEN,
             "CAST": TokenType.KEYWORD_CAST,
             "CONVERT": TokenType.KEYWORD_CONVERT,
+            "OVER": TokenType.KEYWORD_OVER,
+            "PARTITION": TokenType.KEYWORD_PARTITION,
+            "ROWS": TokenType.KEYWORD_ROWS,
+            "RANGE": TokenType.KEYWORD_RANGE,
+            "PRECEDING": TokenType.KEYWORD_PRECEDING,
+            "FOLLOWING": TokenType.KEYWORD_FOLLOWING,
+            "CURRENT": TokenType.KEYWORD_CURRENT,
             "CASE": TokenType.KEYWORD_CASE,
             "WHEN": TokenType.KEYWORD_WHEN,
             "THEN": TokenType.KEYWORD_THEN,
@@ -216,8 +243,12 @@ class Lexer:
                 if not self._peek():
                     raise ValueError("Unclosed string literal")
                 self._advance() # 消耗最後的關閉引號
-                text = self.source[start:self.pos]
-                self.tokens.append(Token(TokenType.STRING_LITERAL, text, start, self.pos))
+                
+                # 💡 TDD Fix: 提取內容並將轉義的 '' 轉回 '
+                raw_text = self.source[start:self.pos]
+                processed_text = raw_text.replace("''", "'")
+                
+                self.tokens.append(Token(TokenType.STRING_LITERAL, processed_text, start, self.pos))
                 continue
 
             # 5. 處理 MSSQL 中括號標識符

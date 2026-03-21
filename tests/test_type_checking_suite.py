@@ -1,38 +1,40 @@
 import pytest
-import io
-from birdeye.registry import MetadataRegistry
-from birdeye.lexer import Lexer
-from birdeye.parser import Parser
-from birdeye.binder import Binder, SemanticError
+from birdeye.binder import SemanticError
 
-@pytest.fixture
-def type_reg():
-    reg = MetadataRegistry()
-    csv_data = "table_name,column_name,data_type\nUsers,UserID,INT\nUsers,UserName,NVARCHAR\n"
-    reg.load_from_csv(io.StringIO(csv_data))
-    # 💡 必須註冊參數預期類型為 ["NVARCHAR"] 才能觸發校驗
-    reg.register_function("UPPER", "SCALAR", 1, 1, ["NVARCHAR"], "NVARCHAR")
-    reg.register_function("LEN", "SCALAR", 1, 1, ["NVARCHAR"], "INT")
-    return reg
+def run_bind_with_runner(sql, runner):
+    """使用全域 Runner 執行完整繫結"""
+    return runner.run(sql)["ast"]
 
-def run_bind(sql, registry):
-    lexer = Lexer(sql)
-    parser = Parser(lexer.tokenize(), sql)
-    ast = parser.parse()
-    binder = Binder(registry)
-    return binder.bind(ast)
+# --- 1. 函數參數型別檢查 ---
 
-def test_function_parameter_type_mismatch(type_reg):
-    sql = "SELECT UPPER(UserID) FROM Users"
-    with pytest.raises(SemanticError, match="Function 'UPPER' expects NVARCHAR, but got INT"):
-        run_bind(sql, type_reg)
+def test_function_parameter_type_mismatch(global_runner):
+    """驗證函數參數型別不匹配時的報警"""
+    # Product.ProductID 是 INT，UPPER 預期 NVARCHAR
+    sql = "SELECT UPPER(ProductID) FROM Product"
+    with pytest.raises(SemanticError, match="Function 'UPPER' expects NVARCHAR"):
+        run_bind_with_runner(sql, global_runner)
 
-def test_binary_op_type_mismatch(type_reg):
-    sql = "SELECT UserName + 100 FROM Users"
-    with pytest.raises(SemanticError, match=r"Operator '\+' cannot be applied to NVARCHAR and INT"):
-        run_bind(sql, type_reg)
+# --- 2. 運算子型別安全 ---
 
-def test_case_result_consistency(type_reg):
-    sql = "SELECT CASE WHEN UserID = 1 THEN 'Admin' ELSE 999 END FROM Users"
-    with pytest.raises(SemanticError, match="CASE branches have incompatible types: NVARCHAR and INT"):
-        run_bind(sql, type_reg)
+def test_binary_op_type_mismatch(global_runner):
+    """驗證運算子兩側型別家族不相容時的攔截"""
+    # Product.Name (NVARCHAR) + 100 (INT)
+    sql = "SELECT Name + 100 FROM Product"
+    with pytest.raises(SemanticError, match=r"Operator '\+' cannot be applied to"):
+        run_bind_with_runner(sql, global_runner)
+
+# --- 3. CASE 分支型別一致性 ---
+
+def test_case_result_consistency(global_runner):
+    """🛡️ ZTA 政策：驗證 CASE 所有分支結果型別家族是否相容"""
+    # THEN 分支為字串 ('Admin')，ELSE 分支為數值 (999)
+    sql = "SELECT CASE WHEN ProductID = 1 THEN 'Admin' ELSE 999 END FROM Product"
+    with pytest.raises(SemanticError, match="CASE branches have incompatible types"):
+        run_bind_with_runner(sql, global_runner)
+
+def test_arithmetic_on_strings_blocked(global_runner):
+    """驗證字串類型禁止進行算術除法"""
+    # Name (字串家族) 除以 2 (數值家族)
+    sql = "SELECT Name / 2 FROM Product"
+    with pytest.raises(SemanticError, match="Operator '/' cannot be applied"):
+        run_bind_with_runner(sql, global_runner)

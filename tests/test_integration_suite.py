@@ -83,3 +83,38 @@ def test_order_by_alias_resolution(runner):
     order_node = result["ast"].order_by_terms[0].column
     assert order_node.inferred_type == "INT"
 
+# --- 💡 TDD Legacy Integration: 舊有核心案例回歸 ---
+
+def test_legacy_complex_case_integration(runner):
+    """驗證舊有的複雜 CASE WHEN 與類型推導在最新引擎下依然穩定"""
+    sql = """
+        SELECT CASE 
+            WHEN ListPrice > 1000 THEN 'Premium'
+            ELSE 'Standard'
+        END AS Tier
+        FROM Product
+    """
+    result = runner.run(sql)
+    assert result["ast"].columns[0].inferred_type == "NVARCHAR"
+
+def test_legacy_multi_join_ambiguity_defense(runner):
+    """驗證舊有的多表關聯歧義防禦在最新引擎下依然有效"""
+    # SalesOrderHeader(h) 與 Address(a) 都有 ModifiedDate
+    sql = "SELECT ModifiedDate FROM SalesOrderHeader h JOIN Address a ON h.BillToAddressID = a.AddressID"
+    with pytest.raises(SemanticError, match="Column 'ModifiedDate' is ambiguous"):
+        runner.run(sql)
+
+def test_legacy_agg_integrity_violation(runner):
+    """驗證舊有的聚合完整性檢查 (ZTA 政策) 依然能攔截非法查詢"""
+    # ProductID 在 GROUP BY 中，但 Name 不在，應攔截
+    sql = "SELECT ProductID, Name FROM Product GROUP BY ProductID"
+    with pytest.raises(SemanticError, match="Column 'Name' must appear in the GROUP BY clause"):
+        runner.run(sql)
+
+def test_legacy_string_escaping_regression(runner):
+    """驗證字串轉義邊界 (Issue #5) 依然穩定"""
+    sql = "SELECT 'O''Brien' FROM Address"
+    result = runner.run(sql)
+    # 確保內層字串內容正確 (含單引號)
+    assert result["ast"].columns[0].value == "O'Brien"
+
