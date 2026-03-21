@@ -1,10 +1,12 @@
 import os
 import io
+import json
 from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from birdeye.runner import BirdEyeRunner
 from birdeye.binder import SemanticError
 from birdeye.registry import MetadataRegistry
+from birdeye.reconstructor import ASTReconstructor
 
 # 初始化 Flask 應用
 app = Flask(__name__)
@@ -107,6 +109,32 @@ def parse_sql():
             "error_type": "System Error",
             "message": str(e)
         }), 500
+
+@app.route('/api/reconstruct', methods=['POST'])
+def reconstruct_sql():
+    """
+    接收 AST JSON，回傳重建後的 SQL 字串。
+    Payload: { "ast": <dict 或 JSON string> }
+    """
+    data = request.get_json()
+    if not data or 'ast' not in data:
+        return jsonify({"status": "error", "error_type": "Request Error", "message": "Missing 'ast' in payload"}), 400
+
+    ast_input = data['ast']
+    try:
+        # 支援 dict 或 JSON string 兩種格式
+        if isinstance(ast_input, str):
+            sql = ASTReconstructor().from_json_str(ast_input)
+        else:
+            sql = ASTReconstructor().to_sql(ast_input)
+        return jsonify({"status": "success", "sql": sql}), 200
+    except Exception as e:
+        return jsonify({
+            "status": "error",
+            "error_type": "Reconstruct Error",
+            "message": str(e)
+        }), 400
+
 
 if __name__ == '__main__':
     # 提供預設啟動腳本

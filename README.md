@@ -1,7 +1,7 @@
 # 🦅 BirdEye-SQL: Semantic-Aware & Zero-Trust SQL Parser
 
 [![Testing: pytest](https://img.shields.io/badge/Testing-pytest-blue.svg)](https://docs.pytest.org/)
-[![Tests](https://img.shields.io/badge/Tests-489%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-533%20passed-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 🌍 **Language Switch / 語言切換**: [English](#english-version) | [繁體中文](#繁體中文版本)
@@ -12,7 +12,7 @@
 # 🇬🇧 English Version
 
 ## 📖 Overview
-**BirdEye-SQL** is a high-performance SQL to AST (Abstract Syntax Tree) parser specifically designed for **MSSQL** environments. Unlike traditional syntactic parsers, BirdEye-SQL features **Semantic Awareness**, allowing it to validate queries against real database metadata in a **Zero Trust Architecture (ZTA)** context. It acts as a security gatekeeper, intercepting malicious or ambiguous queries before they reach the database engine.
+**BirdEye-SQL** is a high-performance **bidirectional SQL ↔ AST** (Abstract Syntax Tree) engine specifically designed for **MSSQL** environments. Unlike traditional syntactic parsers, BirdEye-SQL features **Semantic Awareness**, allowing it to validate queries against real database metadata in a **Zero Trust Architecture (ZTA)** context. It acts as a security gatekeeper, intercepting malicious or ambiguous queries before they reach the database engine. The engine also supports the **reverse direction**: reconstructing valid SQL from an AST JSON, enabling round-trip transformations and query rewriting workflows.
 
 ## 🚀 Getting Started
 
@@ -31,14 +31,27 @@ python web/app.py
 ```
 Open your browser and navigate to `http://127.0.0.1:5000`!
 
+**REST API Endpoints:**
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/parse` | SQL → AST: parse SQL and return `tree`, `mermaid`, `json` |
+| `POST` | `/api/reconstruct` | AST → SQL: accepts `{"ast": <dict or JSON string>}`, returns reconstructed SQL |
+| `POST` | `/api/upload_csv` | Upload a CSV metadata file to update the schema context |
+
 ### CLI Utility
 You can also use the parser directly from the terminal:
 ```powershell
-# Parse SQL and output an AST tree
+# SQL → AST: parse SQL and output an AST tree
 python main.py --sql "SELECT * FROM Address" --format tree
 
-# Parse from a file, use custom metadata, and output Mermaid syntax
+# SQL → AST: parse from a file, use custom metadata, and output Mermaid syntax
 python main.py --file my_query.sql --csv custom_schema.csv --format mermaid
+
+# AST → SQL: reconstruct SQL from an AST JSON string
+python main.py --ast '{"node_type": "SelectStatement", ...}'
+
+# AST → SQL: reconstruct SQL from an AST JSON file
+python main.py --ast-file my_ast.json
 ```
 
 ## ✨ Key Features
@@ -50,7 +63,8 @@ python main.py --file my_query.sql --csv custom_schema.csv --format mermaid
 * **Function Sandbox**: Implements a "Deny-by-Default" whitelist for database functions. Prevents execution of dangerous system functions like `xp_cmdshell`.
 
 ### ⚙️ Engine Capabilities
-* **Full Pipeline Integration**: The `BirdEyeRunner` seamlessly connects the Lexer, Parser, Binder, and Visualizer.
+* **Full Pipeline Integration**: The `BirdEyeRunner` seamlessly connects the Lexer, Parser, Binder, and Visualizer. The `ASTReconstructor` provides the reverse direction: AST JSON → SQL.
+* **Bidirectional Transformation**: Round-trip SQL → AST JSON → SQL is fully supported, enabling query rewriting, AST manipulation, and programmatic SQL generation.
 * **Comprehensive Expression Engine**: Arithmetic (`+`, `-`, `*`, `/`, `%`), bitwise (`&`, `|`, `^`, `~`), logical (`AND`, `OR`, `IS NULL`, `BETWEEN`), comparison (`IN`, `NOT IN`, `EXISTS`, `NOT EXISTS`, `LIKE`), and nested `CASE WHEN` logic.
 * **Star Expansion**: Automatically expands `SELECT *` or `Table.*` into explicit column lists using metadata.
 * **MSSQL-Specific Syntax**: `TOP N [PERCENT]`, `OFFSET/FETCH`, `DECLARE @var`, `SELECT INTO #temp`, `CROSS/OUTER APPLY`, `WITH (CTE)`.
@@ -71,9 +85,9 @@ python main.py --file my_query.sql --csv custom_schema.csv --format mermaid
 | **Functions** | 60+ built-in: aggregates, string, numeric, date, NULL-handling |
 | **MSSQL** | DECLARE @var, #temp / ##global temp tables, GO, BULK INSERT |
 
-## 🧪 Testing Strategy (489 Tests Across 19 Suites)
+## 🧪 Testing Strategy (533 Tests Across 20 Suites)
 
-We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a **Red → Green → Zero Regression** cycle. The project contains **489 comprehensive test cases** across **19 specialized test suites**:
+We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a **Red → Green → Zero Regression** cycle. The project contains **533 comprehensive test cases** across **20 specialized test suites**:
 
 | Test Suite | Tests | Coverage |
 |---|---|---|
@@ -96,8 +110,9 @@ We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a
 | `test_cli_suite.py` | 4 | CLI argument parsing, file I/O, output format validation |
 | `test_web_api_suite.py` | 3 | RESTful endpoints, JSON response format, HTTP error codes |
 | `test_mermaid_suite.py` | 3 | Mermaid flowchart generation and node structure |
+| `test_reconstructor_suite.py` | 32 | AST JSON → SQL reconstruction, round-trip accuracy, all statement types |
 
-**Current Status**: ✅ **100% Tests Passed** (489/489)
+**Current Status**: ✅ **100% Tests Passed** (533/533)
 ```powershell
 pytest tests/
 ```
@@ -110,7 +125,7 @@ pytest tests/
 # 🇹🇼 繁體中文版本
 
 ## 📖 專案概述
-**BirdEye-SQL** 是一款專為 **MSSQL** 環境設計的高效能 SQL 轉 AST（抽象語法樹）解析器。不同於傳統的語法解析器，BirdEye-SQL 具備**語意覺知**功能，使其能在**零信任架構 (ZTA)** 背景下，根據真實的資料庫元數據驗證查詢語句。它作為資安守門員，在查詢進入資料庫引擎前，先行攔截具備惡意特徵或語意模糊的語句。
+**BirdEye-SQL** 是一款專為 **MSSQL** 環境設計的高效能 **雙向 SQL ↔ AST**（抽象語法樹）引擎。不同於傳統的語法解析器，BirdEye-SQL 具備**語意覺知**功能，使其能在**零信任架構 (ZTA)** 背景下，根據真實的資料庫元數據驗證查詢語句。它作為資安守門員，在查詢進入資料庫引擎前，先行攔截具備惡意特徵或語意模糊的語句。引擎同時支援**反向轉換**：由 AST JSON 重建有效的 SQL 字串，實現往返轉換與查詢改寫工作流程。
 
 ## 🚀 快速開始
 
@@ -129,14 +144,27 @@ python web/app.py
 ```
 打開瀏覽器前往 `http://127.0.0.1:5000` 即可體驗！
 
+**REST API 端點：**
+| 方法 | 端點 | 說明 |
+|---|---|---|
+| `POST` | `/api/parse` | SQL → AST：解析 SQL，回傳 `tree`、`mermaid`、`json` |
+| `POST` | `/api/reconstruct` | AST → SQL：接受 `{"ast": <dict 或 JSON 字串>}`，回傳重建後的 SQL |
+| `POST` | `/api/upload_csv` | 上傳 CSV 元數據檔案以更新 schema 上下文 |
+
 ### 命令列工具 (CLI)
 你也可以直接在終端機使用 CLI 工具：
 ```powershell
-# 解析一段 SQL 並顯示樹狀圖
+# SQL → AST：解析一段 SQL 並顯示樹狀圖
 python main.py --sql "SELECT * FROM Address" --format tree
 
-# 解析檔案並輸出 Mermaid 語法，同時指定自定義的元數據
+# SQL → AST：解析檔案並輸出 Mermaid 語法，同時指定自定義的元數據
 python main.py --file my_query.sql --csv custom_schema.csv --format mermaid
+
+# AST → SQL：由 AST JSON 字串重建 SQL
+python main.py --ast '{"node_type": "SelectStatement", ...}'
+
+# AST → SQL：由 AST JSON 檔案重建 SQL
+python main.py --ast-file my_ast.json
 ```
 
 ## ✨ 核心功能
@@ -148,7 +176,8 @@ python main.py --file my_query.sql --csv custom_schema.csv --format mermaid
 * **函數沙箱**: 實作「預設拒絕」的函數白名單機制，攔截如 `xp_cmdshell` 等高風險系統函數。
 
 ### ⚙️ 引擎能力
-* **全域流水線整合**: 提供 `BirdEyeRunner` 核心引擎，完美串接 Lexer → Parser → Binder → Visualizer 完整流水線。
+* **全域流水線整合**: 提供 `BirdEyeRunner` 核心引擎，完美串接 Lexer → Parser → Binder → Visualizer 完整流水線。`ASTReconstructor` 提供反向轉換：AST JSON → SQL。
+* **雙向轉換**: 完整支援 SQL → AST JSON → SQL 的往返轉換，實現查詢改寫、AST 操作與程式化 SQL 生成。
 * **強大表達式引擎**: 算術運算（`+`, `-`, `*`, `/`, `%`）、位元運算（`&`, `|`, `^`, `~`）、邏輯條件（`AND`, `OR`, `IS NULL`, `BETWEEN`）、比較（`IN`, `NOT IN`, `EXISTS`, `LIKE`）與多層巢狀 `CASE WHEN` 的精確解析。
 * **星號自動展開**: 利用元數據自動將 `SELECT *` 或 `Table.*` 展開為明確的實體欄位清單。
 * **MSSQL 特有語法**: `TOP N [PERCENT]`、`OFFSET/FETCH`、`DECLARE @var`、`SELECT INTO #temp`、`CROSS/OUTER APPLY`、`WITH (CTE)`。
@@ -169,9 +198,9 @@ python main.py --file my_query.sql --csv custom_schema.csv --format mermaid
 | **函數** | 60+ 內建函數：聚合、字串、數值、日期、NULL 處理 |
 | **MSSQL** | DECLARE @var、#temp / ##global 暫存表、GO、BULK INSERT |
 
-## 🧪 測試策略（489 個測試案例，涵蓋 19 個套件）
+## 🧪 測試策略（533 個測試案例，涵蓋 20 個套件）
 
-我們嚴格遵守**測試驅動開發 (TDD)**，每個功能均遵循 **Red → Green → 零回歸** 循環。專案內包含 **19 個專門化測試套件**、**489 個全面測試案例**：
+我們嚴格遵守**測試驅動開發 (TDD)**，每個功能均遵循 **Red → Green → 零回歸** 循環。專案內包含 **20 個專門化測試套件**、**533 個全面測試案例**：
 
 | 測試套件 | 測試數 | 涵蓋範圍 |
 |---|---|---|
@@ -194,8 +223,9 @@ python main.py --file my_query.sql --csv custom_schema.csv --format mermaid
 | `test_cli_suite.py` | 4 | CLI 參數解析、檔案 I/O、輸出格式驗證 |
 | `test_web_api_suite.py` | 3 | RESTful 端點、JSON 回應格式、HTTP 錯誤代碼 |
 | `test_mermaid_suite.py` | 3 | Mermaid 流程圖產生與節點結構 |
+| `test_reconstructor_suite.py` | 32 | AST JSON → SQL 重建、往返準確性、所有語句類型 |
 
-**目前狀態**: ✅ **100% 測試通過** (489/489)
+**目前狀態**: ✅ **100% 測試通過** (533/533)
 ```powershell
 pytest tests/
 ```
