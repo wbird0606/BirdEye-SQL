@@ -52,6 +52,16 @@ class MetadataRegistry:
         # --- 特殊結構 ---
         self.register_function("EXISTS", "SCALAR", 1, 1, ["ANY"], "BIT")
 
+        # --- UUID 函數 (Issue #54) ---
+        self.register_function("NEWID", "SCALAR", 0, 0, [], "UNIQUEIDENTIFIER")
+        self.register_function("NEWSEQUENTIALID", "SCALAR", 0, 0, [], "UNIQUEIDENTIFIER")
+
+        # --- JSON 函數 (Issue #54) ---
+        self.register_function("JSON_VALUE",  "SCALAR", 2, 2, ["ANY", "NVARCHAR"], "NVARCHAR")
+        self.register_function("JSON_QUERY",  "SCALAR", 2, 2, ["ANY", "NVARCHAR"], "NVARCHAR")
+        self.register_function("JSON_MODIFY", "SCALAR", 3, 3, ["ANY", "NVARCHAR", "ANY"], "NVARCHAR")
+        self.register_function("ISJSON",      "SCALAR", 1, 1, ["ANY"], "BIT")
+
     # --- 1. 資料表與欄位類型管理 ---
 
     def load_from_csv(self, csv_file_obj):

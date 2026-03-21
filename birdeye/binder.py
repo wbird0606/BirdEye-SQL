@@ -179,12 +179,18 @@ class Binder:
 
     def _is_type_compatible(self, type1, type2):
         if type1 == type2 or type1 == "UNKNOWN" or type2 == "UNKNOWN" or type1 == "TABLE" or type2 == "TABLE": return True
-        NUMS = {"INT", "DECIMAL", "FLOAT", "MONEY", "SMALLINT", "TINYINT", "BIGINT", "NUMERIC", "REAL", "SMALLMONEY", "BIT", "FLAG", "NAMESTYLE"}
-        STRS = {"NVARCHAR", "VARCHAR", "STRING", "CHAR", "NCHAR", "SYSNAME", "UNIQUEIDENTIFIER", "HIERARCHYID", "NAME", "ORDERNUMBER", "ACCOUNTNUMBER", "PHONE", "GEOGRAPHY", "TEXT", "NTEXT"}
-        DATES = {"DATETIME", "DATE", "TIME", "DATETIME2", "SMALLDATETIME", "DATETIMEOFFSET"}
-        if type1 in NUMS and type2 in NUMS: return True
-        if type1 in STRS and type2 in STRS: return True
-        if type1 in DATES and type2 in DATES: return True
+        NUMS    = {"INT", "DECIMAL", "FLOAT", "MONEY", "SMALLINT", "TINYINT", "BIGINT", "NUMERIC", "REAL", "SMALLMONEY", "BIT", "FLAG", "NAMESTYLE"}
+        STRS    = {"NVARCHAR", "VARCHAR", "STRING", "CHAR", "NCHAR", "SYSNAME", "UNIQUEIDENTIFIER", "HIERARCHYID", "NAME", "ORDERNUMBER", "ACCOUNTNUMBER", "PHONE", "TEXT", "NTEXT"}
+        DATES   = {"DATETIME", "DATE", "TIME", "DATETIME2", "SMALLDATETIME", "DATETIMEOFFSET"}
+        SPATIAL = {"GEOGRAPHY", "GEOMETRY"}               # Issue #54
+        BINARY  = {"VARBINARY", "BINARY", "IMAGE"}        # Issue #54
+        XML_T   = {"XML"}                                 # Issue #54
+        if type1 in NUMS    and type2 in NUMS:    return True
+        if type1 in STRS    and type2 in STRS:    return True
+        if type1 in DATES   and type2 in DATES:   return True
+        if type1 in SPATIAL and type2 in SPATIAL: return True
+        if type1 in BINARY  and type2 in BINARY:  return True
+        if type1 in XML_T   and type2 in XML_T:   return True
         if (type1 in DATES and type2 in STRS) or (type1 in STRS and type2 in DATES): return True
         return False
 
