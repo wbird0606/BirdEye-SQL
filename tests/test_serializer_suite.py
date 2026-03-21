@@ -92,14 +92,68 @@ def test_between_cast_serialization():
     ast = get_ast(sql)
     serializer = ASTSerializer()
     data = json.loads(serializer.to_json(ast))
-    
+
     # 檢查 CAST
     cast_node = data["columns"][0]
     assert cast_node["node_type"] == "CastExpressionNode"
     assert cast_node["target"] == "INT"
-    
+
     # 檢查 BETWEEN
     between_node = data["where"]
     assert between_node["node_type"] == "BetweenExpressionNode"
     assert between_node["low"]["value"] == "1"
     assert between_node["high"]["value"] == "10"
+
+# --- Issue #51/#52/#53: 新語句序列化測試 ---
+
+def test_declare_serialization():
+    """DECLARE 語句應序列化為含 var_name / var_type / default_value 的 JSON"""
+    ast = get_ast("DECLARE @counter INT")
+    data = json.loads(ASTSerializer().to_json(ast))
+    assert data["node_type"] == "DeclareStatement"
+    assert data["var_name"] == "@counter"
+    assert data["var_type"] == "INT"
+    assert data["default_value"] is None
+
+def test_declare_with_default_serialization():
+    """DECLARE @x INT = 0 的 default_value 應序列化為 LiteralNode"""
+    ast = get_ast("DECLARE @x INT = 0")
+    data = json.loads(ASTSerializer().to_json(ast))
+    assert data["default_value"] is not None
+    assert data["default_value"]["node_type"] == "LiteralNode"
+    assert data["default_value"]["value"] == "0"
+
+def test_select_into_serialization():
+    """SELECT INTO #table 應在 JSON 中包含 into_table 欄位"""
+    ast = get_ast("SELECT A INTO #Temp FROM T")
+    data = json.loads(ASTSerializer().to_json(ast))
+    assert data["node_type"] == "SelectStatement"
+    assert data["into_table"] is not None
+    assert data["into_table"]["name"] == "#Temp"
+
+def test_select_without_into_has_null_into_table():
+    """一般 SELECT 的 into_table 應為 null"""
+    ast = get_ast("SELECT A FROM T")
+    data = json.loads(ASTSerializer().to_json(ast))
+    assert data["into_table"] is None
+
+def test_apply_node_serialization():
+    """CROSS APPLY 應序列化為含 apply_type / subquery / alias 的 JSON"""
+    sql = "SELECT A FROM T CROSS APPLY (SELECT B FROM T2) sub"
+    ast = get_ast(sql)
+    data = json.loads(ASTSerializer().to_json(ast))
+    assert "applies" in data
+    assert len(data["applies"]) == 1
+    apply = data["applies"][0]
+    assert apply["node_type"] == "ApplyNode"
+    assert apply["apply_type"] == "CROSS"
+    assert apply["alias"] == "sub"
+    assert apply["subquery"]["node_type"] == "SelectStatement"
+
+def test_outer_apply_node_serialization():
+    """OUTER APPLY 的 apply_type 應為 OUTER"""
+    sql = "SELECT A FROM T OUTER APPLY (SELECT B FROM T2) sub"
+    ast = get_ast(sql)
+    data = json.loads(ASTSerializer().to_json(ast))
+    apply = data["applies"][0]
+    assert apply["apply_type"] == "OUTER"

@@ -131,3 +131,45 @@ def test_visualizer_any_list_display(global_runner):
     assert "LIST" in output
     assert "ITEM#1" in output
     assert "LITERAL: 1" in output
+
+# --- Issue #51/#52/#53: 新語句視覺化測試 ---
+
+def test_visualizer_declare_statement():
+    """DECLARE 語句應顯示 DECLARE_STATEMENT、變數名稱與型別"""
+    output = run_visualize("DECLARE @counter INT")
+    assert "DECLARE_STATEMENT" in output
+    assert "@counter" in output
+    assert "INT" in output
+
+def test_visualizer_declare_with_default():
+    """DECLARE @x INT = 0 應同時顯示預設值節點"""
+    output = run_visualize("DECLARE @x INT = 0")
+    assert "DECLARE_STATEMENT" in output
+    assert "DEFAULT" in output
+    assert "LITERAL: 0" in output
+
+def test_visualizer_select_into(global_runner):
+    """SELECT INTO #table 應顯示 INTO 節點與臨時表名稱"""
+    output = run_visualize_full("SELECT AddressID INTO #Temp FROM Address", global_runner)
+    assert "INTO: #Temp" in output
+
+def test_visualizer_cross_apply(global_runner):
+    """CROSS APPLY 應顯示 CROSS_APPLY 節點與子查詢"""
+    sql = (
+        "SELECT a.AddressID, sub.City "
+        "FROM Address a "
+        "CROSS APPLY (SELECT City FROM Address WHERE AddressID = a.AddressID) sub"
+    )
+    output = run_visualize_full(sql, global_runner)
+    assert "CROSS_APPLY" in output
+    assert "ALIAS: sub" in output
+
+def test_visualizer_outer_apply(global_runner):
+    """OUTER APPLY 應顯示 OUTER_APPLY 節點"""
+    sql = (
+        "SELECT a.AddressID, sub.City "
+        "FROM Address a "
+        "OUTER APPLY (SELECT City FROM Address WHERE AddressID = a.AddressID) sub"
+    )
+    output = run_visualize_full(sql, global_runner)
+    assert "OUTER_APPLY" in output

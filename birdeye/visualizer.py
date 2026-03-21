@@ -1,10 +1,11 @@
 from birdeye.ast import (
-    SelectStatement, UpdateStatement, DeleteStatement, 
+    SelectStatement, UpdateStatement, DeleteStatement,
     InsertStatement, SqlBulkCopyStatement,
-    IdentifierNode, LiteralNode, BinaryExpressionNode, 
+    IdentifierNode, LiteralNode, BinaryExpressionNode,
     FunctionCallNode, JoinNode, AssignmentNode,
     OrderByNode, CaseExpressionNode, BetweenExpressionNode,
-    CastExpressionNode, UnionStatement, CTENode, TruncateStatement
+    CastExpressionNode, UnionStatement, CTENode, TruncateStatement,
+    DeclareStatement, ApplyNode
 )
 
 class ASTVisualizer:
@@ -59,7 +60,15 @@ class ASTVisualizer:
                 self.lines.append(f"{current_indent}  ├── JOINS")
                 for j in node.joins:
                     self._visit(j, indent + 2, "JOIN")
-            
+
+            if hasattr(node, 'applies') and node.applies:
+                self.lines.append(f"{current_indent}  ├── APPLY")
+                for ap in node.applies:
+                    self._visit(ap, indent + 2, "APPLY")
+
+            if hasattr(node, 'into_table') and node.into_table:
+                self.lines.append(f"{current_indent}  ├── INTO: {node.into_table.name}")
+
             if node.where_condition:
                 self.lines.append(f"{current_indent}  ├── WHERE")
                 self._visit(node.where_condition, indent + 2, "COND")
@@ -213,3 +222,18 @@ class ASTVisualizer:
             self.lines.append(f"{prefix}SET_OP: =")
             self._visit(node.column, indent + 1, "TARGET")
             self._visit(node.right, indent + 1, "VALUE")
+
+        elif isinstance(node, DeclareStatement):
+            self.lines.append(f"{prefix}DECLARE_STATEMENT")
+            self.lines.append(f"{current_indent}  ├── VAR: {node.var_name}")
+            self.lines.append(f"{current_indent}  ├── TYPE: {node.var_type}")
+            if node.default_value is not None:
+                self.lines.append(f"{current_indent}  └── DEFAULT")
+                self._visit(node.default_value, indent + 2, "EXPR")
+
+        elif isinstance(node, ApplyNode):
+            self.lines.append(f"{prefix}{node.type}_APPLY")
+            if node.alias:
+                self.lines.append(f"{current_indent}  ├── ALIAS: {node.alias}")
+            self.lines.append(f"{current_indent}  └── SUBQUERY")
+            self._visit(node.subquery, indent + 2, "SUBQUERY")

@@ -1,11 +1,12 @@
 import json
 from birdeye.ast import (
-    SelectStatement, UpdateStatement, DeleteStatement, 
+    SelectStatement, UpdateStatement, DeleteStatement,
     InsertStatement, SqlBulkCopyStatement,
-    IdentifierNode, LiteralNode, BinaryExpressionNode, 
+    IdentifierNode, LiteralNode, BinaryExpressionNode,
     FunctionCallNode, JoinNode, AssignmentNode,
     OrderByNode, CaseExpressionNode, BetweenExpressionNode,
-    CastExpressionNode, UnionStatement, CTENode, TruncateStatement
+    CastExpressionNode, UnionStatement, CTENode, TruncateStatement,
+    DeclareStatement, ApplyNode
 )
 
 class ASTSerializer:
@@ -42,6 +43,8 @@ class ASTSerializer:
                 "table": self._serialize(node.table),
                 "alias": node.table_alias,
                 "joins": self._serialize(node.joins),
+                "applies": self._serialize(node.applies) if hasattr(node, 'applies') else [],
+                "into_table": self._serialize(node.into_table) if hasattr(node, 'into_table') else None,
                 "where": self._serialize(node.where_condition),
                 "group_by": self._serialize(node.group_by_cols),
                 "having": self._serialize(node.having_condition),
@@ -160,6 +163,20 @@ class ASTSerializer:
             res.update({
                 "column": self._serialize(node.column),
                 "expr": self._serialize(node.right)
+            })
+
+        elif isinstance(node, DeclareStatement):
+            res.update({
+                "var_name": node.var_name,
+                "var_type": node.var_type,
+                "default_value": self._serialize(node.default_value)
+            })
+
+        elif isinstance(node, ApplyNode):
+            res.update({
+                "apply_type": node.type,
+                "subquery": self._serialize(node.subquery),
+                "alias": node.alias
             })
 
         return res
