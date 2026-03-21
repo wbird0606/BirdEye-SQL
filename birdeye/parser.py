@@ -60,8 +60,12 @@ class Parser:
         if tok.type == TokenType.KEYWORD_SELECT:
             stmt = self._parse_select_with_set_ops()
             if ctes: stmt.ctes = ctes
-        elif tok.type == TokenType.KEYWORD_UPDATE: stmt = self._parse_update()
-        elif tok.type == TokenType.KEYWORD_DELETE: stmt = self._parse_delete()
+        elif tok.type == TokenType.KEYWORD_UPDATE:
+            stmt = self._parse_update()
+            if ctes: stmt.ctes = ctes
+        elif tok.type == TokenType.KEYWORD_DELETE:
+            stmt = self._parse_delete()
+            if ctes: stmt.ctes = ctes
         elif tok.type == TokenType.KEYWORD_INSERT: stmt = self._parse_insert()
         elif tok.type == TokenType.KEYWORD_TRUNCATE: stmt = self._parse_truncate()
         elif tok.type == TokenType.KEYWORD_DECLARE: stmt = self._parse_declare()

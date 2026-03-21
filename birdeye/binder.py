@@ -319,12 +319,20 @@ class Binder:
         self._visit_expression(node.expr); node.inferred_type = node.target_type; return node.target_type
 
     def _bind_update(self, stmt):
+        for cte in (stmt.ctes if hasattr(stmt, 'ctes') else []):
+            self._bind_node(cte.query)
+            cols = {(c.alias or c.name).upper(): c.inferred_type for c in cte.query.columns}
+            self.cte_schemas[cte.name.upper()] = cols
         self.scopes.append({}); self._register_scope(stmt.table, stmt.table_alias)
         if stmt.where_condition: self._visit_expression(stmt.where_condition)
         for c in stmt.set_clauses: self._check_type_compatibility(self._visit_expression(c.column), self._visit_expression(c.right), "SET assignment")
         self.scopes.pop()
 
     def _bind_delete(self, stmt):
+        for cte in (stmt.ctes if hasattr(stmt, 'ctes') else []):
+            self._bind_node(cte.query)
+            cols = {(c.alias or c.name).upper(): c.inferred_type for c in cte.query.columns}
+            self.cte_schemas[cte.name.upper()] = cols
         self.scopes.append({}); self._register_scope(stmt.table, stmt.table_alias)
         if stmt.where_condition: self._visit_expression(stmt.where_condition)
         self.scopes.pop()

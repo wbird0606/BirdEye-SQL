@@ -32,6 +32,7 @@ class UpdateStatement:
         self.table = None
         self.table_alias = None
         self.set_clauses = []   # List of AssignmentNodes
+        self.ctes = []          # CTE support (Issue #5)
         self.where_condition = None
 
 class DeleteStatement:
@@ -39,6 +40,7 @@ class DeleteStatement:
         self.table = None
         self.table_alias = None
         self.where_condition = None
+        self.ctes = []          # CTE support (Issue #5)
 
 class InsertStatement:
     def __init__(self):
