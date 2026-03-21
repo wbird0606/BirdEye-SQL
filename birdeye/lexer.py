@@ -230,14 +230,20 @@ class Lexer:
 
             # 2. 處理標識符與關鍵字 (支援 # 臨時表與 @ 變數)
             if char.isalpha() or char == '_' or char == '#' or char == '@':
-                start = self.pos
-                self._advance()
-                while self._peek() and (self._peek().isalnum() or self._peek() == '_' or self._peek() == '#'):
+                # Issue: N'' Unicode 字串前綴 — N 後直接接單引號時視為字串
+                if char in ('N', 'n') and self._peek(1) == "'":
+                    self._advance()  # 消耗 N
+                    char = self._peek()
+                    # 繼續走下面的字串解析
+                else:
+                    start = self.pos
                     self._advance()
-                text = self.source[start:self.pos]
-                token_type = keywords.get(text.upper(), TokenType.IDENTIFIER)
-                self.tokens.append(Token(token_type, text, start, self.pos))
-                continue
+                    while self._peek() and (self._peek().isalnum() or self._peek() == '_' or self._peek() == '#'):
+                        self._advance()
+                    text = self.source[start:self.pos]
+                    token_type = keywords.get(text.upper(), TokenType.IDENTIFIER)
+                    self.tokens.append(Token(token_type, text, start, self.pos))
+                    continue
 
             # 3. 處理數字
             if char.isdigit():

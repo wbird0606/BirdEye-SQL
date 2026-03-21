@@ -38,6 +38,8 @@ class MetadataRegistry:
         self.register_function("SUM", "AGGREGATE", 1, 1, ["ANY"], "INT")
         self.register_function("COUNT", "AGGREGATE", 0, 1, ["ANY"], "INT")
         self.register_function("AVG", "AGGREGATE", 1, 1, ["ANY"], "INT")
+        self.register_function("MAX", "AGGREGATE", 1, 1, ["ANY"], "ANY")
+        self.register_function("MIN", "AGGREGATE", 1, 1, ["ANY"], "ANY")
         
         # --- 標量函數: 字串類 (回傳 NVARCHAR 或 INT) ---
         self.register_function("LEN", "SCALAR", 1, 1, ["NVARCHAR"], "INT")

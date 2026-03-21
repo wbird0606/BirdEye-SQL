@@ -142,10 +142,20 @@ class Parser:
             stmt.into_table, _ = self._parse_full_identifier_safe()
 
         if self._match(TokenType.KEYWORD_FROM):
-            stmt.table, _ = self._parse_full_identifier_safe()
-            self._match(TokenType.KEYWORD_AS)
-            alias_tok = self._match(TokenType.IDENTIFIER)
-            if alias_tok: stmt.table_alias = self._get_text(alias_tok)
+            # 衍生資料表: FROM (SELECT ...) alias
+            if self._peek() and self._peek().type == TokenType.SYMBOL_LPAREN:
+                self._advance()
+                subq = self._parse_select_with_set_ops()
+                self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after derived table")
+                self._match(TokenType.KEYWORD_AS)
+                alias_tok = self._consume(TokenType.IDENTIFIER, "Derived table must have an alias")
+                stmt.table = subq
+                stmt.table_alias = self._get_text(alias_tok)
+            else:
+                stmt.table, _ = self._parse_full_identifier_safe()
+                self._match(TokenType.KEYWORD_AS)
+                alias_tok = self._match(TokenType.IDENTIFIER)
+                if alias_tok: stmt.table_alias = self._get_text(alias_tok)
 
             if self._peek() and self._peek().type == TokenType.SYMBOL_COMMA: raise SyntaxError("Expected FROM")
 
@@ -188,10 +198,20 @@ class Parser:
                 self._match(TokenType.KEYWORD_INNER)
                 self._match(TokenType.KEYWORD_OUTER)  # 吸收可選的 OUTER
                 if self._match(TokenType.KEYWORD_JOIN):
-                    tbl, _ = self._parse_full_identifier_safe()
-                    j_node = JoinNode(type=jt, table=tbl)
-                    self._match(TokenType.KEYWORD_AS); al = self._match(TokenType.IDENTIFIER)
-                    if al: j_node.alias = self._get_text(al)
+                    # JOIN 子查詢: JOIN (SELECT ...) alias ON ...
+                    if self._peek() and self._peek().type == TokenType.SYMBOL_LPAREN:
+                        self._advance()
+                        subq = self._parse_select_with_set_ops()
+                        self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after JOIN subquery")
+                        self._match(TokenType.KEYWORD_AS)
+                        al_tok = self._consume(TokenType.IDENTIFIER, "JOIN subquery must have an alias")
+                        j_node = JoinNode(type=jt, table=subq)
+                        j_node.alias = self._get_text(al_tok)
+                    else:
+                        tbl, _ = self._parse_full_identifier_safe()
+                        j_node = JoinNode(type=jt, table=tbl)
+                        self._match(TokenType.KEYWORD_AS); al = self._match(TokenType.IDENTIFIER)
+                        if al: j_node.alias = self._get_text(al)
                     self._consume(TokenType.KEYWORD_ON, "Expected ON")
                     cond = self._parse_expression()
                     j_node.on_condition = cond

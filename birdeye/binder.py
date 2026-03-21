@@ -51,13 +51,13 @@ class Binder:
                 self.cte_schemas[cte.name.upper()] = cols
 
         self.scopes.append({}); self.nullable_stack.append(set())
-        if stmt.table: self._register_scope(stmt.table, stmt.table_alias)
+        if stmt.table: self._register_scope_node(stmt.table, stmt.table_alias)
         for j in stmt.joins:
             al = (j.alias or j.table.name).upper()
             if j.type == "LEFT": self.nullable_stack[-1].add(al)
             elif j.type == "RIGHT": self.nullable_stack[-1].update(self.scopes[-1].keys())
             elif j.type == "FULL": self.nullable_stack[-1].add(al); self.nullable_stack[-1].update(self.scopes[-1].keys())
-            self._register_scope(j.table, j.alias)
+            self._register_scope_node(j.table, j.alias)
             if j.on_condition: self._visit_expression(j.on_condition)
         # Issue #53: APPLY — 橫向作用域：子查詢在外側 scope 已存在時綁定，可見外側欄位
         for apply in (stmt.applies if hasattr(stmt, 'applies') else []):
@@ -108,6 +108,22 @@ class Binder:
         if rt in self.cte_schemas: return self.cte_schemas[rt]
         if rt in self.temp_schemas: return self.temp_schemas[rt]
         return None
+
+    def _register_scope_node(self, table_node, alias):
+        """統一處理 IdentifierNode 與衍生資料表 (SelectStatement) 的 scope 註冊"""
+        if isinstance(table_node, (SelectStatement, UnionStatement)):
+            # 衍生資料表：先綁定子查詢，再用 alias 註冊其投影欄位
+            self._bind_select(table_node) if isinstance(table_node, SelectStatement) else self._bind_union(table_node)
+            schema = {}
+            cols = table_node.columns if hasattr(table_node, 'columns') else []
+            for col in cols:
+                col_name = (col.alias if hasattr(col, 'alias') and col.alias else col.name).upper()
+                schema[col_name] = col.inferred_type
+            key = alias.upper() if alias else "DERIVED"
+            self.cte_schemas[key] = schema
+            self.scopes[-1][key] = key
+        else:
+            self._register_scope(table_node, alias)
 
     def _register_scope(self, table_node, alias):
         rt = table_node.name.upper()
@@ -258,7 +274,13 @@ class Binder:
                     exp = f_meta.expected_types[i]
                     if exp != "ANY" and act != "UNKNOWN" and not self._is_type_compatible(exp, act):
                         raise SemanticError(f"Function '{f_name}' expects {exp}, but got {act}")
-            expr.inferred_type = f_meta.return_type; return expr.inferred_type
+            # MAX/MIN: 回傳型別跟著第一個參數的型別
+            if f_meta.return_type == "ANY" and expr.args:
+                arg_type = self._visit_expression(expr.args[0]) if not hasattr(expr.args[0], 'inferred_type') or expr.args[0].inferred_type == "UNKNOWN" else expr.args[0].inferred_type
+                expr.inferred_type = arg_type if arg_type != "UNKNOWN" else "ANY"
+            else:
+                expr.inferred_type = f_meta.return_type
+            return expr.inferred_type
         elif isinstance(expr, CaseExpressionNode):
             if expr.input_expr: self._visit_expression(expr.input_expr)
             b_types = []

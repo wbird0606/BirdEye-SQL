@@ -158,6 +158,15 @@ def test_outer_apply_node_serialization():
     apply = data["applies"][0]
     assert apply["apply_type"] == "OUTER"
 
+# --- Issue #5 round2: 衍生資料表序列化測試 ---
+
+def test_derived_table_serialization():
+    """衍生資料表 table 應序列化為 SelectStatement"""
+    ast = get_ast("SELECT sub.City FROM (SELECT City FROM T) sub")
+    data = json.loads(ASTSerializer().to_json(ast))
+    assert data["table"]["node_type"] == "SelectStatement"
+    assert data["alias"] == "sub"
+
 # --- Issue #60-#64: NOT IN / OFFSET FETCH 序列化測試 ---
 
 def test_not_in_operator_serialization():

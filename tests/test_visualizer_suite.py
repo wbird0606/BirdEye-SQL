@@ -174,6 +174,14 @@ def test_visualizer_outer_apply(global_runner):
     output = run_visualize_full(sql, global_runner)
     assert "OUTER_APPLY" in output
 
+# --- Issue #5 round2: 衍生資料表視覺化測試 ---
+
+def test_visualizer_derived_table():
+    """FROM (SELECT ...) sub 衍生資料表應顯示 SELECT_STATEMENT 子節點"""
+    output = run_visualize("SELECT sub.City FROM (SELECT City FROM T) sub")
+    assert "SELECT_STATEMENT" in output
+    assert "ALIAS: sub" in output
+
 # --- Issue #60-#64: NOT IN / NOT EXISTS / JOIN / OFFSET FETCH 視覺化測試 ---
 
 def test_visualizer_offset_fetch():
