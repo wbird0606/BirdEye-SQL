@@ -16,6 +16,8 @@ class TokenType(Enum):
     KEYWORD_INNER = auto()
     KEYWORD_LEFT = auto()
     KEYWORD_RIGHT = auto()
+    KEYWORD_UNION = auto()      # For UNION
+    KEYWORD_ALL = auto()        # For UNION ALL
     KEYWORD_ON = auto()
     KEYWORD_AND = auto()
     KEYWORD_OR = auto()
@@ -33,6 +35,8 @@ class TokenType(Enum):
     KEYWORD_NULL = auto()       # For IS NULL
     KEYWORD_LIKE = auto()       # For LIKE
     KEYWORD_BETWEEN = auto()    # For BETWEEN
+    KEYWORD_CAST = auto()       # For CAST
+    KEYWORD_CONVERT = auto()    # For CONVERT
     
     # 💡 Issue #33 新增：CASE 邏輯關鍵字
     KEYWORD_CASE = auto()
@@ -116,6 +120,8 @@ class Lexer:
             "INNER": TokenType.KEYWORD_INNER,
             "LEFT": TokenType.KEYWORD_LEFT,
             "RIGHT": TokenType.KEYWORD_RIGHT,
+            "UNION": TokenType.KEYWORD_UNION,
+            "ALL": TokenType.KEYWORD_ALL,
             "ON": TokenType.KEYWORD_ON,
             "AND": TokenType.KEYWORD_AND,
             "OR": TokenType.KEYWORD_OR,
@@ -133,6 +139,8 @@ class Lexer:
             "NULL": TokenType.KEYWORD_NULL,
             "LIKE": TokenType.KEYWORD_LIKE,
             "BETWEEN": TokenType.KEYWORD_BETWEEN,
+            "CAST": TokenType.KEYWORD_CAST,
+            "CONVERT": TokenType.KEYWORD_CONVERT,
             "CASE": TokenType.KEYWORD_CASE,
             "WHEN": TokenType.KEYWORD_WHEN,
             "THEN": TokenType.KEYWORD_THEN,

@@ -38,6 +38,15 @@ class SqlBulkCopyStatement:
     def __init__(self):
         self.table = None
 
+class UnionStatement:
+    """用於 SELECT ... UNION [ALL] SELECT ..."""
+    def __init__(self, left, operator, right):
+        self.left = left      # SelectStatement or UnionStatement
+        self.operator = operator # UNION, UNION ALL
+        self.right = right    # SelectStatement or UnionStatement
+        self.columns = []     # 由 Binder 合併後的虛擬投影欄位
+
+
 # --- 2. 表達式基類與推導屬性 ---
 
 class ExpressionNode:
