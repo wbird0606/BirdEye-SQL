@@ -1,6 +1,7 @@
 # 🦅 BirdEye-SQL: Semantic-Aware & Zero-Trust SQL Parser
 
 [![Testing: pytest](https://img.shields.io/badge/Testing-pytest-blue.svg)](https://docs.pytest.org/)
+[![Tests](https://img.shields.io/badge/Tests-489%20passed-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 🌍 **Language Switch / 語言切換**: [English](#english-version) | [繁體中文](#繁體中文版本)
@@ -48,94 +49,55 @@ python main.py --file my_query.sql --csv custom_schema.csv --format mermaid
 * **Ambiguity Defense**: Mandatory qualifiers in JOIN environments to prevent "Column Ambiguity Attacks".
 * **Function Sandbox**: Implements a "Deny-by-Default" whitelist for database functions. Prevents execution of dangerous system functions like `xp_cmdshell`.
 
-### ⚙️ Engine Optimization
+### ⚙️ Engine Capabilities
 * **Full Pipeline Integration**: The `BirdEyeRunner` seamlessly connects the Lexer, Parser, Binder, and Visualizer.
-* **Expression Engine**: Supports arithmetic operations (`+`, `-`, `*`, `/`), logical conditions (`AND`, `OR`, `IS NULL`), and nested `CASE WHEN` logic.
+* **Comprehensive Expression Engine**: Arithmetic (`+`, `-`, `*`, `/`, `%`), bitwise (`&`, `|`, `^`, `~`), logical (`AND`, `OR`, `IS NULL`, `BETWEEN`), comparison (`IN`, `NOT IN`, `EXISTS`, `NOT EXISTS`, `LIKE`), and nested `CASE WHEN` logic.
 * **Star Expansion**: Automatically expands `SELECT *` or `Table.*` into explicit column lists using metadata.
+* **MSSQL-Specific Syntax**: `TOP N [PERCENT]`, `OFFSET/FETCH`, `DECLARE @var`, `SELECT INTO #temp`, `CROSS/OUTER APPLY`, `WITH (CTE)`.
 
-## 🧪 Testing Strategy (189 Test Cases Across 21 Suites)
-We strictly adhere to **Test-Driven Development (TDD)**. The project contains **189 comprehensive test cases** across **21 specialized test suites**, ensuring both syntactic correctness and semantic security:
+### 📐 Supported SQL Features
 
-### Core Component Testing
-1. **`test_lexer_suite.py`** (8 tests) - Lexical Analysis
-   * Tokenization, keyword recognition, MSSQL nested comments (`/* /* */ */`), bracket escaping, and syntax boundary validation.
+| Category | Features |
+|---|---|
+| **SELECT** | DISTINCT, TOP N / TOP N PERCENT, OFFSET/FETCH, INTO #temp |
+| **JOIN** | INNER, LEFT, RIGHT, FULL OUTER, CROSS JOIN, JOIN subquery |
+| **APPLY** | CROSS APPLY, OUTER APPLY |
+| **Set Ops** | UNION, UNION ALL, INTERSECT, EXCEPT |
+| **Subqueries** | Scalar, correlated, derived tables, ANY/ALL |
+| **DML** | INSERT (single/multi-row/SELECT), UPDATE, DELETE, TRUNCATE |
+| **CTE** | Single, multiple, WITH + DML (UPDATE/DELETE) |
+| **Expressions** | CASE WHEN, BETWEEN, CAST(x AS TYPE(len)), CONVERT(TYPE, x, style) |
+| **Operators** | Arithmetic, bitwise, modulo, comparison, LIKE, IN/NOT IN |
+| **Functions** | 60+ built-in: aggregates, string, numeric, date, NULL-handling |
+| **MSSQL** | DECLARE @var, #temp / ##global temp tables, GO, BULK INSERT |
 
-2. **`test_parser_suite.py`** (7 tests) - Syntactic Analysis  
-   * Statement routing, AST construction, syntax error handling, and parsing boundary checks.
+## 🧪 Testing Strategy (489 Tests Across 19 Suites)
 
-### Semantic & Type Safety Testing
-3. **`test_type_checking_suite.py`** (4 tests) - Type Safety Enforcement
-   * Function parameter type validation, binary operator type compatibility, and CASE expression result consistency.
+We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a **Red → Green → Zero Regression** cycle. The project contains **489 comprehensive test cases** across **19 specialized test suites**:
 
-4. **`test_expression_suite.py`** (16 tests) - Expression Engine
-   * Arithmetic precedence (PEMDAS), `IS NULL` operators, type compatibility, and complex expression evaluation.
+| Test Suite | Tests | Coverage |
+|---|---|---|
+| `test_lexer_suite.py` | 16 | Tokenization, keywords, comments, bracket escaping, N'' prefix |
+| `test_parser_suite.py` | 23 | Statement routing, AST construction, syntax error boundaries |
+| `test_expressions_suite.py` | 31 | Arithmetic/bitwise/modulo, CASE WHEN, BETWEEN, CAST/CONVERT with length/style |
+| `test_functions_suite.py` | 27 | 60+ built-in functions, function sandbox, aggregate integrity, COUNT(DISTINCT) |
+| `test_select_features_suite.py` | 41 | DISTINCT, TOP/PERCENT, ORDER BY, GROUP BY/HAVING, OFFSET/FETCH, NULL literals |
+| `test_dml_suite.py` | 39 | INSERT (single/multi-row/SELECT), UPDATE, DELETE, TRUNCATE, mandatory WHERE |
+| `test_join_suite.py` | 33 | INNER/LEFT/RIGHT/FULL/CROSS JOIN, nullable propagation, multi-table chains |
+| `test_subquery_suite.py` | 32 | Scalar, correlated, derived tables, UNION/INTERSECT/EXCEPT derived, ANY/ALL |
+| `test_cte_suite.py` | 10 | Single/multiple CTEs, CTE + UPDATE/DELETE, CTE scope isolation |
+| `test_semantic_suite.py` | 23 | ZTA enforcement, type safety, alias policy, scope stack, ambiguity detection |
+| `test_mssql_features_suite.py` | 49 | DECLARE, #temp tables, CROSS/OUTER APPLY, advanced types (Geography, XML…) |
+| `test_mssql_boundary_suite.py` | 42 | Edge cases: negative literals, global ##temp, operators, INTERSECT/EXCEPT, string functions |
+| `test_integration_suite.py` | 23 | End-to-end pipeline with real AdventureWorks metadata, cross-feature integration |
+| `test_window_functions_suite.py` | 22 | Window function syntax boundaries (expected-failure suite) |
+| `test_visualizer_suite.py` | 39 | Tree rendering, Mermaid output, type annotation, all statement types |
+| `test_serializer_suite.py` | 29 | JSON serialization of all AST node types, round-trip accuracy |
+| `test_cli_suite.py` | 4 | CLI argument parsing, file I/O, output format validation |
+| `test_web_api_suite.py` | 3 | RESTful endpoints, JSON response format, HTTP error codes |
+| `test_mermaid_suite.py` | 3 | Mermaid flowchart generation and node structure |
 
-5. **`test_functions_suite.py`** (6 tests) - Function Sandbox
-   * Built-in function validation, parameter type checking, aggregate function integrity, and restricted function blocking.
-
-### SQL Feature Testing
-6. **`test_between_suite.py`** (5 tests) - BETWEEN Syntax
-   * BETWEEN expression parsing, type compatibility validation, and NOT BETWEEN handling.
-
-7. **`test_case_when_suite.py`** (4 tests) - CASE WHEN Logic
-   * CASE expression parsing, branch evaluation, nested CASE structures, and result type consistency.
-
-8. **`test_cast_suite.py`** (3 tests) - Type Casting
-   * CAST/CONVERT syntax parsing, type conversion validation, and expression integration.
-
-9. **`test_cte_suite.py`** (3 tests) - Common Table Expressions
-   * WITH clause parsing, CTE reference validation, and recursive CTE handling.
-
-10. **`test_union_suite.py`** (5 tests) - UNION Operations
-    * UNION/UNION ALL syntax, column count matching, and type compatibility across queries.
-
-### Data Manipulation Testing
-11. **`test_dml_suite.py`** (6 tests) - DML Operations
-    * UPDATE/DELETE statement validation, mandatory WHERE clauses, and type-safe assignments.
-
-12. **`test_insert_suite.py`** (8 tests) - INSERT Operations
-    * INSERT syntax parsing, column alignment, value type checking, and bulk insert handling.
-
-### Query Structure Testing
-13. **`test_join_suite.py`** (7 tests) - JOIN Operations
-    * Multi-table JOIN syntax, ambiguity prevention, alias shadowing protection, and ON condition validation.
-
-14. **`test_join_multi_table_suite.py`** (3 tests) - Multi-Table JOINs
-    * Three-way JOIN visibility, table alias resolution, and complex JOIN chain validation.
-
-15. **`test_join_nullable_suite.py`** (2 tests) - NULL Handling in JOINs
-    * LEFT/RIGHT JOIN nullability propagation and nullable column tracking.
-
-16. **`test_group_by_having_suite.py`** (6 tests) - Aggregation
-    * GROUP BY expression integrity, aggregate function validation, and HAVING clause processing.
-
-17. **`test_order_by_top_suite.py`** (10 tests) - Sorting & Pagination
-    * ORDER BY column resolution, TOP N syntax, alias resolution, and sort direction handling.
-
-18. **`test_scope_stack_suite.py`** (4 tests) - Scope Management
-    * Variable scoping rules, correlated subquery binding, and nested scope resolution.
-
-### Security & ZTA Testing
-19. **`test_semantic_zta_suite.py`** (16 tests) - Zero Trust Architecture
-    * Semantic security enforcement, metadata-driven validation, star expansion security, and ZTA policy compliance.
-
-### Integration & Interface Testing
-20. **`test_integration_suite.py`** (8 tests) - End-to-End Integration
-    * Complete pipeline validation with real AdventureWorks metadata, performance benchmarking, and cross-component integration.
-
-21. **`test_cli_suite.py`** (4 tests) - CLI Interface
-    * Command-line argument parsing, file I/O operations, output format validation, and error handling.
-
-22. **`test_web_api_suite.py`** (3 tests) - Web API
-    * RESTful endpoint validation, JSON response formatting, HTTP error codes, and API stability.
-
-23. **`test_visualizer_suite.py`** (11 tests) - AST Visualization
-    * Tree diagram rendering, Mermaid flowchart generation, type annotation display, and visual output validation.
-
-24. **`test_serializer_suite.py`** (4 tests) - AST Serialization
-    * JSON serialization accuracy, AST reconstruction, metadata preservation, and format compatibility.
-
-**Current Status**: ✅ **100% Tests Passed** (189/189)
+**Current Status**: ✅ **100% Tests Passed** (489/489)
 ```powershell
 pytest tests/
 ```
@@ -161,7 +123,7 @@ pip install -r requirements.txt
 ```
 
 ### Web 視覺化儀表板
-BirdEye-SQL 內建了一個基於 Flask 的現代化 Web UI，支援動態載入 CSV 元數據，並能即時渲染帶有型別推導的 AST Tree 與 Mermaid 流程圖 (支援平移縮放與圖片下載)。
+BirdEye-SQL 內建了一個基於 Flask 的現代化 Web UI，支援動態載入 CSV 元數據，並能即時渲染帶有型別推導的 AST Tree 與 Mermaid 流程圖（支援平移縮放與圖片下載）。
 ```powershell
 python web/app.py
 ```
@@ -180,99 +142,60 @@ python main.py --file my_query.sql --csv custom_schema.csv --format mermaid
 ## ✨ 核心功能
 
 ### 🛡️ 零信任資安強化 (ZTA)
-* **嚴格型別推導**: 具備強大的型別推導與相容性檢查引擎，支援隱含轉型 (如 `DATETIME` 與 `NVARCHAR`) 及使用者定義類型 (UDT)，防堵不合法的賦值與比較。
+* **嚴格型別推導**: 具備強大的型別推導與相容性檢查引擎，支援隱含轉型（如 `DATETIME` 與 `NVARCHAR`）及使用者定義類型 (UDT)，防堵不合法的賦值與比較。
 * **嚴格別名規範**: 一旦定義了別名，原始表名即刻失效，防止語義陰影攻擊。
 * **歧義防禦**: 在 JOIN 環境下強制要求限定符，防止「欄位歧義攻擊」。
 * **函數沙箱**: 實作「預設拒絕」的函數白名單機制，攔截如 `xp_cmdshell` 等高風險系統函數。
 
-### ⚙️ 引擎優化與特性
-* **全域流水線整合**: 提供 `BirdEyeRunner` 核心引擎，完美串接 Lexer -> Parser -> Binder -> Visualizer 完整流水線。
-* **強大表達式引擎**: 支援算術運算 (`+`, `-`, `*`, `/`)、邏輯條件 (`AND`, `OR`, `IS NULL`) 與多層巢狀 `CASE WHEN` 的精確解析。
+### ⚙️ 引擎能力
+* **全域流水線整合**: 提供 `BirdEyeRunner` 核心引擎，完美串接 Lexer → Parser → Binder → Visualizer 完整流水線。
+* **強大表達式引擎**: 算術運算（`+`, `-`, `*`, `/`, `%`）、位元運算（`&`, `|`, `^`, `~`）、邏輯條件（`AND`, `OR`, `IS NULL`, `BETWEEN`）、比較（`IN`, `NOT IN`, `EXISTS`, `LIKE`）與多層巢狀 `CASE WHEN` 的精確解析。
 * **星號自動展開**: 利用元數據自動將 `SELECT *` 或 `Table.*` 展開為明確的實體欄位清單。
+* **MSSQL 特有語法**: `TOP N [PERCENT]`、`OFFSET/FETCH`、`DECLARE @var`、`SELECT INTO #temp`、`CROSS/OUTER APPLY`、`WITH (CTE)`。
 
-## 🧪 測試策略 (總計 189 測試案例，涵蓋 21 個測試套件)
-我們嚴格遵守**測試驅動開發 (TDD)**。專案內包含 **21 個專門化測試套件**、**189 個全面測試案例**，全面涵蓋語法解析與語意防禦：
+### 📐 支援的 SQL 語法
 
-### 核心組件測試
-1. **`test_lexer_suite.py`** (8 測試) - 詞法分析
-   * Token 化、關鍵字識別、MSSQL 巢狀多行註解 (`/* /* */ */`)、中括號轉義以及語法邊界驗證。
+| 類別 | 功能 |
+|---|---|
+| **SELECT** | DISTINCT、TOP N / TOP N PERCENT、OFFSET/FETCH、INTO #temp |
+| **JOIN** | INNER、LEFT、RIGHT、FULL OUTER、CROSS JOIN、子查詢 JOIN |
+| **APPLY** | CROSS APPLY、OUTER APPLY |
+| **集合運算** | UNION、UNION ALL、INTERSECT、EXCEPT |
+| **子查詢** | 純量、關聯、衍生資料表、ANY/ALL |
+| **DML** | INSERT（單列/多列/SELECT來源）、UPDATE、DELETE、TRUNCATE |
+| **CTE** | 單一/多個 CTE、WITH + DML（UPDATE/DELETE） |
+| **表達式** | CASE WHEN、BETWEEN、CAST(x AS TYPE(len))、CONVERT(TYPE, x, style) |
+| **運算子** | 算術、位元、模數、比較、LIKE、IN/NOT IN |
+| **函數** | 60+ 內建函數：聚合、字串、數值、日期、NULL 處理 |
+| **MSSQL** | DECLARE @var、#temp / ##global 暫存表、GO、BULK INSERT |
 
-2. **`test_parser_suite.py`** (7 測試) - 語法分析
-   * 語句路由、AST 構建、語法錯誤處理以及解析邊界檢查。
+## 🧪 測試策略（489 個測試案例，涵蓋 19 個套件）
 
-### 語意與類型安全測試
-3. **`test_type_checking_suite.py`** (4 測試) - 類型安全強化
-   * 函數參數類型驗證、二元運算子類型相容性以及 CASE 表達式結果一致性。
+我們嚴格遵守**測試驅動開發 (TDD)**，每個功能均遵循 **Red → Green → 零回歸** 循環。專案內包含 **19 個專門化測試套件**、**489 個全面測試案例**：
 
-4. **`test_expression_suite.py`** (16 測試) - 表達式引擎
-   * 算術優先級 (先乘除後加減)、`IS NULL` 運算子、類型相容性以及複雜表達式計算。
+| 測試套件 | 測試數 | 涵蓋範圍 |
+|---|---|---|
+| `test_lexer_suite.py` | 16 | Token 化、關鍵字、多行註解、中括號、N'' 前綴 |
+| `test_parser_suite.py` | 23 | 語句路由、AST 建構、語法錯誤邊界 |
+| `test_expressions_suite.py` | 31 | 算術/位元/模數、CASE WHEN、BETWEEN、CAST/CONVERT 含長度與 style |
+| `test_functions_suite.py` | 27 | 60+ 內建函數、函數沙箱、聚合完整性、COUNT(DISTINCT) |
+| `test_select_features_suite.py` | 41 | DISTINCT、TOP/PERCENT、ORDER BY、GROUP BY/HAVING、OFFSET/FETCH、NULL 字面值 |
+| `test_dml_suite.py` | 39 | INSERT（單列/多列/SELECT）、UPDATE、DELETE、TRUNCATE、強制 WHERE |
+| `test_join_suite.py` | 33 | INNER/LEFT/RIGHT/FULL/CROSS JOIN、可空性傳導、多表鏈接 |
+| `test_subquery_suite.py` | 32 | 純量、關聯、衍生資料表、UNION/INTERSECT/EXCEPT 衍生、ANY/ALL |
+| `test_cte_suite.py` | 10 | 單一/多個 CTE、CTE + UPDATE/DELETE、CTE 作用域隔離 |
+| `test_semantic_suite.py` | 23 | ZTA 強化、型別安全、別名規範、作用域堆疊、歧義檢測 |
+| `test_mssql_features_suite.py` | 49 | DECLARE、#temp 暫存表、CROSS/OUTER APPLY、進階型別（Geography、XML…） |
+| `test_mssql_boundary_suite.py` | 42 | 邊界案例：負數字面值、##global temp、位元運算子、INTERSECT/EXCEPT、字串函數 |
+| `test_integration_suite.py` | 23 | 載入真實 AdventureWorks 元數據的端到端流水線、跨功能整合 |
+| `test_window_functions_suite.py` | 22 | 視窗函數語法邊界（預期失敗套件） |
+| `test_visualizer_suite.py` | 39 | 樹狀圖渲染、Mermaid 輸出、型別標註、全語句類型 |
+| `test_serializer_suite.py` | 29 | 所有 AST 節點的 JSON 序列化、往返準確性 |
+| `test_cli_suite.py` | 4 | CLI 參數解析、檔案 I/O、輸出格式驗證 |
+| `test_web_api_suite.py` | 3 | RESTful 端點、JSON 回應格式、HTTP 錯誤代碼 |
+| `test_mermaid_suite.py` | 3 | Mermaid 流程圖產生與節點結構 |
 
-5. **`test_functions_suite.py`** (6 測試) - 函數沙箱
-   * 內建函數驗證、參數類型檢查、聚合函數完整性以及受限函數攔截。
-
-### SQL 特性測試
-6. **`test_between_suite.py`** (5 測試) - BETWEEN 語法
-   * BETWEEN 表達式解析、類型相容性驗證以及 NOT BETWEEN 處理。
-
-7. **`test_case_when_suite.py`** (4 測試) - CASE WHEN 邏輯
-   * CASE 表達式解析、分支計算、巢狀 CASE 結構以及結果類型一致性。
-
-8. **`test_cast_suite.py`** (3 測試) - 類型轉換
-   * CAST/CONVERT 語法解析、類型轉換驗證以及表達式整合。
-
-9. **`test_cte_suite.py`** (3 測試) - 公共表達式
-   * WITH 子句解析、CTE 引用驗證以及遞歸 CTE 處理。
-
-10. **`test_union_suite.py`** (5 測試) - UNION 操作
-    * UNION/UNION ALL 語法、欄位數量匹配以及跨查詢的類型相容性。
-
-### 資料操作測試
-11. **`test_dml_suite.py`** (6 測試) - DML 操作
-    * UPDATE/DELETE 語句驗證、強制 WHERE 子句以及類型安全賦值。
-
-12. **`test_insert_suite.py`** (8 測試) - INSERT 操作
-    * INSERT 語法解析、欄位對齊、數值類型檢查以及批次插入處理。
-
-### 查詢結構測試
-13. **`test_join_suite.py`** (7 測試) - JOIN 操作
-    * 多表 JOIN 語法、歧義預防、別名遮蔽保護以及 ON 條件驗證。
-
-14. **`test_join_multi_table_suite.py`** (3 測試) - 多表 JOIN
-    * 三向 JOIN 可見性、表別名解析以及複雜 JOIN 鏈驗證。
-
-15. **`test_join_nullable_suite.py`** (2 測試) - JOIN 中的 NULL 處理
-    * LEFT/RIGHT JOIN 可空性傳導以及可空欄位追蹤。
-
-16. **`test_group_by_having_suite.py`** (6 測試) - 聚合操作
-    * GROUP BY 表達式完整性、聚合函數驗證以及 HAVING 子句處理。
-
-17. **`test_order_by_top_suite.py`** (10 測試) - 排序與分頁
-    * ORDER BY 欄位解析、TOP N 語法、別名解析以及排序方向處理。
-
-18. **`test_scope_stack_suite.py`** (4 測試) - 作用域管理
-    * 變數作用域規則、相關子查詢綁定以及巢狀作用域解析。
-
-### 安全與 ZTA 測試
-19. **`test_semantic_zta_suite.py`** (16 測試) - 零信任架構
-    * 語意安全強化、元數據驅動驗證、星號展開安全以及 ZTA 政策合規。
-
-### 整合與介面測試
-20. **`test_integration_suite.py`** (8 測試) - 端到端整合
-    * 載入真實 AdventureWorks 元數據的完整流水線驗證、效能基準測試以及跨組件整合。
-
-21. **`test_cli_suite.py`** (4 測試) - CLI 介面
-    * 命令列參數解析、檔案 I/O 操作、輸出格式驗證以及錯誤處理。
-
-22. **`test_web_api_suite.py`** (3 測試) - Web API
-    * RESTful 端點驗證、JSON 回應格式、HTTP 錯誤代碼以及 API 穩定性。
-
-23. **`test_visualizer_suite.py`** (11 測試) - AST 可視化
-    * 樹狀圖渲染、Mermaid 流程圖生成、類型註解顯示以及視覺輸出驗證。
-
-24. **`test_serializer_suite.py`** (4 測試) - AST 序列化
-    * JSON 序列化準確性、AST 重建、元數據保留以及格式相容性。
-
-**目前狀態**: ✅ **100% 測試通過** (189/189)
+**目前狀態**: ✅ **100% 測試通過** (489/489)
 ```powershell
 pytest tests/
 ```

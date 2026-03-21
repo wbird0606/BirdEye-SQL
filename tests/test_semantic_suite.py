@@ -5,7 +5,13 @@ from birdeye.lexer import Lexer
 from birdeye.parser import Parser
 from birdeye.binder import Binder, SemanticError
 
-# --- 1. 測試環境設置 ---
+
+def run_bind_with_runner(sql, runner):
+    """整合 BirdEyeRunner 執行完整驗證"""
+    return runner.run(sql)["ast"]
+
+
+# --- (from test_semantic_zta_suite.py) ---
 
 @pytest.fixture
 def registry():
@@ -23,10 +29,6 @@ def registry():
     reg = MetadataRegistry()
     reg.load_from_csv(io.StringIO(csv_data))
     return reg
-
-def run_bind_with_runner(sql, runner):
-    """整合 BirdEyeRunner 執行完整驗證"""
-    return runner.run(sql)["ast"]
 
 # --- 2. ZTA 核心語意強制執行測試 (Real Metadata) ---
 
@@ -63,7 +65,6 @@ def test_star_expansion_logic_real_meta(global_runner, sql, expected_count):
 
 def test_zta_star_alias_conflict_real_meta(global_runner):
     """🛡️ ZTA 政策：星號展開限定符也必須遵守別名失效原則"""
-    # 定義別名 'a' 後，禁止使用 'Address.*'
     sql = "SELECT Address.* FROM Address a"
     with pytest.raises(SemanticError, match="Unknown qualifier 'Address' in star expansion"):
         run_bind_with_runner(sql, global_runner)
@@ -80,7 +81,6 @@ def test_zta_star_alias_conflict_real_meta(global_runner):
 ])
 def test_complex_identifiers_and_aliases(registry, sql, expected_col, expected_qualifier, table_alias):
     """測試多層級限定符與帶標識符逃逸的整合綁定邏輯。"""
-    # 使用本地的 registry mock (為了測試 dbo.Users 等虛擬結構)
     lexer = Lexer(sql)
     parser = Parser(lexer.tokenize(), sql)
     ast = parser.parse()
@@ -91,6 +91,7 @@ def test_complex_identifiers_and_aliases(registry, sql, expected_col, expected_q
     assert bound_ast.columns[0].qualifier == expected_qualifier
     if table_alias:
         assert bound_ast.table_alias == table_alias
+
 # --- 5. 元數據查找魯棒性測試 ---
 
 @pytest.mark.parametrize("table, column, expected_exists", [
@@ -110,9 +111,115 @@ def test_zta_alias_invalidation_deep(registry):
     """
     sql = "SELECT Users.UserID FROM Users u"
     with pytest.raises(SemanticError, match="Original table name 'Users' cannot be used"):
-        # 使用本地 mock 流程
         lexer = Lexer(sql)
         parser = Parser(lexer.tokenize(), sql)
         ast = parser.parse()
         binder = Binder(registry)
         binder.bind(ast)
+
+
+# --- (from test_type_checking_suite.py) ---
+
+# --- 1. 函數參數型別檢查 ---
+
+def test_function_parameter_type_mismatch(global_runner):
+    """驗證函數參數型別不匹配時的報警"""
+    sql = "SELECT UPPER(ProductID) FROM Product"
+    with pytest.raises(SemanticError, match="Function 'UPPER' expects NVARCHAR"):
+        run_bind_with_runner(sql, global_runner)
+
+# --- 2. 運算子型別安全 ---
+
+def test_binary_op_type_mismatch(global_runner):
+    """驗證運算子兩側型別家族不相容時的攔截"""
+    sql = "SELECT Name + 100 FROM Product"
+    with pytest.raises(SemanticError, match=r"Operator '\+' cannot be applied to"):
+        run_bind_with_runner(sql, global_runner)
+
+# --- 3. CASE 分支型別一致性 ---
+
+def test_case_result_consistency(global_runner):
+    """🛡️ ZTA 政策：驗證 CASE 所有分支結果型別家族是否相容"""
+    sql = "SELECT CASE WHEN ProductID = 1 THEN 'Admin' ELSE 999 END FROM Product"
+    with pytest.raises(SemanticError, match="CASE branches have incompatible types"):
+        run_bind_with_runner(sql, global_runner)
+
+def test_arithmetic_on_strings_blocked(global_runner):
+    """驗證字串類型禁止進行算術除法"""
+    sql = "SELECT Name / 2 FROM Product"
+    with pytest.raises(SemanticError, match="Operator '/' cannot be applied"):
+        run_bind_with_runner(sql, global_runner)
+
+
+# --- (from test_scope_stack_suite.py) ---
+
+@pytest.fixture
+def scope_reg():
+    reg = MetadataRegistry()
+    csv_data = (
+        "table_name,column_name,data_type\n"
+        "Users,ID,INT\n"
+        "Users,UserID,INT\n"
+        "Users,UserName,NVARCHAR\n"
+        "Orders,OrderID,INT\n"
+        "Orders,UserID,INT\n"
+        "A,ID,INT\n"
+        "B,ID,INT\n"
+    )
+    reg.load_from_csv(io.StringIO(csv_data))
+    return reg
+
+def run_bind(sql, registry):
+    lexer = Lexer(sql)
+    parser = Parser(lexer.tokenize(), sql)
+    ast = parser.parse()
+    binder = Binder(registry)
+    return binder.bind(ast)
+
+# --- 2. 子查詢語法解析測試 (Parsing) ---
+
+def test_subquery_in_where_parsing():
+    """驗證 Parser 是否支援 WHERE 子句中的嵌套 SELECT"""
+    sql = "SELECT UserName FROM Users WHERE UserID IN (SELECT UserID FROM Orders)"
+    lexer = Lexer(sql)
+    parser = Parser(lexer.tokenize(), sql)
+    ast = parser.parse()
+
+    assert ast.where_condition.right.__class__.__name__ == "SelectStatement"
+
+# --- 3. 作用域隔離與遞迴搜尋 (Semantic) ---
+
+def test_subquery_scope_isolation(scope_reg):
+    """
+    🛡️ ZTA 政策：子查詢內部的別名不應洩漏到外部。
+    """
+    sql = "SELECT * FROM Users u WHERE UserID IN (SELECT UserID FROM Orders o) AND o.OrderID > 0"
+    with pytest.raises(SemanticError, match="Unknown qualifier 'o'"):
+        run_bind(sql, scope_reg)
+
+def test_correlated_subquery_binding(scope_reg):
+    """
+    🛡️ ZTA 核心：驗證「相關子查詢」的遞迴作用域。
+    內層查詢必須能看見外層的別名 'u'。
+    """
+    sql = """
+        SELECT UserName FROM Users u
+        WHERE EXISTS (
+            SELECT 1 FROM Orders o WHERE o.UserID = u.UserID
+        )
+    """
+    ast = run_bind(sql, scope_reg)
+    inner_select = ast.where_condition.args[0]
+    inner_where = inner_select.where_condition
+    assert inner_where.right.qualifier == "u"
+
+# --- 4. 深度嵌套挑戰 ---
+
+def test_triple_nested_scopes(scope_reg):
+    """驗證三層作用域的穩定性"""
+    sql = "SELECT * FROM Users WHERE ID IN (SELECT ID FROM A WHERE ID IN (SELECT ID FROM B))"
+    try:
+        run_bind(sql, scope_reg)
+    except SemanticError as e:
+        if "Table 'A' not found" in str(e): pass
+        else: raise

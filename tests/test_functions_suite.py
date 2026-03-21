@@ -5,7 +5,7 @@ from birdeye.lexer import Lexer
 from birdeye.parser import Parser
 from birdeye.binder import Binder, SemanticError
 
-# --- 1. 測試環境設置 ---
+# --- (from test_functions_suite.py) ---
 
 @pytest.fixture
 def func_reg():
@@ -14,7 +14,7 @@ def func_reg():
     # 載入表結構
     csv_data = "table_name,column_name,data_type\nUsers,UserName,NVARCHAR\nUsers,Password,NVARCHAR\n"
     reg.load_from_csv(io.StringIO(csv_data))
-    
+
     # 💡 模擬 Issue #34 預期新增的函數註冊介面
     # register_function(name, type, min_args, max_args)
     reg.register_function("LEN", "SCALAR", 1, 1)
@@ -32,8 +32,6 @@ def run_bind(sql, registry):
     binder = Binder(registry)
     return binder.bind(ast)
 
-# --- 2. 標量函數語意檢查測試 ---
-
 def run_bind_with_runner(sql, runner):
     """整合 BirdEyeRunner 執行完整驗證"""
     return runner.run(sql)["ast"]
@@ -42,7 +40,6 @@ def run_bind_with_runner(sql, runner):
 
 def test_scalar_function_binding(global_runner):
     """驗證常用字串函數是否能正確從內建 Registry 綁定"""
-    # 使用 Person 表 (存在於 data/output.csv)
     sql = "SELECT UPPER(FirstName), LEN(Suffix) FROM Person"
     ast = run_bind_with_runner(sql, global_runner)
     assert ast.columns[0].name == "UPPER"
@@ -50,7 +47,6 @@ def test_scalar_function_binding(global_runner):
 
 def test_function_argument_count_mismatch(global_runner):
     """🛡️ ZTA 政策：驗證函數參數數量必須精準匹配"""
-    # LEN() 預期 1 個參數
     sql = "SELECT LEN(FirstName, LastName) FROM Person"
     with pytest.raises(SemanticError, match="Function 'LEN' expects 1 arguments, got 2"):
         run_bind_with_runner(sql, global_runner)
@@ -59,8 +55,6 @@ def test_function_argument_count_mismatch(global_runner):
 
 def test_function_argument_type_mismatch(global_runner):
     """🛡️ ZTA 政策：驗證函數參數類型是否嚴格匹配 (Issue #35)"""
-    # SUBSTRING(string, start, length) -> NVARCHAR, INT, INT
-    # 傳入 SUBSTRING(FirstName, 'A', 'B') 應報錯
     sql = "SELECT SUBSTRING(FirstName, 'A', 'B') FROM Person"
     with pytest.raises(SemanticError, match="Function 'SUBSTRING' expects INT, but got NVARCHAR"):
         run_bind_with_runner(sql, global_runner)
@@ -75,7 +69,6 @@ def test_block_unregistered_system_function(global_runner):
 
 def test_block_sensitive_security_function(global_runner):
     """🛡️ ZTA 政策：明確攔截已知的敏感安全函數 (Restricted List)"""
-    # IS_SRVROLEMEMBER 已在 registry.py 的 restricted_functions 中
     sql = "SELECT IS_SRVROLEMEMBER('sysadmin')"
     with pytest.raises(SemanticError, match="Function 'IS_SRVROLEMEMBER' is restricted"):
         run_bind_with_runner(sql, global_runner)
@@ -85,11 +78,149 @@ def test_block_sensitive_security_function(global_runner):
 def test_nested_functions_and_case(func_reg):
     """驗證函數嵌套在 CASE WHEN 中的複雜場景"""
     sql = """
-        SELECT CASE 
-            WHEN LEN(UserName) > 5 THEN UPPER(UserName) 
-            ELSE LOWER(UserName) 
+        SELECT CASE
+            WHEN LEN(UserName) > 5 THEN UPPER(UserName)
+            ELSE LOWER(UserName)
         END FROM Users
     """
-    # 測試 Scope Stack 是否能支撐函數在 CASE 分支中的遞迴綁定
     ast = run_bind(sql, func_reg)
     assert ast.columns[0].branches[0][1].name == "UPPER"
+
+
+# --- (from test_builtin_functions_suite.py) ---
+
+# ─────────────────────────────────────────────
+# NULL 處理函數
+# ─────────────────────────────────────────────
+
+def test_isnull_function(global_runner):
+    result = global_runner.run("SELECT ISNULL(City, 'Unknown') FROM Address")
+    assert result["status"] == "success"
+
+
+def test_coalesce_function(global_runner):
+    result = global_runner.run("SELECT COALESCE(City, AddressLine1) FROM Address")
+    assert result["status"] == "success"
+
+
+def test_nullif_function(global_runner):
+    result = global_runner.run("SELECT NULLIF(City, AddressLine1) FROM Address")
+    assert result["status"] == "success"
+
+
+def test_iif_function(global_runner):
+    result = global_runner.run(
+        "SELECT IIF(AddressID > 0, 'Positive', 'Zero') FROM Address"
+    )
+    assert result["status"] == "success"
+
+
+# ─────────────────────────────────────────────
+# 數值函數
+# ─────────────────────────────────────────────
+
+def test_abs_function(global_runner):
+    result = global_runner.run("SELECT ABS(AddressID) FROM Address")
+    assert result["status"] == "success"
+
+
+def test_ceiling_function(global_runner):
+    result = global_runner.run("SELECT CEILING(AddressID) FROM Address")
+    assert result["status"] == "success"
+
+
+def test_floor_function(global_runner):
+    result = global_runner.run("SELECT FLOOR(AddressID) FROM Address")
+    assert result["status"] == "success"
+
+
+def test_round_function(global_runner):
+    result = global_runner.run("SELECT ROUND(AddressID, 0) FROM Address")
+    assert result["status"] == "success"
+
+
+def test_power_function(global_runner):
+    result = global_runner.run("SELECT POWER(AddressID, 2) FROM Address")
+    assert result["status"] == "success"
+
+
+# ─────────────────────────────────────────────
+# 字串函數
+# ─────────────────────────────────────────────
+
+def test_replace_function(global_runner):
+    result = global_runner.run("SELECT REPLACE(City, 'a', 'b') FROM Address")
+    assert result["status"] == "success"
+
+
+def test_ltrim_rtrim_function(global_runner):
+    result = global_runner.run("SELECT LTRIM(RTRIM(City)) FROM Address")
+    assert result["status"] == "success"
+
+
+def test_charindex_function(global_runner):
+    result = global_runner.run("SELECT CHARINDEX('a', City) FROM Address")
+    assert result["status"] == "success"
+
+
+def test_left_right_function(global_runner):
+    result = global_runner.run("SELECT LEFT(City, 3), RIGHT(City, 3) FROM Address")
+    assert result["status"] == "success"
+
+
+# ─────────────────────────────────────────────
+# 日期函數
+# ─────────────────────────────────────────────
+
+def test_year_function(global_runner):
+    result = global_runner.run("SELECT YEAR(ModifiedDate) FROM Address")
+    assert result["status"] == "success"
+
+
+def test_month_function(global_runner):
+    result = global_runner.run("SELECT MONTH(ModifiedDate) FROM Address")
+    assert result["status"] == "success"
+
+
+def test_day_function(global_runner):
+    result = global_runner.run("SELECT DAY(ModifiedDate) FROM Address")
+    assert result["status"] == "success"
+
+
+def test_dateadd_function(global_runner):
+    result = global_runner.run(
+        "SELECT DATEADD(DAY, 1, ModifiedDate) FROM Address"
+    )
+    assert result["status"] == "success"
+
+
+def test_datediff_function(global_runner):
+    result = global_runner.run(
+        "SELECT DATEDIFF(DAY, ModifiedDate, GETDATE()) FROM Address"
+    )
+    assert result["status"] == "success"
+
+
+def test_datepart_function(global_runner):
+    result = global_runner.run(
+        "SELECT DATEPART(YEAR, ModifiedDate) FROM Address"
+    )
+    assert result["status"] == "success"
+
+
+def test_date_part_identifiers_not_column_error(global_runner):
+    """DAY/MONTH/YEAR 等日期部分識別符不應被誤判為欄位名稱"""
+    for part in ["DAY", "MONTH", "YEAR", "HOUR", "MINUTE", "SECOND"]:
+        result = global_runner.run(
+            f"SELECT DATEPART({part}, ModifiedDate) FROM Address"
+        )
+        assert result["status"] == "success", f"DATEPART({part}) failed"
+
+
+def test_dateadd_various_parts(global_runner):
+    """DATEADD 各種日期部分均應成功"""
+    for part in ["YEAR", "MONTH", "DAY", "HOUR"]:
+        result = global_runner.run(
+            f"SELECT DATEADD({part}, 1, ModifiedDate) FROM Address"
+        )
+        assert result["status"] == "success", f"DATEADD({part}) failed"
