@@ -222,6 +222,8 @@ def extract_intent():
         result   = runner.run(sql)
         ast_dict = json.loads(result['json'])
         intents  = IntentExtractor().extract(ast_dict)
+        # #74: 展開 SELECT * / COUNT(*) 的 table-level READ 為逐欄 intent
+        intents  = IntentExtractor().expand_star_intents(intents, runner)
         return jsonify({"status": "success", "intents": intents}), 200
 
     except (SyntaxError, ValueError) as e:

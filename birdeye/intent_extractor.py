@@ -47,6 +47,31 @@ class IntentExtractor:
         """從 JSON 字串萃取（便利方法）。"""
         return self.extract(json.loads(json_str))
 
+    def expand_star_intents(self, intents, runner):
+        """
+        Issue #74: 將 column=None 的 READ intent（來自 SELECT * 或 COUNT(*)）
+        展開成各欄位的 READ intent，使 Permission API 能逐欄比對。
+
+        Args:
+            intents: extract() 回傳的 intent list
+            runner:  BirdEyeRunner instance（用於取得欄位清單）
+        Returns:
+            展開後的 intent list
+        """
+        result = []
+        for intent in intents:
+            if intent.get("column") is None and intent.get("intent") == INTENT_READ:
+                table = intent.get("table", "")
+                cols  = runner.registry.get_columns(table)
+                if cols:
+                    for col in cols:
+                        result.append({**intent, "column": col})
+                else:
+                    result.append(intent)
+            else:
+                result.append(intent)
+        return result
+
     def extract_tables(self, ast_dict):
         """
         第一遍掃描：收集 SQL 中所有真實資料表引用的 (schema, table) 集合。
@@ -191,16 +216,28 @@ class IntentExtractor:
             merged.update(alias_map)
             alias_map = merged
 
-        # SELECT * → table-level READ（排除 derived alias）
-        if node.get("is_star"):
+        # SELECT * → binder 已展開成個別欄位節點，直接走欄位；
+        # 若 columns 為空（binder 未展開）則退回 table-level READ。
+        # COUNT(*) / aggregate(*) → 加 table-level READ，供 expand_star_intents 展開。
+        columns = node.get("columns") or []
+        if node.get("is_star") and not columns:
             emitted = set()
             for _key, (schema, table) in alias_map.items():
                 if (schema, table) not in emitted:
                     emitted.add((schema, table))
                     self._add(intents, schema, table, None, INTENT_READ)
         else:
-            for col in (node.get("columns") or []):
-                self._walk_expr(col, alias_map, INTENT_READ, intents, local_ctes, derived_aliases)
+            # 偵測 aggregate(*) 如 COUNT(*)
+            star_agg_emitted = set()
+            for col in columns:
+                if (col.get("node_type") == "FunctionCallNode" and
+                        any(a.get("name") == "*" for a in (col.get("args") or []))):
+                    for _key, (schema, table) in alias_map.items():
+                        if (schema, table) not in star_agg_emitted and _key not in (derived_aliases or set()):
+                            star_agg_emitted.add((schema, table))
+                            self._add(intents, schema, table, None, INTENT_READ)
+                else:
+                    self._walk_expr(col, alias_map, INTENT_READ, intents, local_ctes, derived_aliases)
 
         # SELECT INTO → table-level INSERT
         into = node.get("into_table")
