@@ -2,11 +2,18 @@ import os
 import io
 import json
 from flask import Flask, request, jsonify, render_template
+
+try:
+    import requests as http_requests
+    _REQUESTS_AVAILABLE = True
+except ImportError:
+    _REQUESTS_AVAILABLE = False
 from flask_cors import CORS
 from birdeye.runner import BirdEyeRunner
 from birdeye.binder import SemanticError
 from birdeye.registry import MetadataRegistry
 from birdeye.reconstructor import ASTReconstructor
+from birdeye.intent_extractor import IntentExtractor
 
 # 初始化 Flask 應用
 app = Flask(__name__)
@@ -23,6 +30,41 @@ def init_default_runner():
     return r
 
 global_runner = init_default_runner()
+
+# DbRolePermissionMapping API 設定（可透過環境變數覆寫）
+PERMISSION_API_URL = os.environ.get('PERMISSION_API_URL', '')   # e.g. http://localhost:50010
+PERMISSION_API_KEY = os.environ.get('ZTA_API_KEY', '')
+
+
+def _fetch_schema_for_tables(db_id, tables):
+    """
+    向 DbRolePermissionMapping 的 GET /api/zta/columns 查詢每個資料表的欄位清單，
+    回傳 metadata CSV 字串（table_name,column_name,data_type）。
+    若 API 未設定或所有查詢均失敗，回傳 None（caller 改用預設 metadata）。
+    """
+    if not _REQUESTS_AVAILABLE or not PERMISSION_API_URL or not tables:
+        return None
+
+    headers = {'X-ZTA-ApiKey': PERMISSION_API_KEY} if PERMISSION_API_KEY else {}
+    rows = ['table_name,column_name,data_type']
+
+    for schema, table in tables:
+        try:
+            resp = http_requests.get(
+                f'{PERMISSION_API_URL}/api/zta/columns',
+                params={'dbId': db_id, 'schema': schema or 'dbo', 'table': table},
+                headers=headers,
+                timeout=5,
+            )
+            if resp.status_code == 200:
+                payload = resp.json()
+                if payload.get('success'):
+                    for col in (payload.get('data') or []):
+                        rows.append(f"{table},{col['ColumnName']},{col['DataType']}")
+        except Exception:
+            pass  # 單一資料表查詢失敗不影響其他資料表
+
+    return '\n'.join(rows) if len(rows) > 1 else None
 
 @app.route('/')
 def index():
@@ -134,6 +176,60 @@ def reconstruct_sql():
             "error_type": "Reconstruct Error",
             "message": str(e)
         }), 400
+
+
+@app.route('/api/intent', methods=['POST'])
+def extract_intent():
+    """
+    接收 SQL + db_id，向 DbRolePermissionMapping 取得 schema，
+    完整執行 pipeline（含 binder），回傳欄位層級操作意圖清單。
+
+    Payload:
+      { "sql": "SELECT ...", "db_id": 1 }
+
+    db_id 為 optional：
+      - 有提供 → 向 PERMISSION_API_URL 查詢實際 schema metadata
+      - 未提供 → 使用預設 data/output.csv metadata
+
+    Response:
+      { "status": "success", "intents": [
+          {"schema": "SalesLT", "table": "Customer", "column": "FirstName", "intent": "READ"},
+          ...
+      ]}
+    """
+    data = request.get_json()
+    if not data or 'sql' not in data:
+        return jsonify({"status": "error", "error_type": "Request Error", "message": "Missing 'sql' in payload"}), 400
+
+    sql    = data['sql']
+    db_id  = data.get('db_id')
+
+    try:
+        # Step 1: parse_only → 拿 table 清單（不跑 binder，避免 chicken-and-egg）
+        raw     = global_runner.parse_only(sql)
+        raw_ast = json.loads(global_runner.serializer.to_json(raw['ast']))
+        tables  = IntentExtractor().extract_tables(raw_ast)
+
+        # Step 2: 向 DbRolePermissionMapping 取得實際 schema
+        runner = global_runner
+        if db_id is not None:
+            metadata_csv = _fetch_schema_for_tables(db_id, tables)
+            if metadata_csv:
+                runner = BirdEyeRunner()
+                runner.load_metadata_from_csv(io.StringIO(metadata_csv))
+
+        # Step 3: 完整 pipeline（含 binder 型別推導）
+        result   = runner.run(sql)
+        ast_dict = json.loads(result['json'])
+        intents  = IntentExtractor().extract(ast_dict)
+        return jsonify({"status": "success", "intents": intents}), 200
+
+    except (SyntaxError, ValueError) as e:
+        return jsonify({"status": "error", "error_type": "Syntax Error",   "message": str(e)}), 400
+    except SemanticError as e:
+        return jsonify({"status": "error", "error_type": "Semantic Error", "message": str(e)}), 400
+    except Exception as e:
+        return jsonify({"status": "error", "error_type": "System Error",   "message": str(e)}), 500
 
 
 if __name__ == '__main__':

@@ -115,9 +115,10 @@ class ASTSerializer:
 
         elif isinstance(node, IdentifierNode):
             res.update({
-                "name": node.name,
-                "qualifiers": node.qualifiers,
-                "alias": node.alias
+                "name":           node.name,
+                "qualifiers":     node.qualifiers,
+                "alias":          node.alias,
+                "resolved_table": getattr(node, "resolved_table", None),
             })
 
         elif isinstance(node, LiteralNode):

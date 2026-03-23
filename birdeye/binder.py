@@ -189,6 +189,7 @@ class Binder:
                     rt = matches[0][1]
                     vs = self._virtual_schema(rt)
                     node.inferred_type = vs[col_up] if vs is not None else self.registry.get_column_type(rt, col_up)
+                    node.resolved_table = rt
                     return
                 if len(scope) == 1:
                     sn, rt = list(scope.items())[0]
@@ -436,10 +437,16 @@ class Binder:
                 if expr.else_expr and not self._is_agg_raw(expr.else_expr): self._check_agg_integrity(expr.else_expr, groups)
             return
         from birdeye.serializer import ASTSerializer
+        def _strip(d):
+            if isinstance(d, dict):
+                d.pop("alias", None)
+                d.pop("resolved_table", None)   # 排除 binder 運行時序造成的差異
+                for v in d.values(): _strip(v)
+            elif isinstance(d, list):
+                for item in d: _strip(item)
         def _c(n):
             s = ASTSerializer(); d = s._serialize(n)
-            if isinstance(d, dict) and "alias" in d: del d["alias"]
-            return d
+            _strip(d); return d
         e_j = _c(expr)
         for g in groups:
             if _c(g) == e_j: return

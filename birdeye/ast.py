@@ -92,6 +92,7 @@ class IdentifierNode(ExpressionNode):
         super().__init__()
         self.name = name
         self.qualifiers = qualifiers or []
+        self.resolved_table = None   # binder 解析非限定欄位後設定（table name）
 
     @property
     def qualifier(self):
