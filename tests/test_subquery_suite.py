@@ -60,14 +60,14 @@ def test_any_all_full_pipeline(global_runner):
 def test_any_all_in_complex_queries(global_runner):
     """驗證 ANY/ALL 在複雜查詢下的語意分析"""
     sql = """
-    SELECT BusinessEntityID
-    FROM BusinessEntity
-    WHERE BusinessEntityID >= ALL (
+    SELECT CustomerID
+    FROM Customer
+    WHERE CustomerID >= ALL (
         SELECT AddressID
         FROM Address
         WHERE City = 'Bothell'
     )
-    AND BusinessEntityID > ANY (10, 20, 30)
+    AND CustomerID > ANY (10, 20, 30)
     """
     result = global_runner.run(sql)
     assert result["ast"] is not None

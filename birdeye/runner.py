@@ -84,7 +84,7 @@ class BirdEyeRunner:
 
         # 新語句起始關鍵字 pattern，用於按換行分割語句
         _stmt_start = re.compile(
-            r'(?=^\s*(?:SELECT|INSERT|UPDATE|DELETE|TRUNCATE|DECLARE|WITH)\b)',
+            r'(?=^\s*(?:SELECT|INSERT|UPDATE|DELETE|TRUNCATE|DECLARE|WITH|IF|BEGIN|EXEC|EXECUTE|CREATE|DROP|ALTER|MERGE|PRINT|SET)\b)',
             re.IGNORECASE | re.MULTILINE
         )
 

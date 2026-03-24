@@ -174,3 +174,73 @@ class AssignmentNode:
     def __init__(self, column, expression):
         self.column = column
         self.right = expression
+
+
+# ── New syntax nodes ──────────────────────────────────────────────────────────
+
+class IfStatement:
+    def __init__(self):
+        self.condition = None
+        self.then_block = []
+        self.else_block = []
+
+class ExecStatement:
+    def __init__(self):
+        self.proc_name = None
+        self.args = []
+        self.named_args = []
+        self.return_var = None
+
+class SetStatement:
+    def __init__(self):
+        self.target = None
+        self.value = None
+        self.is_option = False
+
+class ColumnDefinitionNode:
+    def __init__(self, name='', data_type=''):
+        self.name = name
+        self.data_type = data_type
+        self.nullable = True
+        self.default = None
+        self.is_identity = False
+        self.is_primary_key = False
+
+class CreateTableStatement:
+    def __init__(self):
+        self.table = None
+        self.if_not_exists = False
+        self.columns = []
+
+class DropTableStatement:
+    def __init__(self):
+        self.table = None
+        self.if_exists = False
+
+class AlterTableStatement:
+    def __init__(self):
+        self.table = None
+        self.action = None
+        self.column = None
+
+class MergeClauseNode:
+    def __init__(self):
+        self.match_type = None
+        self.condition = None
+        self.action = None
+        self.set_clauses = []
+        self.insert_columns = []
+        self.insert_values = []
+
+class MergeStatement:
+    def __init__(self):
+        self.target = None
+        self.target_alias = None
+        self.source = None
+        self.source_alias = None
+        self.on_condition = None
+        self.clauses = []
+
+class PrintStatement:
+    def __init__(self, expr=None):
+        self.expr = expr

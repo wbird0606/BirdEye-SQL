@@ -123,61 +123,94 @@ class MetadataRegistry:
     # --- 1. 資料表與欄位類型管理 ---
 
     def load_from_csv(self, csv_file_obj):
-        """載入表格定義，包含 data_type 欄位"""
-        # 💡 v1.7.6: 支援無標頭 CSV 與數據類型標準化 (TDD Fix)
+        """載入表格定義，包含 data_type 欄位。
+        支援三欄格式（table_name, column_name, data_type）
+        與四欄格式（table_schema, table_name, column_name, data_type）。
+        四欄格式下以 SCHEMA.TABLE 為 key，支援跨 schema 同名資料表。
+        """
         import io
-        
-        # 讀取內容並確保是字串格式
+
         content = csv_file_obj.read()
         if isinstance(content, bytes):
             content = content.decode('utf-8')
-        
-        # 使用 StringIO 重新包裝以便重複讀取首行進行偵測
+
         f = io.StringIO(content)
         first_line = f.readline().upper()
         f.seek(0)
-        
-        # 判斷是否包含標頭標籤 (TABLE_NAME 或 COLUMN_NAME)
-        if "TABLE_NAME" in first_line or "COLUMN_NAME" in first_line:
+
+        has_header = "TABLE_NAME" in first_line or "COLUMN_NAME" in first_line
+        has_schema_col = "TABLE_SCHEMA" in first_line
+
+        if has_header:
             reader = csv.DictReader(f)
         else:
-            # 針對無標頭 CSV (如 data/output.csv)，手動指定欄位名
-            reader = csv.DictReader(f, fieldnames=['table_name', 'column_name', 'data_type'])
+            # 無標頭：以逗號數量判斷是否含 schema 欄
+            col_count = len(first_line.rstrip('\n').split(','))
+            if col_count >= 4:
+                reader = csv.DictReader(
+                    f, fieldnames=['table_schema', 'table_name', 'column_name', 'data_type'])
+                has_schema_col = True
+            else:
+                reader = csv.DictReader(
+                    f, fieldnames=['table_name', 'column_name', 'data_type'])
 
         for row in reader:
-            # 略過空行或不完整的列
             if not row.get('table_name') or not row.get('column_name'):
                 continue
-                
-            # 🛡️ 處理 BOM 與多餘空格 (TDD Fix for AddressID not found)
+
             t_name = row['table_name'].lstrip('\ufeff').strip().upper()
             c_name = row['column_name'].strip().upper()
-            
-            # 💡 保留真實的類型定義 (不再強行轉換 UDT)
-            d_type = (row['data_type'] or "UNKNOWN").strip().upper()
-            
-            if t_name not in self.tables:
-                self.tables[t_name] = {}
-            # 儲存欄位名對應的數據類型
-            self.tables[t_name][c_name] = d_type
+            d_type = (row.get('data_type') or "UNKNOWN").strip().upper()
+
+            schema = (row.get('table_schema') or '').lstrip('\ufeff').strip().upper()
+            key = f"{schema}.{t_name}" if schema else t_name
+
+            if key not in self.tables:
+                self.tables[key] = {}
+            self.tables[key][c_name] = d_type
+
+    def _resolve_key(self, name: str) -> str:
+        """將 table_name（可含或不含 schema prefix）解析為 self.tables 中的實際 key。
+
+        解析順序：
+        1. 精確比對（SCHEMA.TABLE 或 TABLE 直接命中）
+        2. SCHEMA.TABLE → TABLE：registry 僅有 3-col 舊格式時的降級
+        3. TABLE → SCHEMA.TABLE：registry 為 4-col 格式但 SQL 未帶 schema，
+           僅在該 table name 全域唯一（單一 schema）時才 fallback；
+           多個 schema 有同名表格時回傳原值（查不到 = 呼叫端得到空結果）。
+        """
+        k = name.upper()
+        if k in self.tables:
+            return k
+        if '.' in k:
+            # SCHEMA.TABLE → try TABLE (3-col registry fallback)
+            short = k.split('.')[-1]
+            if short in self.tables:
+                return short
+        else:
+            # TABLE → try any SCHEMA.TABLE (4-col registry, unqualified SQL)
+            matches = [key for key in self.tables if key.endswith(f'.{k}')]
+            if len(matches) == 1:
+                return matches[0]
+        return k
 
     def has_table(self, table_name):
-        return table_name.upper() in self.tables
+        return self._resolve_key(table_name) in self.tables
 
     def get_columns(self, table_name):
-        return list(self.tables.get(table_name.upper(), {}).keys())
+        return list(self.tables.get(self._resolve_key(table_name), {}).keys())
 
     def has_column(self, table_name, column_name):
-        t_meta = self.tables.get(table_name.upper(), {})
+        t_meta = self.tables.get(self._resolve_key(table_name), {})
         return column_name.upper() in t_meta
 
     def get_column_type(self, table_name, column_name):
-        """💡 取得特定欄位的定義類型"""
-        t_meta = self.tables.get(table_name.upper(), {})
+        """取得特定欄位的定義類型"""
+        t_meta = self.tables.get(self._resolve_key(table_name), {})
         return t_meta.get(column_name.upper(), "UNKNOWN")
 
     def get_column_count(self, table_name):
-        return len(self.tables.get(table_name.upper(), {}))
+        return len(self.tables.get(self._resolve_key(table_name), {}))
 
     # --- 2. 函數類型管理 ---
 

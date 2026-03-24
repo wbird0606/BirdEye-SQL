@@ -33,7 +33,9 @@ class MermaidExporter:
         # 根據節點類型決定標籤內容
         label = node_type
         if node_type == "IdentifierNode":
-            label = f"ID: {node.get('name')}"
+            qualifiers = node.get('qualifiers') or []
+            full_name = ".".join(qualifiers + [node.get('name', '')])
+            label = f"ID: {full_name}"
         elif node_type == "LiteralNode":
             label = f"LITERAL: {node.get('value')}"
         elif node_type == "BinaryExpressionNode":

@@ -224,8 +224,8 @@ def test_union_derived_table_with_where(global_runner):
     """UNION 衍生資料表搭配外層 WHERE 應成功"""
     result = global_runner.run(
         "SELECT Sub.AddressID FROM "
-        "(SELECT AddressID FROM Address WHERE StateProvinceID = 1 "
-        "UNION SELECT AddressID FROM Address WHERE StateProvinceID = 2) AS Sub "
+        "(SELECT AddressID FROM Address WHERE AddressID = 1 "
+        "UNION SELECT AddressID FROM Address WHERE AddressID = 2) AS Sub "
         "WHERE Sub.AddressID > 0"
     )
     assert result["status"] == "success"
@@ -335,8 +335,8 @@ def test_count_distinct(global_runner):
 def test_count_distinct_with_group_by(global_runner):
     """GROUP BY 搭配 COUNT(DISTINCT) 應成功"""
     result = global_runner.run(
-        "SELECT StateProvinceID, COUNT(DISTINCT City) AS UniqCities "
-        "FROM Address GROUP BY StateProvinceID"
+        "SELECT AddressID, COUNT(DISTINCT City) AS UniqCities "
+        "FROM Address GROUP BY AddressID"
     )
     assert result["status"] == "success"
 
@@ -364,9 +364,9 @@ def test_except_basic(global_runner):
 def test_intersect_with_where(global_runner):
     """INTERSECT 搭配 WHERE 應成功"""
     result = global_runner.run(
-        "SELECT AddressID FROM Address WHERE StateProvinceID = 1 "
+        "SELECT AddressID FROM Address WHERE AddressID = 1 "
         "INTERSECT "
-        "SELECT AddressID FROM Address WHERE StateProvinceID = 2"
+        "SELECT AddressID FROM Address WHERE AddressID = 2"
     )
     assert result["status"] == "success"
 
@@ -375,7 +375,7 @@ def test_except_as_derived_table(global_runner):
     """EXCEPT 作為衍生資料表應成功"""
     result = global_runner.run(
         "SELECT Sub.AddressID FROM "
-        "(SELECT AddressID FROM Address EXCEPT SELECT AddressID FROM Address WHERE StateProvinceID < 0) AS Sub"
+        "(SELECT AddressID FROM Address EXCEPT SELECT AddressID FROM Address WHERE AddressID < 0) AS Sub"
     )
     assert result["status"] == "success"
 
@@ -406,7 +406,7 @@ def test_correlated_subquery_in_where(global_runner):
     result = global_runner.run(
         "SELECT AddressID FROM Address a "
         "WHERE AddressID IN "
-        "(SELECT AddressID FROM Address a2 WHERE a2.StateProvinceID = a.StateProvinceID)"
+        "(SELECT AddressID FROM Address a2 WHERE a2.AddressID = a.AddressID)"
     )
     assert result["status"] == "success"
 import pytest
@@ -486,7 +486,7 @@ def test_nested_derived_table_with_filter(global_runner):
     result = global_runner.run(
         "SELECT Lvl2.AddressID FROM "
         "(SELECT AddressID FROM "
-        "(SELECT AddressID FROM Address WHERE StateProvinceID > 0) AS Lvl1"
+        "(SELECT AddressID FROM Address WHERE AddressID > 0) AS Lvl1"
         ") AS Lvl2 "
         "WHERE Lvl2.AddressID > 0"
     )

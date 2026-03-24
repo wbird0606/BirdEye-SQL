@@ -227,11 +227,12 @@ class IntentExtractor:
                     emitted.add((schema, table))
                     self._add(intents, schema, table, None, INTENT_READ)
         else:
-            # 偵測 aggregate(*) 如 COUNT(*)
             star_agg_emitted = set()
             for col in columns:
+                # COUNT(*) / SUM(*) 等含 * 的 aggregate → 等同 SELECT *，需展開全欄做權限檢查
                 if (col.get("node_type") == "FunctionCallNode" and
-                        any(a.get("name") == "*" for a in (col.get("args") or []))):
+                        any(a.get("node_type") == "IdentifierNode" and a.get("name") == "*"
+                            for a in (col.get("args") or []))):
                     for _key, (schema, table) in alias_map.items():
                         if (schema, table) not in star_agg_emitted and _key not in (derived_aliases or set()):
                             star_agg_emitted.add((schema, table))
@@ -457,8 +458,12 @@ class IntentExtractor:
             if q in alias_map:
                 schema, table = alias_map[q]
                 return schema, table, col
-            else:
-                return '', q, col
+            # case-insensitive fallback（binder 展開 SELECT * 時 qualifier 會大寫）
+            q_up = q.upper()
+            for key, (schema, table) in alias_map.items():
+                if key.upper() == q_up:
+                    return schema, table, col
+            return '', q, col
 
         # 無 qualifier：優先使用 binder 寫入的 resolved_table
         resolved = id_node.get("resolved_table")

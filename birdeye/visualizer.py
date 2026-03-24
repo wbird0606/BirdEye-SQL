@@ -212,11 +212,11 @@ class ASTVisualizer:
             self._visit(node.expr, indent + 2, "EXPR")
 
         elif isinstance(node, IdentifierNode):
-            qual = f" (Qual: {node.qualifier})" if node.qualifiers else ""
+            full_name = ".".join(node.qualifiers + [node.name]) if node.qualifiers else node.name
             alias = f" AS {node.alias}" if hasattr(node, 'alias') and node.alias else ""
             type_info = f" [Type: {node.inferred_type}]" if hasattr(node, 'inferred_type') and node.inferred_type != "UNKNOWN" else ""
             resolved = f" → {node.resolved_table}" if getattr(node, "resolved_table", None) else ""
-            self.lines.append(f"{prefix}IDENTIFIER: {node.name}{resolved}{qual}{type_info}{alias}")
+            self.lines.append(f"{prefix}IDENTIFIER: {full_name}{resolved}{type_info}{alias}")
 
         elif isinstance(node, LiteralNode):
             type_info = f" [Type: {node.inferred_type}]" if hasattr(node, 'inferred_type') and node.inferred_type != "UNKNOWN" else ""

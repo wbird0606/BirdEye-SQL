@@ -79,25 +79,25 @@ def test_67_unqualified_column_in_join_select_produces_read(runner):
 # SELECT * 多表 JOIN 應對每張 table 各產生 table-level READ
 
 def test_68_select_star_multi_join_reads_all_tables(runner):
-    """SELECT * FROM Customer JOIN Address → 兩張 table 各一筆 READ"""
+    """SELECT * FROM Customer JOIN Address → 兩張 table 各有 READ intents（#74 per-column）"""
     sql = ("SELECT * FROM SalesLT.Customer c "
            "JOIN SalesLT.Address a ON c.CustomerID = a.AddressID")
     items = intents_of(runner, sql)
-    assert has_intent(items, "Customer", None, "READ", "SalesLT"), \
-        "SELECT * should produce table-level READ for Customer"
-    assert has_intent(items, "Address", None, "READ", "SalesLT"), \
-        "SELECT * should produce table-level READ for Address"
+    customer_reads = [i for i in items if i["table"] == "Customer" and i["intent"] == "READ" and i["schema"] == "SalesLT"]
+    address_reads  = [i for i in items if i["table"] == "Address"  and i["intent"] == "READ" and i["schema"] == "SalesLT"]
+    assert len(customer_reads) > 0, "SELECT * should produce READ intents for Customer"
+    assert len(address_reads)  > 0, "SELECT * should produce READ intents for Address"
 
 
 def test_68_select_star_three_way_join_reads_all_tables(runner):
-    """SELECT * FROM 三表 JOIN → 三張 table 各一筆 READ"""
+    """SELECT * FROM 三表 JOIN → 三張 table 各有 READ intents（#74 per-column）"""
     sql = ("SELECT * FROM SalesLT.Customer c "
            "JOIN SalesLT.Address a ON c.CustomerID = a.AddressID "
            "JOIN SalesLT.SalesOrderHeader s ON c.CustomerID = s.CustomerID")
     items = intents_of(runner, sql)
-    assert has_intent(items, "Customer",         None, "READ", "SalesLT")
-    assert has_intent(items, "Address",          None, "READ", "SalesLT")
-    assert has_intent(items, "SalesOrderHeader", None, "READ", "SalesLT")
+    for tbl in ("Customer", "Address", "SalesOrderHeader"):
+        reads = [i for i in items if i["table"] == tbl and i["intent"] == "READ" and i["schema"] == "SalesLT"]
+        assert len(reads) > 0, f"SELECT * should produce READ intents for {tbl}"
 
 
 # ── Issue #69 ─────────────────────────────────────────────────────────────────

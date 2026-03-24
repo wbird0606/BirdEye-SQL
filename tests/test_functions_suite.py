@@ -40,14 +40,14 @@ def run_bind_with_runner(sql, runner):
 
 def test_scalar_function_binding(global_runner):
     """驗證常用字串函數是否能正確從內建 Registry 綁定"""
-    sql = "SELECT UPPER(FirstName), LEN(Suffix) FROM Person"
+    sql = "SELECT UPPER(FirstName), LEN(LastName) FROM Customer"
     ast = run_bind_with_runner(sql, global_runner)
     assert ast.columns[0].name == "UPPER"
     assert ast.columns[1].name == "LEN"
 
 def test_function_argument_count_mismatch(global_runner):
     """🛡️ ZTA 政策：驗證函數參數數量必須精準匹配"""
-    sql = "SELECT LEN(FirstName, LastName) FROM Person"
+    sql = "SELECT LEN(FirstName, LastName) FROM Customer"
     with pytest.raises(SemanticError, match="Function 'LEN' expects 1 arguments, got 2"):
         run_bind_with_runner(sql, global_runner)
 
@@ -55,7 +55,7 @@ def test_function_argument_count_mismatch(global_runner):
 
 def test_function_argument_type_mismatch(global_runner):
     """🛡️ ZTA 政策：驗證函數參數類型是否嚴格匹配 (Issue #35)"""
-    sql = "SELECT SUBSTRING(FirstName, 'A', 'B') FROM Person"
+    sql = "SELECT SUBSTRING(FirstName, 'A', 'B') FROM Customer"
     with pytest.raises(SemanticError, match="Function 'SUBSTRING' expects INT, but got NVARCHAR"):
         run_bind_with_runner(sql, global_runner)
 
@@ -63,7 +63,7 @@ def test_function_argument_type_mismatch(global_runner):
 
 def test_block_unregistered_system_function(global_runner):
     """🛡️ ZTA 核心：禁止調用未在註冊表中的函數"""
-    sql = "SELECT GHOST_FUNC(FirstName) FROM Person"
+    sql = "SELECT GHOST_FUNC(FirstName) FROM Customer"
     with pytest.raises(SemanticError, match="Unknown function 'GHOST_FUNC'"):
         run_bind_with_runner(sql, global_runner)
 

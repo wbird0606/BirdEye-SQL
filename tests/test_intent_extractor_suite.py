@@ -99,8 +99,9 @@ def test_where_column_is_filter(runner):
 def test_select_star_table_level_read(runner):
     sql = "SELECT * FROM SalesLT.Customer"
     items = intents_of(runner, sql)
-    # column=None 代表資料表層級
-    assert has_intent(items, 'Customer', None, 'READ', 'SalesLT')
+    # #74 後 SELECT * 展開為 per-column intent
+    customer_reads = [i for i in items if i["table"] == "Customer" and i["intent"] == "READ" and i["schema"] == "SalesLT"]
+    assert len(customer_reads) > 0, "SELECT * should produce READ intents for Customer columns"
 
 
 # ── 4. JOIN ON ────────────────────────────────────────────────────────────────

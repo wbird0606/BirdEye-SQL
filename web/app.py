@@ -39,14 +39,16 @@ PERMISSION_API_KEY = os.environ.get('ZTA_API_KEY', '')
 def _fetch_schema_for_tables(db_id, tables):
     """
     向 DbRolePermissionMapping 的 GET /api/zta/columns 查詢每個資料表的欄位清單，
-    回傳 metadata CSV 字串（table_name,column_name,data_type）。
+    回傳 metadata CSV 字串（table_schema,table_name,column_name,data_type）。
     若 API 未設定或所有查詢均失敗，回傳 None（caller 改用預設 metadata）。
+    schema 欄位來自 SQL AST 的 extract_tables()，即使權限系統未儲存 schema
+    資訊，BirdEye 仍可建構出 schema-qualified 的 registry key。
     """
     if not _REQUESTS_AVAILABLE or not PERMISSION_API_URL or not tables:
         return None
 
     headers = {'X-ZTA-ApiKey': PERMISSION_API_KEY} if PERMISSION_API_KEY else {}
-    rows = ['table_name,column_name,data_type']
+    rows = ['table_schema,table_name,column_name,data_type']
 
     for schema, table in tables:
         try:
@@ -59,8 +61,9 @@ def _fetch_schema_for_tables(db_id, tables):
             if resp.status_code == 200:
                 payload = resp.json()
                 if payload.get('success'):
+                    effective_schema = schema or 'dbo'
                     for col in (payload.get('data') or []):
-                        rows.append(f"{table},{col['ColumnName']},{col['DataType']}")
+                        rows.append(f"{effective_schema},{table},{col['ColumnName']},{col['DataType']}")
         except Exception:
             pass  # 單一資料表查詢失敗不影響其他資料表
 
@@ -201,8 +204,9 @@ def extract_intent():
     if not data or 'sql' not in data:
         return jsonify({"status": "error", "error_type": "Request Error", "message": "Missing 'sql' in payload"}), 400
 
-    sql    = data['sql']
-    db_id  = data.get('db_id')
+    sql      = data['sql']
+    db_id    = data.get('db_id')
+    trace_id = request.headers.get('X-Trace-Id', '')  # Fix 5: 接收 ZTA trace_id
 
     try:
         # Step 1: parse_only → 拿 table 清單（不跑 binder，避免 chicken-and-egg）
@@ -224,7 +228,13 @@ def extract_intent():
         intents  = IntentExtractor().extract(ast_dict)
         # #74: 展開 SELECT * / COUNT(*) 的 table-level READ 為逐欄 intent
         intents  = IntentExtractor().expand_star_intents(intents, runner)
-        return jsonify({"status": "success", "intents": intents}), 200
+        reconstructed = ASTReconstructor().from_json_str(result['json'])
+        return jsonify({
+            "status": "success",
+            "trace_id": trace_id or None,  # Fix 5: 回傳供 BirdEye 自身 log 使用
+            "intents": intents,
+            "reconstructed_sql": reconstructed,
+        }), 200
 
     except (SyntaxError, ValueError) as e:
         return jsonify({"status": "error", "error_type": "Syntax Error",   "message": str(e)}), 400

@@ -4,7 +4,10 @@ from birdeye.ast import (
     SqlBulkCopyStatement, IdentifierNode, BinaryExpressionNode,
     FunctionCallNode, LiteralNode, OrderByNode, CaseExpressionNode,
     BetweenExpressionNode, CastExpressionNode, UnionStatement, CTENode,
-    TruncateStatement, DeclareStatement, ApplyNode
+    TruncateStatement, DeclareStatement, ApplyNode,
+    IfStatement, ExecStatement, SetStatement,
+    CreateTableStatement, DropTableStatement, AlterTableStatement,
+    MergeStatement, MergeClauseNode, PrintStatement
 )
 
 class SemanticError(Exception):
@@ -36,6 +39,14 @@ class Binder:
         elif isinstance(stmt, TruncateStatement): self._bind_truncate(stmt)
         elif isinstance(stmt, SqlBulkCopyStatement): self._bind_bulk_insert(stmt)
         elif isinstance(stmt, DeclareStatement): self._bind_declare(stmt)
+        elif isinstance(stmt, IfStatement): self._bind_if(stmt)
+        elif isinstance(stmt, ExecStatement): self._bind_exec(stmt)
+        elif isinstance(stmt, SetStatement): self._bind_set(stmt)
+        elif isinstance(stmt, CreateTableStatement): self._bind_create_table(stmt)
+        elif isinstance(stmt, DropTableStatement): pass  # no semantic check needed
+        elif isinstance(stmt, AlterTableStatement): pass  # no semantic check needed
+        elif isinstance(stmt, MergeStatement): self._bind_merge(stmt)
+        elif isinstance(stmt, PrintStatement): self._bind_print(stmt)
         return stmt
 
     def _bind_select(self, stmt):
@@ -128,12 +139,22 @@ class Binder:
         else:
             self._register_scope(table_node, alias)
 
+    @staticmethod
+    def _table_key(table_node) -> str:
+        """Build registry lookup key: 'SCHEMA.TABLE' or 'TABLE'."""
+        name_up = table_node.name.upper()
+        if table_node.qualifiers:
+            return f"{table_node.qualifiers[0].upper()}.{name_up}"
+        return name_up
+
     def _register_scope(self, table_node, alias):
-        rt = table_node.name.upper()
-        is_temp = rt.startswith('#')
+        rt = self._table_key(table_node)
+        table_name_up = table_node.name.upper()
+        is_temp = table_name_up.startswith('#')
         if not is_temp and self._virtual_schema(rt) is None and not self.registry.has_table(rt):
             raise SemanticError(f"Table '{table_node.name}' not found")
-        self.scopes[-1][alias.upper() if alias else rt] = rt
+        scope_key = alias.upper() if alias else table_name_up
+        self.scopes[-1][scope_key] = rt
 
     # T-SQL 日期部分識別符，作為 DATEADD/DATEDIFF/DATEPART 等函數的第一個參數
     _DATE_PARTS = {
@@ -189,7 +210,9 @@ class Binder:
                     rt = matches[0][1]
                     vs = self._virtual_schema(rt)
                     node.inferred_type = vs[col_up] if vs is not None else self.registry.get_column_type(rt, col_up)
-                    node.resolved_table = rt
+                    # 僅保留不含 schema 的 table name，讓 intent_extractor 能
+                    # 正確從 alias_map 反查 (schema, table)。
+                    node.resolved_table = rt.split('.')[-1]
                     return
                 if len(scope) == 1:
                     sn, rt = list(scope.items())[0]
@@ -349,7 +372,7 @@ class Binder:
         self.scopes.pop()
 
     def _bind_insert(self, stmt):
-        self.scopes.append({}); self._register_scope(stmt.table, None); tn = stmt.table.name.upper()
+        self.scopes.append({}); self._register_scope(stmt.table, None); tn = self._table_key(stmt.table)
         if stmt.columns:
             for c in stmt.columns:
                 if self.registry.get_columns(tn) and not self.registry.has_column(tn, c.name.upper()):
@@ -379,17 +402,72 @@ class Binder:
         self.scopes.pop()
 
     def _bind_truncate(self, stmt):
-        rt = stmt.table.name.upper()
+        rt = self._table_key(stmt.table)
         if not self.registry.has_table(rt): raise SemanticError(f"Table '{stmt.table.name}' not found")
 
     def _bind_bulk_insert(self, stmt):
-        if not self.registry.has_table(stmt.table.name.upper()): raise SemanticError(f"Table '{stmt.table.name}' not found")
+        if not self.registry.has_table(self._table_key(stmt.table)): raise SemanticError(f"Table '{stmt.table.name}' not found")
 
     def _bind_declare(self, stmt):
         """Issue #51: 將 @var 及其型別寫入 variable_scope"""
         self.variable_scope[stmt.var_name.upper()] = stmt.var_type
         if stmt.default_value:
             self._visit_expression(stmt.default_value)
+
+    def _bind_if(self, stmt):
+        """Bind IF/ELSE block — recursively bind condition and sub-statements."""
+        if stmt.condition:
+            self._visit_expression(stmt.condition)
+        for s in (stmt.then_block or []):
+            self._bind_node(s)
+        for s in (stmt.else_block or []):
+            self._bind_node(s)
+
+    def _bind_exec(self, stmt):
+        """ZTA enforcement: block dangerous stored procedures."""
+        BLOCKED = {"XP_CMDSHELL", "SP_EXECUTESQL", "SP_OA_CREATE", "SP_OA_METHOD",
+                   "SP_OA_GETPROPERTY", "SP_CONFIGURE", "OPENROWSET", "OPENQUERY"}
+        proc_name_str = stmt.proc_name.name if hasattr(stmt.proc_name, 'name') else str(stmt.proc_name)
+        if proc_name_str.upper() in BLOCKED:
+            raise SemanticError(f"Stored procedure '{proc_name_str}' is blocked by ZTA policy")
+        for a in (stmt.args or []):
+            self._visit_expression(a)
+
+    def _bind_set(self, stmt):
+        """Bind SET @var = expr; update variable_scope if setting a declared variable."""
+        if not stmt.is_option and stmt.target and hasattr(stmt.target, 'name'):
+            var_key = stmt.target.name.upper()
+            if stmt.value:
+                t = self._visit_expression(stmt.value)
+                self.variable_scope[var_key] = t or self.variable_scope.get(var_key, "UNKNOWN")
+        elif stmt.value:
+            self._visit_expression(stmt.value)
+
+    def _bind_create_table(self, stmt):
+        """Register temp table schema so subsequent queries can reference it."""
+        if stmt.table and hasattr(stmt.table, 'name'):
+            tname = stmt.table.name.upper()
+            if tname.startswith('#'):
+                schema = {}
+                for col in (stmt.columns or []):
+                    schema[col.name.upper()] = col.data_type.upper()
+                self.temp_schemas[tname] = schema
+
+    def _bind_merge(self, stmt):
+        """Bind MERGE statement — check source/target tables and clause expressions."""
+        if stmt.on_condition:
+            self._visit_expression(stmt.on_condition)
+        for clause in (stmt.clauses or []):
+            if clause.condition:
+                self._visit_expression(clause.condition)
+            for sc in (clause.set_clauses or []):
+                if hasattr(sc, 'right') and sc.right:
+                    self._visit_expression(sc.right)
+
+    def _bind_print(self, stmt):
+        """Bind PRINT expression."""
+        if stmt.expr:
+            self._visit_expression(stmt.expr)
 
     def _bind_apply(self, apply):
         """

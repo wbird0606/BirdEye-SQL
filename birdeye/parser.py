@@ -4,7 +4,10 @@ from birdeye.ast import (
     SqlBulkCopyStatement, IdentifierNode, LiteralNode,
     BinaryExpressionNode, FunctionCallNode, JoinNode, AssignmentNode,
     OrderByNode, CaseExpressionNode, BetweenExpressionNode, CastExpressionNode,
-    UnionStatement, CTENode, TruncateStatement, DeclareStatement, ApplyNode
+    UnionStatement, CTENode, TruncateStatement, DeclareStatement, ApplyNode,
+    IfStatement, ExecStatement, SetStatement, ColumnDefinitionNode,
+    CreateTableStatement, DropTableStatement, AlterTableStatement,
+    MergeClauseNode, MergeStatement, PrintStatement
 )
 
 class Parser:
@@ -88,6 +91,25 @@ class Parser:
         elif tok.type == TokenType.KEYWORD_DECLARE: stmt = self._parse_declare()
         elif tok.type == TokenType.IDENTIFIER and self._get_text(tok).upper() == "BULK":
             stmt = self._parse_bulk_insert()
+        elif tok.type == TokenType.KEYWORD_IF:
+            self._advance(); stmt = self._parse_if()
+        elif tok.type == TokenType.KEYWORD_BEGIN:
+            stmts = self._parse_block()
+            return stmts[0] if len(stmts) == 1 else stmts[0]
+        elif tok.type == TokenType.KEYWORD_EXEC:
+            self._advance(); stmt = self._parse_exec()
+        elif tok.type == TokenType.KEYWORD_CREATE:
+            self._advance(); stmt = self._parse_create()
+        elif tok.type == TokenType.KEYWORD_DROP:
+            self._advance(); stmt = self._parse_drop()
+        elif tok.type == TokenType.KEYWORD_ALTER:
+            self._advance(); stmt = self._parse_alter()
+        elif tok.type == TokenType.KEYWORD_MERGE:
+            self._advance(); stmt = self._parse_merge()
+        elif tok.type == TokenType.KEYWORD_PRINT:
+            self._advance(); stmt = self._parse_print()
+        elif tok.type == TokenType.KEYWORD_SET:
+            self._advance(); stmt = self._parse_set_statement()
         else:
             raise SyntaxError(f"Unexpected token: {self._get_text(tok)}")
 
@@ -685,3 +707,314 @@ class Parser:
         is_func = (self._peek() and self._peek().type == TokenType.SYMBOL_LPAREN)
         name = parts.pop()
         return IdentifierNode(name=name, qualifiers=parts), is_func
+
+    # --- 8. New statement parsers ---
+
+    def _parse_block(self):
+        """Parse a single statement or a BEGIN...END block. Returns list of statements."""
+        if self._match(TokenType.KEYWORD_BEGIN):
+            stmts = []
+            while self._peek() and self._peek().type != TokenType.KEYWORD_END:
+                if self._peek().type == TokenType.KEYWORD_ELSE:
+                    break
+                s = self._parse_single_stmt()
+                if s is not None:
+                    stmts.append(s)
+                self._match(TokenType.SYMBOL_SEMICOLON)
+            self._match(TokenType.KEYWORD_END)
+            return stmts or [None]
+        else:
+            s = self._parse_single_stmt()
+            return [s] if s is not None else [None]
+
+    def _parse_single_stmt(self):
+        """Parse one statement (no EOF check, no trailing semicolon handling)."""
+        tok = self._peek()
+        if tok is None:
+            return None
+        if tok.type == TokenType.KEYWORD_SELECT or (tok.type == TokenType.KEYWORD_WITH):
+            return self._parse_select_with_set_ops()
+        elif tok.type == TokenType.KEYWORD_INSERT:
+            return self._parse_insert()
+        elif tok.type == TokenType.KEYWORD_UPDATE:
+            return self._parse_update()
+        elif tok.type == TokenType.KEYWORD_DELETE:
+            return self._parse_delete()
+        elif tok.type == TokenType.KEYWORD_TRUNCATE:
+            return self._parse_truncate()
+        elif tok.type == TokenType.KEYWORD_DECLARE:
+            return self._parse_declare()
+        elif tok.type == TokenType.KEYWORD_IF:
+            self._advance(); return self._parse_if()
+        elif tok.type == TokenType.KEYWORD_EXEC:
+            self._advance(); return self._parse_exec()
+        elif tok.type == TokenType.KEYWORD_CREATE:
+            self._advance(); return self._parse_create()
+        elif tok.type == TokenType.KEYWORD_DROP:
+            self._advance(); return self._parse_drop()
+        elif tok.type == TokenType.KEYWORD_ALTER:
+            self._advance(); return self._parse_alter()
+        elif tok.type == TokenType.KEYWORD_MERGE:
+            self._advance(); return self._parse_merge()
+        elif tok.type == TokenType.KEYWORD_PRINT:
+            self._advance(); return self._parse_print()
+        elif tok.type == TokenType.KEYWORD_SET:
+            self._advance(); return self._parse_set_statement()
+        elif tok.type == TokenType.IDENTIFIER and self._get_text(tok).upper() == "BULK":
+            return self._parse_bulk_insert()
+        return None
+
+    def _parse_if(self):
+        # IF keyword already consumed by caller
+        stmt = IfStatement()
+        stmt.condition = self._parse_expression()
+        stmt.then_block = self._parse_block()
+        if self._peek() and self._peek().type == TokenType.KEYWORD_ELSE:
+            self._advance()
+            stmt.else_block = self._parse_block()
+        return stmt
+
+    def _parse_exec(self):
+        # EXEC keyword already consumed
+        stmt = ExecStatement()
+        # Check for @retvar = EXEC pattern
+        if (self._peek() and self._peek().type == TokenType.IDENTIFIER and
+                self._get_text(self._peek()).startswith('@')):
+            saved_pos = self.pos
+            var_tok = self._advance()
+            if self._match(TokenType.SYMBOL_EQUAL):
+                stmt.return_var = IdentifierNode(name=self._get_text(var_tok))
+            else:
+                self.pos = saved_pos
+        # Parse proc name (may be schema-qualified)
+        stmt.proc_name, _ = self._parse_full_identifier_safe()
+        # Parse args if any
+        tok = self._peek()
+        while tok and tok.type not in (TokenType.SYMBOL_SEMICOLON, TokenType.KEYWORD_GO, TokenType.EOF, TokenType.KEYWORD_END):
+            if self._peek() is None:
+                break
+            # Named arg: @name = expr
+            if (self._peek().type == TokenType.IDENTIFIER and
+                    self._get_text(self._peek()).startswith('@')):
+                saved = self.pos
+                name_tok = self._advance()
+                if self._match(TokenType.SYMBOL_EQUAL):
+                    expr = self._parse_expression()
+                    col = IdentifierNode(name=self._get_text(name_tok))
+                    stmt.named_args.append(AssignmentNode(col, expr))
+                else:
+                    self.pos = saved
+                    stmt.args.append(self._parse_expression())
+            else:
+                stmt.args.append(self._parse_expression())
+            if not self._match(TokenType.SYMBOL_COMMA):
+                break
+            tok = self._peek()
+        return stmt
+
+    def _parse_set_statement(self):
+        # SET keyword already consumed
+        stmt = SetStatement()
+        tok = self._peek()
+        if tok and self._get_text(tok).startswith('@'):
+            # SET @var = expr
+            stmt.target = IdentifierNode(name=self._get_text(self._advance()))
+            self._consume(TokenType.SYMBOL_EQUAL, "Expected = after variable in SET")
+            stmt.value = self._parse_expression()
+            stmt.is_option = False
+        else:
+            # SET OPTION ON/OFF
+            option_tok = self._advance()
+            stmt.target = self._get_text(option_tok).upper()
+            val_tok = self._advance()
+            stmt.value = self._get_text(val_tok).upper()
+            stmt.is_option = True
+        return stmt
+
+    def _parse_print(self):
+        # PRINT keyword already consumed
+        stmt = PrintStatement()
+        stmt.expr = self._parse_expression()
+        return stmt
+
+    def _parse_create(self):
+        # CREATE keyword already consumed
+        self._consume(TokenType.KEYWORD_TABLE, "Expected TABLE after CREATE")
+        stmt = CreateTableStatement()
+        # Check IF NOT EXISTS
+        if self._peek() and self._peek().type == TokenType.KEYWORD_IF:
+            self._advance()
+            self._consume(TokenType.KEYWORD_NOT, "Expected NOT after IF")
+            # EXISTS tokenizes as KEYWORD_EXISTS
+            if not self._match(TokenType.KEYWORD_EXISTS):
+                self._consume(TokenType.IDENTIFIER, "Expected EXISTS")
+            stmt.if_not_exists = True
+        stmt.table, _ = self._parse_full_identifier_safe()
+        self._consume(TokenType.SYMBOL_LPAREN, "Expected ( after table name in CREATE TABLE")
+        while self._peek() and self._peek().type != TokenType.SYMBOL_RPAREN:
+            # Skip PRIMARY KEY constraint line (PRIMARY is IDENTIFIER in this lexer)
+            if (self._peek().type == TokenType.IDENTIFIER and
+                    self._get_text(self._peek()).upper() in ('PRIMARY', 'CONSTRAINT', 'INDEX', 'UNIQUE')):
+                while self._peek() and self._peek().type not in (TokenType.SYMBOL_COMMA, TokenType.SYMBOL_RPAREN):
+                    self._advance()
+            else:
+                col = self._parse_column_def()
+                stmt.columns.append(col)
+            if not self._match(TokenType.SYMBOL_COMMA):
+                break
+        self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after column definitions")
+        return stmt
+
+    def _parse_column_def(self):
+        col = ColumnDefinitionNode()
+        name_tok = self._advance()
+        col.name = self._get_text(name_tok)
+        # Data type
+        type_tok = self._advance()
+        col.data_type = self._get_text(type_tok).upper()
+        # Optional type length like INT, NVARCHAR(50)
+        if self._match(TokenType.SYMBOL_LPAREN):
+            parts = []
+            while self._peek() and self._peek().type != TokenType.SYMBOL_RPAREN:
+                parts.append(self._get_text(self._advance()))
+            self._match(TokenType.SYMBOL_RPAREN)
+            col.data_type += '(' + ','.join(parts) + ')'
+        # Optional modifiers
+        while self._peek() and self._peek().type not in (TokenType.SYMBOL_COMMA, TokenType.SYMBOL_RPAREN):
+            t = self._peek()
+            txt = self._get_text(t).upper()
+            if txt == 'NOT':
+                self._advance()
+                nxt = self._get_text(self._advance()).upper()
+                if nxt == 'NULL':
+                    col.nullable = False
+            elif txt == 'NULL':
+                self._advance(); col.nullable = True
+            elif txt == 'IDENTITY':
+                self._advance(); col.is_identity = True
+                if self._match(TokenType.SYMBOL_LPAREN):
+                    while self._peek() and self._peek().type != TokenType.SYMBOL_RPAREN:
+                        self._advance()
+                    self._match(TokenType.SYMBOL_RPAREN)
+            elif txt == 'PRIMARY':
+                self._advance()
+                if self._peek() and self._get_text(self._peek()).upper() == 'KEY':
+                    self._advance()
+                col.is_primary_key = True
+            elif txt == 'DEFAULT':
+                self._advance(); col.default = self._parse_expression()
+            else:
+                break
+        return col
+
+    def _parse_drop(self):
+        # DROP keyword already consumed
+        self._consume(TokenType.KEYWORD_TABLE, "Expected TABLE after DROP")
+        stmt = DropTableStatement()
+        # IF EXISTS
+        if self._peek() and self._peek().type == TokenType.KEYWORD_IF:
+            self._advance()
+            nxt = self._peek()
+            if nxt and self._get_text(nxt).upper() == 'EXISTS':
+                self._advance()
+                stmt.if_exists = True
+        stmt.table, _ = self._parse_full_identifier_safe()
+        return stmt
+
+    def _parse_alter(self):
+        # ALTER keyword already consumed
+        self._consume(TokenType.KEYWORD_TABLE, "Expected TABLE after ALTER")
+        stmt = AlterTableStatement()
+        stmt.table, _ = self._parse_full_identifier_safe()
+        if self._match(TokenType.KEYWORD_ADD):
+            stmt.action = "ADD"
+            stmt.column = self._parse_column_def()
+        elif self._peek() and self._get_text(self._peek()).upper() == 'DROP':
+            self._advance(); stmt.action = "DROP"
+            # Optional COLUMN keyword
+            if self._peek() and self._get_text(self._peek()).upper() == 'COLUMN':
+                self._advance()
+            col_tok = self._advance()
+            stmt.column = IdentifierNode(name=self._get_text(col_tok))
+        else:
+            raise SyntaxError("Expected ADD or DROP after table name in ALTER TABLE")
+        return stmt
+
+    def _parse_merge(self):
+        # MERGE keyword already consumed
+        stmt = MergeStatement()
+        self._match(TokenType.KEYWORD_INTO)  # optional INTO
+        stmt.target, _ = self._parse_full_identifier_safe()
+        tok = self._peek()
+        if tok and tok.type not in (TokenType.KEYWORD_USING,):
+            has_as = self._match(TokenType.KEYWORD_AS)
+            al = self._match_alias() if has_as else self._match(TokenType.IDENTIFIER)
+            if al: stmt.target_alias = self._get_text(al)
+        # USING
+        self._consume(TokenType.KEYWORD_USING, "Expected USING in MERGE")
+        if self._peek() and self._peek().type == TokenType.SYMBOL_LPAREN:
+            self._advance()
+            stmt.source = self._parse_select_with_set_ops()
+            self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after MERGE source")
+        else:
+            stmt.source, _ = self._parse_full_identifier_safe()
+        has_as = self._match(TokenType.KEYWORD_AS)
+        al = self._match_alias() if has_as else self._match(TokenType.IDENTIFIER)
+        if al: stmt.source_alias = self._get_text(al)
+        # ON
+        self._consume(TokenType.KEYWORD_ON, "Expected ON in MERGE")
+        stmt.on_condition = self._parse_expression()
+        # WHEN clauses
+        while self._peek() and self._peek().type == TokenType.KEYWORD_WHEN:
+            stmt.clauses.append(self._parse_merge_clause())
+        return stmt
+
+    def _parse_merge_clause(self):
+        self._consume(TokenType.KEYWORD_WHEN, "Expected WHEN")
+        clause = MergeClauseNode()
+        if self._match(TokenType.KEYWORD_NOT):
+            # NOT MATCHED
+            self._consume(TokenType.KEYWORD_MATCHED, "Expected MATCHED after NOT")
+            # Optional BY TARGET / BY SOURCE
+            if self._peek() and self._get_text(self._peek()).upper() == 'BY':
+                self._advance()
+                src = self._get_text(self._advance()).upper()
+                clause.match_type = "NOT_MATCHED_BY_SOURCE" if src == "SOURCE" else "NOT_MATCHED"
+            else:
+                clause.match_type = "NOT_MATCHED"
+        else:
+            self._consume(TokenType.KEYWORD_MATCHED, "Expected MATCHED")
+            clause.match_type = "MATCHED"
+        # Optional AND condition
+        if self._match(TokenType.KEYWORD_AND):
+            clause.condition = self._parse_expression()
+        self._consume(TokenType.KEYWORD_THEN, "Expected THEN in MERGE clause")
+        # Action
+        if self._match(TokenType.KEYWORD_UPDATE):
+            clause.action = "UPDATE"
+            self._consume(TokenType.KEYWORD_SET, "Expected SET after UPDATE in MERGE")
+            while True:
+                col, _ = self._parse_full_identifier_safe()
+                self._consume(TokenType.SYMBOL_EQUAL, "Expected = in SET")
+                expr = self._parse_expression()
+                clause.set_clauses.append(AssignmentNode(col, expr))
+                if not self._match(TokenType.SYMBOL_COMMA): break
+        elif self._match(TokenType.KEYWORD_INSERT):
+            clause.action = "INSERT"
+            if self._match(TokenType.SYMBOL_LPAREN):
+                while True:
+                    col, _ = self._parse_full_identifier_safe()
+                    clause.insert_columns.append(col)
+                    if not self._match(TokenType.SYMBOL_COMMA): break
+                self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after INSERT columns")
+            self._consume(TokenType.KEYWORD_VALUES, "Expected VALUES in MERGE INSERT")
+            self._consume(TokenType.SYMBOL_LPAREN, "Expected ( after VALUES")
+            while True:
+                clause.insert_values.append(self._parse_expression())
+                if not self._match(TokenType.SYMBOL_COMMA): break
+            self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after INSERT values")
+        elif self._match(TokenType.KEYWORD_DELETE):
+            clause.action = "DELETE"
+        else:
+            raise SyntaxError("Expected UPDATE, INSERT, or DELETE in MERGE clause")
+        return clause
