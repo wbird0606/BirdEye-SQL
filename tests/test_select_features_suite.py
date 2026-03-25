@@ -313,7 +313,7 @@ def test_distinct_single_column(global_runner):
 def test_distinct_multiple_columns(global_runner):
     """SELECT DISTINCT 多欄位應成功綁定"""
     result = global_runner.run(
-        "SELECT DISTINCT City, StateProvinceID FROM Address"
+        "SELECT DISTINCT City, StateProvince FROM Address"
     )
     assert result["status"] == "success"
 

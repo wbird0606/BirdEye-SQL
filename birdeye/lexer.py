@@ -62,6 +62,17 @@ class TokenType(Enum):
     KEYWORD_OUTER = auto()      # For OUTER APPLY (Issue #53)
     KEYWORD_INTERSECT = auto()  # For INTERSECT set operator
     KEYWORD_EXCEPT = auto()     # For EXCEPT set operator
+    KEYWORD_IF = auto()         # For IF statement
+    KEYWORD_BEGIN = auto()      # For BEGIN...END block
+    KEYWORD_EXEC = auto()       # For EXEC/EXECUTE
+    KEYWORD_CREATE = auto()     # For CREATE TABLE
+    KEYWORD_DROP = auto()       # For DROP TABLE
+    KEYWORD_ALTER = auto()      # For ALTER TABLE
+    KEYWORD_MERGE = auto()      # For MERGE statement
+    KEYWORD_PRINT = auto()      # For PRINT statement
+    KEYWORD_ADD = auto()        # For ALTER TABLE ADD
+    KEYWORD_MATCHED = auto()    # For MERGE MATCHED
+    KEYWORD_USING = auto()      # For MERGE USING
 
     # 💡 Issue #33 新增：CASE 邏輯關鍵字
     KEYWORD_CASE = auto()
@@ -208,6 +219,18 @@ class Lexer:
             "THEN": TokenType.KEYWORD_THEN,
             "ELSE": TokenType.KEYWORD_ELSE,
             "END": TokenType.KEYWORD_END,
+            "IF":       TokenType.KEYWORD_IF,
+            "BEGIN":    TokenType.KEYWORD_BEGIN,
+            "EXEC":     TokenType.KEYWORD_EXEC,
+            "EXECUTE":  TokenType.KEYWORD_EXEC,
+            "CREATE":   TokenType.KEYWORD_CREATE,
+            "DROP":     TokenType.KEYWORD_DROP,
+            "ALTER":    TokenType.KEYWORD_ALTER,
+            "MERGE":    TokenType.KEYWORD_MERGE,
+            "PRINT":    TokenType.KEYWORD_PRINT,
+            "ADD":      TokenType.KEYWORD_ADD,
+            "MATCHED":  TokenType.KEYWORD_MATCHED,
+            "USING":    TokenType.KEYWORD_USING,
         }
 
         while self.pos < len(self.source):

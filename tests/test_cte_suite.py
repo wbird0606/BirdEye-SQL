@@ -95,7 +95,7 @@ def test_cte_update_basic(global_runner):
 def test_cte_update_filtered(global_runner):
     """WITH 帶過濾條件的 CTE 用於 UPDATE 應成功"""
     result = global_runner.run(
-        "WITH FilteredIDs AS (SELECT AddressID FROM Address WHERE StateProvinceID = 1) "
+        "WITH FilteredIDs AS (SELECT AddressID FROM Address WHERE AddressID > 10) "
         "UPDATE Address SET City = 'Updated' "
         "WHERE AddressID IN (SELECT AddressID FROM FilteredIDs)"
     )
@@ -133,7 +133,7 @@ def test_multiple_ctes_with_update(global_runner):
     """多個 CTE 搭配 UPDATE 應成功"""
     result = global_runner.run(
         "WITH A AS (SELECT AddressID FROM Address), "
-        "B AS (SELECT AddressID FROM Address WHERE StateProvinceID = 1) "
+        "B AS (SELECT AddressID FROM Address WHERE AddressID > 5) "
         "UPDATE Address SET City = 'X' "
         "WHERE AddressID IN (SELECT AddressID FROM A) "
         "AND AddressID IN (SELECT AddressID FROM B)"

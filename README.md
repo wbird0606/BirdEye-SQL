@@ -1,7 +1,7 @@
 # 🦅 BirdEye-SQL: Semantic-Aware & Zero-Trust SQL Parser
 
 [![Testing: pytest](https://img.shields.io/badge/Testing-pytest-blue.svg)](https://docs.pytest.org/)
-[![Tests](https://img.shields.io/badge/Tests-533%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-864%20passed-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 🌍 **Language Switch / 語言切換**: [English](#english-version) | [繁體中文](#繁體中文版本)
@@ -37,6 +37,47 @@ Open your browser and navigate to `http://127.0.0.1:5000`!
 | `POST` | `/api/parse` | SQL → AST: parse SQL and return `tree`, `mermaid`, `json` |
 | `POST` | `/api/reconstruct` | AST → SQL: accepts `{"ast": <dict or JSON string>}`, returns reconstructed SQL |
 | `POST` | `/api/upload_csv` | Upload a CSV metadata file to update the schema context |
+| `POST` | `/api/intent` | SQL → column-level intent list (`READ`/`WRITE`/`DELETE`) for ZTA permission evaluation |
+
+### Schema Metadata Export
+
+BirdEye-SQL uses a CSV file to describe your database schema. Two formats are supported:
+
+**4-column (recommended, with schema):**
+```
+table_schema,table_name,column_name,data_type
+SalesLT,Customer,CustomerID,int
+SalesLT,Customer,CompanyName,nvarchar
+```
+
+**3-column (no schema prefix):**
+```
+table_name,column_name,data_type
+Customer,CustomerID,int
+Customer,CompanyName,nvarchar
+```
+
+Run the following query in **SQL Server Management Studio (SSMS)** and export the result as CSV:
+
+```sql
+-- 4-column export (recommended)
+SELECT
+    s.name  AS table_schema,
+    t.name  AS table_name,
+    c.name  AS column_name,
+    tp.name AS data_type
+FROM sys.tables t
+JOIN sys.schemas  s  ON t.schema_id    = s.schema_id
+JOIN sys.columns  c  ON t.object_id    = c.object_id
+JOIN sys.types    tp ON c.user_type_id = tp.user_type_id
+WHERE t.is_ms_shipped = 0
+ORDER BY table_schema, table_name, c.column_id;
+```
+
+Save the output as `schema.csv`, then load it into BirdEye via:
+- **Web UI**: click the **Upload CSV** button on the dashboard
+- **CLI**: pass `--csv schema.csv` to `main.py`
+- **API**: `POST /api/upload_csv` with the file as multipart form data
 
 ### CLI Utility
 You can also use the parser directly from the terminal:
@@ -85,9 +126,9 @@ python main.py --ast-file my_ast.json
 | **Functions** | 60+ built-in: aggregates, string, numeric, date, NULL-handling |
 | **MSSQL** | DECLARE @var, #temp / ##global temp tables, GO, BULK INSERT |
 
-## 🧪 Testing Strategy (533 Tests Across 20 Suites)
+## 🧪 Testing Strategy (864 Tests Across 21 Suites)
 
-We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a **Red → Green → Zero Regression** cycle. The project contains **533 comprehensive test cases** across **20 specialized test suites**:
+We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a **Red → Green → Zero Regression** cycle. The project contains **864 comprehensive test cases** across **21 specialized test suites** with **99% line coverage**:
 
 | Test Suite | Tests | Coverage |
 |---|---|---|
@@ -111,8 +152,9 @@ We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a
 | `test_web_api_suite.py` | 3 | RESTful endpoints, JSON response format, HTTP error codes |
 | `test_mermaid_suite.py` | 3 | Mermaid flowchart generation and node structure |
 | `test_reconstructor_suite.py` | 32 | AST JSON → SQL reconstruction, round-trip accuracy, all statement types |
+| `test_final_coverage_suite.py` | 46 | Targeted coverage for binder, parser, lexer, reconstructor, visualizer edge cases |
 
-**Current Status**: ✅ **100% Tests Passed** (533/533)
+**Current Status**: ✅ **100% Tests Passed** (864/864) — **99% Line Coverage**
 ```powershell
 pytest tests/
 ```
@@ -150,6 +192,47 @@ python web/app.py
 | `POST` | `/api/parse` | SQL → AST：解析 SQL，回傳 `tree`、`mermaid`、`json` |
 | `POST` | `/api/reconstruct` | AST → SQL：接受 `{"ast": <dict 或 JSON 字串>}`，回傳重建後的 SQL |
 | `POST` | `/api/upload_csv` | 上傳 CSV 元數據檔案以更新 schema 上下文 |
+| `POST` | `/api/intent` | SQL → 欄位層級操作意圖清單（`READ`/`WRITE`/`DELETE`），供 ZTA 權限驗證使用 |
+
+### Schema 元數據匯出
+
+BirdEye-SQL 透過 CSV 檔案描述資料庫結構，支援以下兩種格式：
+
+**4 欄（建議，含 schema 名稱）：**
+```
+table_schema,table_name,column_name,data_type
+SalesLT,Customer,CustomerID,int
+SalesLT,Customer,CompanyName,nvarchar
+```
+
+**3 欄（無 schema 前綴）：**
+```
+table_name,column_name,data_type
+Customer,CustomerID,int
+Customer,CompanyName,nvarchar
+```
+
+在 **SQL Server Management Studio (SSMS)** 中執行以下查詢，並將結果匯出為 CSV：
+
+```sql
+-- 4 欄匯出（建議）
+SELECT
+    s.name  AS table_schema,
+    t.name  AS table_name,
+    c.name  AS column_name,
+    tp.name AS data_type
+FROM sys.tables t
+JOIN sys.schemas  s  ON t.schema_id    = s.schema_id
+JOIN sys.columns  c  ON t.object_id    = c.object_id
+JOIN sys.types    tp ON c.user_type_id = tp.user_type_id
+WHERE t.is_ms_shipped = 0
+ORDER BY table_schema, table_name, c.column_id;
+```
+
+將輸出儲存為 `schema.csv`，再透過以下方式載入 BirdEye：
+- **Web UI**：點擊儀表板上的 **Upload CSV** 按鈕
+- **CLI**：在 `main.py` 加入 `--csv schema.csv` 參數
+- **API**：以 multipart form data 方式 `POST /api/upload_csv`
 
 ### 命令列工具 (CLI)
 你也可以直接在終端機使用 CLI 工具：
@@ -198,9 +281,9 @@ python main.py --ast-file my_ast.json
 | **函數** | 60+ 內建函數：聚合、字串、數值、日期、NULL 處理 |
 | **MSSQL** | DECLARE @var、#temp / ##global 暫存表、GO、BULK INSERT |
 
-## 🧪 測試策略（533 個測試案例，涵蓋 20 個套件）
+## 🧪 測試策略（864 個測試案例，涵蓋 21 個套件）
 
-我們嚴格遵守**測試驅動開發 (TDD)**，每個功能均遵循 **Red → Green → 零回歸** 循環。專案內包含 **20 個專門化測試套件**、**533 個全面測試案例**：
+我們嚴格遵守**測試驅動開發 (TDD)**，每個功能均遵循 **Red → Green → 零回歸** 循環。專案內包含 **21 個專門化測試套件**、**864 個全面測試案例**，**行覆蓋率達 99%**：
 
 | 測試套件 | 測試數 | 涵蓋範圍 |
 |---|---|---|
@@ -224,8 +307,9 @@ python main.py --ast-file my_ast.json
 | `test_web_api_suite.py` | 3 | RESTful 端點、JSON 回應格式、HTTP 錯誤代碼 |
 | `test_mermaid_suite.py` | 3 | Mermaid 流程圖產生與節點結構 |
 | `test_reconstructor_suite.py` | 32 | AST JSON → SQL 重建、往返準確性、所有語句類型 |
+| `test_final_coverage_suite.py` | 46 | 針對 binder、parser、lexer、reconstructor、visualizer 邊界行的精準覆蓋 |
 
-**目前狀態**: ✅ **100% 測試通過** (533/533)
+**目前狀態**: ✅ **100% 測試通過** (864/864) — **行覆蓋率 99%**
 ```powershell
 pytest tests/
 ```

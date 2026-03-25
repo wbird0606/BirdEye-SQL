@@ -37,8 +37,8 @@ def run_bind_with_runner(sql, runner):
 @pytest.mark.parametrize("sql, expected_joins", [
     # 標準 JOIN (SalesOrderHeader h, SalesOrderDetail d)
     ("SELECT h.SalesOrderID FROM SalesOrderHeader h JOIN SalesOrderDetail d ON h.SalesOrderID = d.SalesOrderID", 1),
-    # 顯式 LEFT JOIN (Address a, StateProvince s)
-    ("SELECT a.AddressID FROM Address a LEFT JOIN StateProvince s ON a.StateProvinceID = s.StateProvinceID", 1),
+    # 顯式 LEFT JOIN (SalesOrderHeader h, Address a)
+    ("SELECT h.SalesOrderID FROM SalesOrderHeader h LEFT JOIN Address a ON h.ShipToAddressID = a.AddressID", 1),
 ])
 def test_join_basic_syntax(global_runner, sql, expected_joins):
     """驗證 Parser 是否能正確識別並解析真實元數據下的 JOIN"""
@@ -50,8 +50,8 @@ def test_join_basic_syntax(global_runner, sql, expected_joins):
 @pytest.mark.parametrize("sql, error_match", [
     # SalesOrderID 同時存在於 Header 與 Detail，未指定限定符應報錯
     ("SELECT SalesOrderID FROM SalesOrderHeader h JOIN SalesOrderDetail d ON h.SalesOrderID = d.SalesOrderID", "Column 'SalesOrderID' is ambiguous"),
-    # ModifiedDate 同時存在於 Address 與 StateProvince
-    ("SELECT ModifiedDate FROM Address a JOIN StateProvince s ON a.StateProvinceID = s.StateProvinceID", "Column 'ModifiedDate' is ambiguous"),
+    # ModifiedDate 同時存在於 Address 與 SalesOrderHeader
+    ("SELECT ModifiedDate FROM Address a JOIN SalesOrderHeader h ON a.AddressID = h.ShipToAddressID", "Column 'ModifiedDate' is ambiguous"),
 ])
 def test_join_ambiguity_protection(global_runner, sql, error_match):
     """驗證 Binder 是否能精準攔截真實元數據中的歧義欄位"""
@@ -115,7 +115,7 @@ def test_alias_invalidation_chain(global_runner):
     sql = """
         SELECT Address.City
         FROM Address AS a
-        JOIN StateProvince AS s ON a.StateProvinceID = s.StateProvinceID
+        JOIN Customer AS c ON a.AddressID = c.CustomerID
     """
     with pytest.raises(SemanticError, match="Original table name 'Address' cannot be used"):
         run_bind_with_runner(sql, global_runner)
@@ -139,14 +139,14 @@ def test_multi_table_column_not_found(global_runner):
 
 def test_left_join_nullability(global_runner):
     """驗證 LEFT JOIN 右側表欄位在繫結後應被標記為 Nullable"""
-    sql = "SELECT a.City, s.Name FROM Address a LEFT JOIN StateProvince s ON a.StateProvinceID = s.StateProvinceID"
+    sql = "SELECT a.City, c.FirstName FROM Address a LEFT JOIN Customer c ON a.AddressID = c.CustomerID"
 
     runner_result = global_runner.run(sql)
     assert "ast" in runner_result
 
 def test_right_join_nullability(global_runner):
     """驗證 RIGHT JOIN 左側表欄位應被標記為 Nullable"""
-    sql = "SELECT a.City, s.Name FROM Address a RIGHT JOIN StateProvince s ON a.StateProvinceID = s.StateProvinceID"
+    sql = "SELECT a.City, c.FirstName FROM Address a RIGHT JOIN Customer c ON a.AddressID = c.CustomerID"
     runner_result = global_runner.run(sql)
     assert "ast" in runner_result
 

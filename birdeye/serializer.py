@@ -6,7 +6,10 @@ from birdeye.ast import (
     FunctionCallNode, JoinNode, AssignmentNode,
     OrderByNode, CaseExpressionNode, BetweenExpressionNode,
     CastExpressionNode, UnionStatement, CTENode, TruncateStatement,
-    DeclareStatement, ApplyNode
+    DeclareStatement, ApplyNode,
+    IfStatement, ExecStatement, SetStatement,
+    CreateTableStatement, DropTableStatement, AlterTableStatement,
+    MergeStatement, MergeClauseNode, PrintStatement, ColumnDefinitionNode
 )
 
 class ASTSerializer:
@@ -115,9 +118,10 @@ class ASTSerializer:
 
         elif isinstance(node, IdentifierNode):
             res.update({
-                "name": node.name,
-                "qualifiers": node.qualifiers,
-                "alias": node.alias
+                "name":           node.name,
+                "qualifiers":     node.qualifiers,
+                "alias":          node.alias,
+                "resolved_table": getattr(node, "resolved_table", None),
             })
 
         elif isinstance(node, LiteralNode):
@@ -183,6 +187,83 @@ class ASTSerializer:
                 "apply_type": node.type,
                 "subquery": self._serialize(node.subquery),
                 "alias": node.alias
+            })
+
+        elif isinstance(node, IfStatement):
+            res.update({
+                "condition": self._serialize(node.condition),
+                "then_block": self._serialize(node.then_block),
+                "else_block": self._serialize(node.else_block),
+            })
+
+        elif isinstance(node, ExecStatement):
+            res.update({
+                "proc_name": self._serialize(node.proc_name),
+                "args": self._serialize(node.args),
+                "named_args": self._serialize(node.named_args),
+                "return_var": self._serialize(node.return_var),
+            })
+
+        elif isinstance(node, SetStatement):
+            res.update({
+                "target": node.target if isinstance(node.target, str) else self._serialize(node.target),
+                "value": node.value if isinstance(node.value, str) else self._serialize(node.value),
+                "is_option": node.is_option,
+            })
+
+        elif isinstance(node, ColumnDefinitionNode):
+            res.update({
+                "name": node.name,
+                "data_type": node.data_type,
+                "nullable": node.nullable,
+                "default": self._serialize(node.default),
+                "is_identity": node.is_identity,
+                "is_primary_key": node.is_primary_key,
+            })
+
+        elif isinstance(node, CreateTableStatement):
+            res.update({
+                "table": self._serialize(node.table),
+                "if_not_exists": node.if_not_exists,
+                "columns": self._serialize(node.columns),
+            })
+
+        elif isinstance(node, DropTableStatement):
+            res.update({
+                "table": self._serialize(node.table),
+                "if_exists": node.if_exists,
+            })
+
+        elif isinstance(node, AlterTableStatement):
+            res.update({
+                "table": self._serialize(node.table),
+                "action": node.action,
+                "column": self._serialize(node.column),
+            })
+
+        elif isinstance(node, MergeClauseNode):
+            res.update({
+                "match_type": node.match_type,
+                "condition": self._serialize(node.condition),
+                "action": node.action,
+                "set_clauses": self._serialize(node.set_clauses),
+                "insert_columns": self._serialize(node.insert_columns),
+                "insert_values": self._serialize(node.insert_values),
+            })
+
+        elif isinstance(node, MergeStatement):
+            res.update({
+                "target": self._serialize(node.target),
+                "target_alias": node.target_alias,
+                "source": self._serialize(node.source),
+                "source_alias": node.source_alias,
+                "on_condition": self._serialize(node.on_condition),
+                "clauses": self._serialize(node.clauses),
+            })
+
+        elif isinstance(node, PrintStatement):
+            res.update({
+                "expr": self._serialize(node.expr),
             })
 
         return res

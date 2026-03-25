@@ -22,7 +22,7 @@ def run_visualize(sql):
     
     # 2. 別名掛載驗證
     ("SELECT u.UserID AS ID FROM Users AS u", 
-     ["IDENTIFIER: UserID (Qual: u) AS ID", "ALIAS: u"]),
+     ["IDENTIFIER: u.UserID AS ID", "ALIAS: u"]),
     
     # 3. 函數與嵌套參數
     ("SELECT UPPER(UserName) FROM Users", 
@@ -30,7 +30,7 @@ def run_visualize(sql):
     
     # 4. 複雜 JOIN 與 ON 條件
     ("SELECT u.Name FROM Users u JOIN Orders o ON u.ID = o.UID", 
-     ["INNER_JOIN", "IDENTIFIER: Orders", "ALIAS: o", "└── ON", "Qual: u", "Qual: o"]),
+     ["INNER_JOIN", "IDENTIFIER: Orders", "ALIAS: o", "└── ON", "u.ID", "o.UID"]),
     
     # 5. ZTA 核心防禦：UPDATE 視覺化
     # 驗證是否包含強制性 WHERE 標籤

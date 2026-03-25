@@ -59,6 +59,18 @@ class BirdEyeRunner:
             "mermaid": mermaid_code
         }
 
+    def parse_only(self, sql):
+        """
+        僅執行 Lexer + Parser，跳過 Binder。
+        適合 intent extraction：不需要 schema 驗證，任何欄位名稱都接受。
+        回傳 {"ast": <parsed AST>}
+        """
+        lexer = Lexer(sql)
+        tokens = lexer.tokenize()
+        parser = Parser(tokens, sql)
+        ast = parser.parse()
+        return {"ast": ast}
+
     def run_script(self, sql):
         """
         Issue #51: 執行多語句腳本。
@@ -72,7 +84,7 @@ class BirdEyeRunner:
 
         # 新語句起始關鍵字 pattern，用於按換行分割語句
         _stmt_start = re.compile(
-            r'(?=^\s*(?:SELECT|INSERT|UPDATE|DELETE|TRUNCATE|DECLARE|WITH)\b)',
+            r'(?=^\s*(?:SELECT|INSERT|UPDATE|DELETE|TRUNCATE|DECLARE|WITH|IF|BEGIN|EXEC|EXECUTE|CREATE|DROP|ALTER|MERGE|PRINT|SET)\b)',
             re.IGNORECASE | re.MULTILINE
         )
 

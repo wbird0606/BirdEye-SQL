@@ -438,25 +438,25 @@ def test_newid_comparable_with_uniqueidentifier_column(global_runner):
 
 def test_json_value_returns_nvarchar(global_runner):
     """JSON_VALUE(col, path) 應回傳 NVARCHAR"""
-    sql = "SELECT JSON_VALUE(Demographics, '$.CustomerStyle') FROM Person"
+    sql = "SELECT JSON_VALUE(Name, '$.key') FROM ProductModel"
     ast = global_runner.run(sql)["ast"]
     assert ast.columns[0].inferred_type == "NVARCHAR"
 
 def test_isjson_returns_bit(global_runner):
     """ISJSON(col) 應回傳 BIT"""
-    sql = "SELECT ISJSON(Demographics) FROM Person"
+    sql = "SELECT ISJSON(Name) FROM ProductModel"
     ast = global_runner.run(sql)["ast"]
     assert ast.columns[0].inferred_type == "BIT"
 
 def test_json_query_returns_nvarchar(global_runner):
     """JSON_QUERY(col, path) 應回傳 NVARCHAR"""
-    sql = "SELECT JSON_QUERY(Demographics, '$.key') FROM Person"
+    sql = "SELECT JSON_QUERY(Name, '$.key') FROM ProductModel"
     ast = global_runner.run(sql)["ast"]
     assert ast.columns[0].inferred_type == "NVARCHAR"
 
 def test_json_modify_returns_nvarchar(global_runner):
     """JSON_MODIFY(col, path, value) 應回傳 NVARCHAR"""
-    sql = "SELECT JSON_MODIFY(Demographics, '$.key', 'val') FROM Person"
+    sql = "SELECT JSON_MODIFY(Name, '$.key', 'val') FROM ProductModel"
     ast = global_runner.run(sql)["ast"]
     assert ast.columns[0].inferred_type == "NVARCHAR"
 
@@ -466,18 +466,18 @@ def test_json_modify_returns_nvarchar(global_runner):
 # ─────────────────────────────────────────────
 
 def test_select_geography_column(global_runner):
-    """SELECT Address.SpatialLocation (geography) 不應拋出錯誤"""
-    result = global_runner.run("SELECT SpatialLocation FROM Address")
+    """SELECT ProductModel.CatalogDescription (xml) 不應拋出錯誤"""
+    result = global_runner.run("SELECT CatalogDescription FROM ProductModel")
     assert result["status"] == "success"
 
 def test_select_xml_column(global_runner):
-    """SELECT DatabaseLog.XmlEvent (xml) 不應拋出錯誤"""
-    result = global_runner.run("SELECT XmlEvent FROM DatabaseLog")
+    """SELECT ProductModel.CatalogDescription (xml) 不應拋出錯誤"""
+    result = global_runner.run("SELECT CatalogDescription FROM ProductModel")
     assert result["status"] == "success"
 
 def test_select_varbinary_column(global_runner):
-    """SELECT Document.Document (varbinary) 不應拋出錯誤"""
-    result = global_runner.run("SELECT Document FROM Document")
+    """SELECT Product.ThumbNailPhoto (varbinary) 不應拋出錯誤"""
+    result = global_runner.run("SELECT ThumbNailPhoto FROM Product")
     assert result["status"] == "success"
 
 def test_geography_where_cross_type_raises(global_runner):

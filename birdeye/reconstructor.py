@@ -119,7 +119,7 @@ class ASTReconstructor:
             parts.append("WITH " + ", ".join(cte_parts))
 
         tbl = self._sql_table_ref(n["table"], n.get("alias"))
-        sets = ", ".join(self._sql_AssignmentNode(s) for s in (n.get("set_clauses") or []))
+        sets = ", ".join(self._sql_AssignmentNode(s) for s in (n.get("set") or n.get("set_clauses") or []))
         parts.append(f"UPDATE {tbl} SET {sets}")
         where = n.get("where_condition") or n.get("where")
         if where:
@@ -168,6 +168,104 @@ class ASTReconstructor:
         if n.get("default_value"):
             sql += f" = {self._sql_expr(n['default_value'])}"
         return sql
+
+    def _sql_IfStatement(self, n: dict) -> str:
+        cond = self._sql_expr(n["condition"]) if n.get("condition") else "1=1"
+        then_stmts = n.get("then_block") or []
+        else_stmts = n.get("else_block") or []
+        then_sql = " ".join(self.to_sql(s) for s in then_stmts)
+        parts = [f"IF {cond}", f"BEGIN {then_sql} END"]
+        if else_stmts:
+            else_sql = " ".join(self.to_sql(s) for s in else_stmts)
+            parts += ["ELSE", f"BEGIN {else_sql} END"]
+        return " ".join(parts)
+
+    def _sql_ExecStatement(self, n: dict) -> str:
+        proc_raw = n.get("proc_name")
+        proc = self.to_sql(proc_raw) if isinstance(proc_raw, dict) else (proc_raw or "")
+        args = n.get("args") or []
+        named = n.get("named_args") or []
+        ret_raw = n.get("return_var")
+        ret_sql = (self.to_sql(ret_raw) if isinstance(ret_raw, dict) else ret_raw or "")
+        ret_sql = f"{ret_sql} = " if ret_sql else ""
+        arg_parts = [self._sql_expr(a) for a in args]
+        arg_parts += [f"{na['name']} = {self._sql_expr(na['value'])}" for na in named if isinstance(na, dict)]
+        args_sql = ", ".join(arg_parts)
+        return f"EXEC {ret_sql}{proc} {args_sql}".strip()
+
+    def _sql_SetStatement(self, n: dict) -> str:
+        if n.get("is_option"):
+            target = n.get("target") if isinstance(n.get("target"), str) else self._sql_expr(n.get("target")) if n.get("target") else ""
+            value = n.get("value") if isinstance(n.get("value"), str) else self._sql_expr(n.get("value")) if n.get("value") else ""
+            return f"SET {target} {value}"
+        target = self._sql_expr(n["target"]) if n.get("target") else ""
+        value = self._sql_expr(n["value"]) if n.get("value") else "NULL"
+        return f"SET {target} = {value}"
+
+    def _sql_CreateTableStatement(self, n: dict) -> str:
+        tbl = self.to_sql(n["table"])
+        if_not = "IF NOT EXISTS " if n.get("if_not_exists") else ""
+        cols = n.get("columns") or []
+        col_defs = []
+        for c in cols:
+            col_defs.append(self._sql_ColumnDefinitionNode(c))
+        cols_sql = ", ".join(col_defs)
+        return f"CREATE TABLE {if_not}{tbl} ({cols_sql})"
+
+    def _sql_ColumnDefinitionNode(self, n: dict) -> str:
+        parts = [n["name"], n.get("data_type", "")]
+        if n.get("is_identity"):
+            parts.append("IDENTITY")
+        if not n.get("nullable", True):
+            parts.append("NOT NULL")
+        if n.get("is_primary_key"):
+            parts.append("PRIMARY KEY")
+        if n.get("default"):
+            parts.append(f"DEFAULT {self._sql_expr(n['default'])}")
+        return " ".join(parts)
+
+    def _sql_DropTableStatement(self, n: dict) -> str:
+        tbl = self.to_sql(n["table"])
+        if_exists = "IF EXISTS " if n.get("if_exists") else ""
+        return f"DROP TABLE {if_exists}{tbl}"
+
+    def _sql_AlterTableStatement(self, n: dict) -> str:
+        tbl = self.to_sql(n["table"])
+        action = n.get("action", "")
+        col = n.get("column")
+        col_sql = f" {self._sql_ColumnDefinitionNode(col)}" if col else ""
+        return f"ALTER TABLE {tbl} {action}{col_sql}"
+
+    def _sql_MergeStatement(self, n: dict) -> str:
+        target = self._sql_table_ref(n["target"], n.get("target_alias"))
+        source = self._sql_table_ref(n["source"], n.get("source_alias"))
+        on = self._sql_expr(n["on_condition"]) if n.get("on_condition") else "1=1"
+        parts = [f"MERGE INTO {target}", f"USING {source}", f"ON {on}"]
+        for clause in (n.get("clauses") or []):
+            parts.append(self._sql_MergeClauseNode(clause))
+        return " ".join(parts) + ";"
+
+    def _sql_MergeClauseNode(self, n: dict) -> str:
+        mt = n.get("match_type", "MATCHED")
+        cond = n.get("condition")
+        cond_sql = f" AND {self._sql_expr(cond)}" if cond else ""
+        action = n.get("action", "UPDATE")
+        if action == "UPDATE":
+            sets = ", ".join(self._sql_AssignmentNode(s) for s in (n.get("set_clauses") or []))
+            return f"WHEN {mt}{cond_sql} THEN UPDATE SET {sets}"
+        elif action == "INSERT":
+            cols = n.get("insert_columns") or []
+            vals = n.get("insert_values") or []
+            cols_sql = "(" + ", ".join(self.to_sql(c) for c in cols) + ")" if cols else ""
+            vals_sql = "(" + ", ".join(self._sql_expr(v) for v in vals) + ")"
+            return f"WHEN {mt}{cond_sql} THEN INSERT {cols_sql} VALUES {vals_sql}"
+        elif action == "DELETE":
+            return f"WHEN {mt}{cond_sql} THEN DELETE"
+        return f"WHEN {mt}{cond_sql} THEN {action}"
+
+    def _sql_PrintStatement(self, n: dict) -> str:
+        expr = self._sql_expr(n["expr"]) if n.get("expr") else ""
+        return f"PRINT {expr}"
 
     # ─── 表達式節點 ─────────────────────────────────
 

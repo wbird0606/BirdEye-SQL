@@ -123,8 +123,8 @@ def test_insert_parsing_success(global_runner, sql, expected_table, col_count, v
     ("INSERT INTO Product (GhostColumn) VALUES (1)", "Column 'GhostColumn' not found in 'Product'"),
     # 💡 嚴格類型防禦：StandardCost 是 money，給字串應報錯
     ("INSERT INTO Product (StandardCost) VALUES ('High')", "Cannot compare MONEY with NVARCHAR"),
-    # 全表寫入數量檢查 (Product 在 output.csv 中有 25 欄)
-    ("INSERT INTO Product VALUES (1, 'A')", "Column count mismatch: Expected 25, got 2"),
+    # 全表寫入數量檢查 (Product 在 output.csv 中有 17 欄)
+    ("INSERT INTO Product VALUES (1, 'A')", "Column count mismatch: Expected 17, got 2"),
 ])
 def test_insert_semantic_errors(global_runner, sql, error_match):
     """驗證 Binder 是否能根據真實元數據執行 ZTA 寫入檢查"""

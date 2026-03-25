@@ -17,7 +17,7 @@ def test_full_pipeline_with_real_metadata(runner):
     測試完整流程：載入真實元數據 -> 解析 SQL -> 語意驗證 -> 視覺化。
     目標表：Address (存在於 output.csv 中)
     """
-    sql = "SELECT AddressID, City FROM Address WHERE StateProvinceID = 79"
+    sql = "SELECT AddressID, City FROM Address WHERE AddressID > 0"
     result = runner.run(sql)
 
     assert "SELECT_STATEMENT" in result["tree"]

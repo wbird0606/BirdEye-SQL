@@ -33,10 +33,10 @@ def registry():
 # --- 2. ZTA 核心語意強制執行測試 (Real Metadata) ---
 
 @pytest.mark.parametrize("sql, is_valid, error_match", [
-    # 成功案例：正確使用別名 (Person 表)
-    ("SELECT p.FirstName FROM Person AS p", True, None),
+    # 成功案例：正確使用別名 (Customer 表)
+    ("SELECT c.FirstName FROM Customer AS c", True, None),
     # 失敗案例：別名定義後禁止使用原表名 (ZTA 核心政策)
-    ("SELECT Person.FirstName FROM Person AS p", False, "Original table name 'Person' cannot be used when alias 'p' is defined"),
+    ("SELECT Customer.FirstName FROM Customer AS c", False, "Original table name 'Customer' cannot be used when alias 'c' is defined"),
     # 失敗案例：引用不存在的表格
     ("SELECT * FROM GhostTable", False, "Table 'GhostTable' not found"),
 ])
