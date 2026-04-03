@@ -183,22 +183,19 @@ python main.py --ast-file my_ast.json
 
 ## 🎬 Video Demo
 
-Watch a quick demonstration of BirdEye-SQL in action (autoplay):
+Watch BirdEye-SQL in action:
 
-<video width="100%" controls autoplay>
-  <source src="demo/demo.mkv" type="video/x-matroska">
-  Your browser does not support the video tag. [Download Demo Video](demo/demo.mkv) instead.
-</video>
+**[⬇️ Download Demo Video (MP4)](demo/demo.mp4)** - Demonstrates SQL parsing, semantic type inference, AST visualization, and bidirectional transformation.
 
-**Features demonstrated:**
-- SQL parsing with semantic type inference
-- AST tree visualization with type annotations
-- Bidirectional SQL ↔ AST transformation
-- Zero Trust Architecture (ZTA) security validation
+**Key features shown:**
+- SQL → AST conversion with type annotations
+- Interactive tree visualization
+- AST → SQL reconstruction (round-trip)
+- Zero Trust Architecture (ZTA) security enforcement
 
 **AST Flowchart Example:**
 
-<img src="demo/birdeye-ast.svg" alt="AST Flowchart" width="100%"/>
+For a visual representation of how BirdEye-SQL transforms SQL into an Abstract Syntax Tree, see the flowchart diagram included in the `/demo/` directory.
 
 ## 🧪 Testing Strategy (864 Tests Across 33 Suite Files)
 
@@ -412,22 +409,19 @@ python main.py --ast-file my_ast.json
 
 ## 🎬 演示影片
 
-觀看 BirdEye-SQL 的快速演示（自動撥放）：
+觀看 BirdEye-SQL 的實际作用：
 
-<video width="100%" controls autoplay>
-  <source src="demo/demo.mkv" type="video/x-matroska">
-  你的瀏覽器不支援視頻標籤。請改為 [下載演示影片](demo/demo.mkv)。
-</video>
+**[⬇️ 下載演示影片 (MP4)](demo/demo.mp4)** - 演示 SQL 解析、語意型別推導、AST 視覺化以及雙向轉換。
 
-**演示內容：**
-- SQL 解析與語意型別推導
-- AST 樹狀圖視覺化及型別標註
-- 雙向 SQL ↔ AST 轉換
-- 零信任架構 (ZTA) 資安驗證
+**主要功能演示：**
+- SQL → AST 轉換並複介型別標註
+- 互動性樹狀圖視覺化
+- AST → SQL 重建（往追轉換）
+- 零信任架構 (ZTA) 資安強化
 
 **AST 流程圖範例：**
 
-<img src="demo/birdeye-ast.svg" alt="AST 流程圖" width="100%"/>
+关於 AST 轉换增例的视覺上体现，請下載上述演示影片。AST 结构演示了 SQL 语厥如何被解析为語义组件，配合完整的类型推导。
 
 ## 🧪 測試策略（864 個測試案例，涵蓋 33 個測試套件檔案）
 
