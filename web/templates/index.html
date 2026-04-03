@@ -74,7 +74,6 @@
                 </div>
                 <div id="toolbar" style="display: none; gap: 5px;">
                     <button onclick="downloadSVG()" style="background: #555; padding: 5px 10px; font-size: 12px;">⬇️ SVG</button>
-                    <button onclick="downloadPNG()" style="background: #555; padding: 5px 10px; font-size: 12px;">⬇️ PNG</button>
                 </div>
             </div>
 
@@ -351,17 +350,22 @@
             // 複製一份 SVG 避免影響畫面上正在顯示的
             const clone = svgElement.cloneNode(true);
             
-            // 移除 svg-pan-zoom 加入的控制元件與變形，恢復原始大小
-            const viewBox = clone.getAttribute('viewBox');
-            if (viewBox) {
-                const parts = viewBox.split(' ');
-                clone.setAttribute('width', parts[2]);
-                clone.setAttribute('height', parts[3]);
-            }
-            const g = clone.querySelector('.svg-pan-zoom_viewport');
-            if (g) {
-                g.removeAttribute('transform');
-            }
+            const viewport = clone.querySelector('.svg-pan-zoom_viewport');
+            if (viewport) viewport.removeAttribute('transform');
+            const ctrls = clone.querySelector('.svg-pan-zoom_controls');
+            if (ctrls) ctrls.remove();
+            
+            const bbox = svgElement.getBBox();
+            const width = Math.max(1, Math.ceil(bbox.width || parseFloat(svgElement.getAttribute('width')) || 1200));
+            const height = Math.max(1, Math.ceil(bbox.height || parseFloat(svgElement.getAttribute('height')) || 800));
+            const x = Number.isFinite(bbox.x) ? bbox.x : 0;
+            const y = Number.isFinite(bbox.y) ? bbox.y : 0;
+            
+            clone.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+            clone.setAttribute('xmlns:xlink', 'http://www.w3.org/1999/xlink');
+            clone.setAttribute('viewBox', `${x} ${y} ${width} ${height}`);
+            clone.setAttribute('width', width);
+            clone.setAttribute('height', height);
             
             const serializer = new XMLSerializer();
             let source = serializer.serializeToString(clone);
@@ -384,40 +388,6 @@
             document.body.appendChild(a);
             a.click();
             document.body.removeChild(a);
-        }
-
-        function downloadPNG() {
-            const source = getSVGString();
-            if (!source) return alert("No flowchart to download.");
-            
-            const svgElement = document.querySelector('#mermaid-output svg');
-            const viewBox = svgElement.getAttribute('viewBox').split(' ');
-            const width = parseInt(viewBox[2]);
-            const height = parseInt(viewBox[3]);
-
-            const canvas = document.createElement("canvas");
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext("2d");
-            
-            // 設定白色背景 (避免 PNG 透明背景看不清楚)
-            ctx.fillStyle = "white";
-            ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-            const img = new Image();
-            const url = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(source);
-            
-            img.onload = function() {
-                ctx.drawImage(img, 0, 0);
-                const pngUrl = canvas.toDataURL("image/png");
-                const a = document.createElement("a");
-                a.href = pngUrl;
-                a.download = "birdeye-ast.png";
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-            };
-            img.src = url;
         }
     </script>
 </body>

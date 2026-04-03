@@ -2,7 +2,13 @@ import os
 import io
 import json
 import functools
+import sys
 from flask import Flask, request, jsonify, render_template
+
+
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
 
 try:
     import requests as http_requests
@@ -25,6 +31,14 @@ _intent_extractor = IntentExtractor()
 # 初始化 Flask 應用
 app = Flask(__name__)
 CORS(app) # 允許跨域請求，方便前端整合
+
+
+@app.after_request
+def add_no_cache_headers(response):
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    response.headers['Expires'] = '0'
+    return response
 
 # 全域的 Runner，預設載入 data/output.csv
 # 💡 改為動態重新初始化以支援上傳

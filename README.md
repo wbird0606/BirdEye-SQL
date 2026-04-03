@@ -80,7 +80,7 @@ ORDER BY ListPrice DESC;
 ```
 
 ### Web UI Dashboard
-BirdEye-SQL features a modern, Flask-based Web UI that supports dynamic CSV metadata loading, real-time type inference, and interactive Mermaid flowchart rendering (with Pan/Zoom and PNG/SVG downloads).
+BirdEye-SQL features a modern, Flask-based Web UI that supports dynamic CSV metadata loading, real-time type inference, and interactive Mermaid flowchart rendering (with Pan/Zoom and SVG download).
 ```powershell
 python web/app.py
 ```
@@ -181,21 +181,25 @@ python main.py --ast-file my_ast.json
 | **Functions** | 60+ built-in: aggregates, string, numeric, date, NULL-handling |
 | **MSSQL** | DECLARE @var, #temp / ##global temp tables, GO, BULK INSERT |
 
-## 🎬 Video Demo
+## 🖼️ Demo Preview
 
-Watch BirdEye-SQL in action:
+### Static Preview
 
-**[⬇️ Download Demo Video (MP4)](demo/demo.mp4)** - Demonstrates SQL parsing, semantic type inference, AST visualization, and bidirectional transformation.
+![Demo PNG](demo/birdeye-ast.png)
 
-**Key features shown:**
+This static preview shows the AST transformation workflow with full type inference.
+
+### Animated Preview
+
+![Demo GIF](demo/demo.gif)
+
+This animated preview is useful when you want to watch the parsing and reconstruction flow step by step.
+
+**What it demonstrates:**
 - SQL → AST conversion with type annotations
 - Interactive tree visualization
 - AST → SQL reconstruction (round-trip)
 - Zero Trust Architecture (ZTA) security enforcement
-
-**AST Flowchart Example:**
-
-For a visual representation of how BirdEye-SQL transforms SQL into an Abstract Syntax Tree, see the flowchart diagram included in the `/demo/` directory.
 
 ## 🧪 Testing Strategy (864 Tests Across 33 Suite Files)
 
@@ -407,21 +411,27 @@ python main.py --ast-file my_ast.json
 | **函數** | 60+ 內建函數：聚合、字串、數值、日期、NULL 處理 |
 | **MSSQL** | DECLARE @var、#temp / ##global 暫存表、GO、BULK INSERT |
 
-## 🎬 演示影片
+## 🖼️ Demo 預覽
 
-觀看 BirdEye-SQL 的實际作用：
+### 靜態預覽
 
-**[⬇️ 下載演示影片 (MP4)](demo/demo.mp4)** - 演示 SQL 解析、語意型別推導、AST 視覺化以及雙向轉換。
+![演示 PNG](demo/birdeye-ast.png)
+
+這張靜態圖展示 AST 轉換流程與完整的型別推導結果。
+
+### 動態預覽
+
+![演示 GIF](demo/demo.gif)
+
+這個動態版本適合用來逐步觀察解析與重建流程。
 
 **主要功能演示：**
-- SQL → AST 轉換並複介型別標註
-- 互動性樹狀圖視覺化
-- AST → SQL 重建（往追轉換）
+- SQL → AST 轉換並附帶型別標註
+- 互動式樹狀圖視覺化
+- AST → SQL 重建（往返轉換）
 - 零信任架構 (ZTA) 資安強化
 
-**AST 流程圖範例：**
-
-关於 AST 轉换增例的视覺上体现，請下載上述演示影片。AST 结构演示了 SQL 语厥如何被解析为語义组件，配合完整的类型推导。
+如果你想看動態版本，可以打開上面的 GIF 備用連結。
 
 ## 🧪 測試策略（864 個測試案例，涵蓋 33 個測試套件檔案）
 
