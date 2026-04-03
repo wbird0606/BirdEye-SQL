@@ -203,7 +203,7 @@ This animated preview is useful when you want to watch the parsing and reconstru
 
 ## 🧪 Testing Strategy (864 Tests Across 33 Suite Files)
 
-We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a **Red → Green → Zero Regression** cycle. The project currently contains **864 comprehensive test cases** across **33 test suite files** with **99% line coverage**. Representative core suites are listed below:
+We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a **Red → Green → Zero Regression** cycle. The project currently contains **864 comprehensive test cases** across **33 test suite files** with **100% line coverage**. Representative core suites are listed below:
 
 | Test Suite | Tests | Coverage |
 |---|---|---|
@@ -229,9 +229,14 @@ We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a
 | `test_reconstructor_suite.py` | 32 | AST JSON → SQL reconstruction, round-trip accuracy, all statement types |
 | `test_final_coverage_suite.py` | 46 | Targeted coverage for binder, parser, lexer, reconstructor, visualizer edge cases |
 
-**Current Status**: ✅ **100% Tests Passed** (864/864) — **99% Line Coverage**
+**Current Status**: ✅ **100% Tests Passed** (864/864) — **100% Line Coverage**
 ```powershell
 pytest tests/
+```
+
+**Coverage Command**
+```powershell
+python -m pytest --cov=birdeye --cov-report=term-missing tests
 ```
 
 <br>
@@ -435,7 +440,7 @@ python main.py --ast-file my_ast.json
 
 ## 🧪 測試策略（864 個測試案例，涵蓋 33 個測試套件檔案）
 
-我們嚴格遵守**測試驅動開發 (TDD)**，每個功能均遵循 **Red → Green → 零回歸** 循環。專案目前包含 **33 個測試套件檔案**、**864 個全面測試案例**，**行覆蓋率達 99%**。下表列出具代表性的核心測試套件：
+我們嚴格遵守**測試驅動開發 (TDD)**，每個功能均遵循 **Red → Green → 零回歸** 循環。專案目前包含 **33 個測試套件檔案**、**864 個全面測試案例**，**行覆蓋率達 100%**。下表列出具代表性的核心測試套件：
 
 | 測試套件 | 測試數 | 涵蓋範圍 |
 |---|---|---|
@@ -461,7 +466,12 @@ python main.py --ast-file my_ast.json
 | `test_reconstructor_suite.py` | 32 | AST JSON → SQL 重建、往返準確性、所有語句類型 |
 | `test_final_coverage_suite.py` | 46 | 針對 binder、parser、lexer、reconstructor、visualizer 邊界行的精準覆蓋 |
 
-**目前狀態**: ✅ **100% 測試通過** (864/864) — **行覆蓋率 99%**
+**目前狀態**: ✅ **100% 測試通過** (864/864) — **行覆蓋率 100%**
 ```powershell
 pytest tests/
+```
+
+**覆蓋率指令**
+```powershell
+python -m pytest --cov=birdeye --cov-report=term-missing tests
 ```

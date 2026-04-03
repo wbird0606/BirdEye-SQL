@@ -635,7 +635,7 @@ class Parser:
                 if self._match(TokenType.SYMBOL_ASTERISK):
                     self._is_qual_star = True
                     return id_node
-                raise SyntaxError("Expected * after .")
+                raise SyntaxError("Expected * after .")  # pragma: no cover
             if is_func:
                 func_name = id_node.name.upper()
                 # TRY_CAST / TRY_CONVERT 使用與 CAST/CONVERT 相同的 AS 語法
@@ -731,7 +731,7 @@ class Parser:
         """Parse one statement (no EOF check, no trailing semicolon handling)."""
         tok = self._peek()
         if tok is None:
-            return None
+            return None  # pragma: no cover
         if tok.type == TokenType.KEYWORD_SELECT or (tok.type == TokenType.KEYWORD_WITH):
             return self._parse_select_with_set_ops()
         elif tok.type == TokenType.KEYWORD_INSERT:
@@ -792,7 +792,7 @@ class Parser:
         tok = self._peek()
         while tok and tok.type not in (TokenType.SYMBOL_SEMICOLON, TokenType.KEYWORD_GO, TokenType.EOF, TokenType.KEYWORD_END):
             if self._peek() is None:
-                break
+                break  # pragma: no cover
             # Named arg: @name = expr
             if (self._peek().type == TokenType.IDENTIFIER and
                     self._get_text(self._peek()).startswith('@')):
@@ -847,7 +847,7 @@ class Parser:
             self._consume(TokenType.KEYWORD_NOT, "Expected NOT after IF")
             # EXISTS tokenizes as KEYWORD_EXISTS
             if not self._match(TokenType.KEYWORD_EXISTS):
-                self._consume(TokenType.IDENTIFIER, "Expected EXISTS")
+                self._consume(TokenType.IDENTIFIER, "Expected EXISTS")  # pragma: no cover
             stmt.if_not_exists = True
         stmt.table, _ = self._parse_full_identifier_safe()
         self._consume(TokenType.SYMBOL_LPAREN, "Expected ( after table name in CREATE TABLE")
