@@ -24,6 +24,61 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+### Quick Usage (3 Minutes)
+If this is your first run, follow this order:
+
+```powershell
+# 1) SQL -> AST (tree/json/mermaid all at once)
+python main.py --sql "SELECT TOP 5 Name FROM SalesLT.Product" --format all
+
+# 2) SQL file + your schema metadata CSV
+python main.py --file query.sql --csv schema.csv --format tree
+
+# 3) AST JSON -> SQL
+python main.py --ast-file ast.json
+
+# 4) Generate valid ast.json from parser output (recommended flow)
+python main.py --sql "SELECT TOP 5 Name FROM SalesLT.Product" --format json > ast.json
+python main.py --ast-file ast.json
+```
+
+Important:
+- `SELECT_STATEMENT ...` tree text is NOT JSON.
+- `--ast` / `--ast-file` only accepts serializer JSON output.
+
+Expected outcome:
+- `--format tree`: readable semantic tree
+- `--format mermaid`: flowchart text for Mermaid rendering
+- `--format json`: serialized AST JSON
+
+Sample files you can create directly:
+
+`query.sql`
+```sql
+SELECT TOP 5 ProductID, Name, ListPrice
+FROM SalesLT.Product
+WHERE ListPrice > 100
+ORDER BY ListPrice DESC;
+```
+
+`ast.json`
+```json
+{
+    "node_type": "SelectStatement",
+    "select_list": [
+        {
+            "node_type": "ColumnNode",
+            "column_name": "Name"
+        }
+    ],
+    "from_clause": {
+        "node_type": "TableNode",
+        "table_name": "SalesLT.Product",
+        "alias": null
+    }
+}
+```
+
 ### Web UI Dashboard
 BirdEye-SQL features a modern, Flask-based Web UI that supports dynamic CSV metadata loading, real-time type inference, and interactive Mermaid flowchart rendering (with Pan/Zoom and PNG/SVG downloads).
 ```powershell
@@ -41,7 +96,7 @@ Open your browser and navigate to `http://127.0.0.1:5000`!
 
 ### Schema Metadata Export
 
-BirdEye-SQL uses a CSV file to describe your database schema. Two formats are supported:
+BirdEye-SQL uses a CSV file to describe your database schema. For new exports, you should include schema and use the 4-column format. The 3-column format is kept for backward compatibility.
 
 **4-column (recommended, with schema):**
 ```
@@ -126,9 +181,28 @@ python main.py --ast-file my_ast.json
 | **Functions** | 60+ built-in: aggregates, string, numeric, date, NULL-handling |
 | **MSSQL** | DECLARE @var, #temp / ##global temp tables, GO, BULK INSERT |
 
-## 🧪 Testing Strategy (864 Tests Across 21 Suites)
+## 🎬 Video Demo
 
-We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a **Red → Green → Zero Regression** cycle. The project contains **864 comprehensive test cases** across **21 specialized test suites** with **99% line coverage**:
+Watch a quick demonstration of BirdEye-SQL in action (autoplay):
+
+<video width="100%" controls autoplay>
+  <source src="demo/demo.mkv" type="video/x-matroska">
+  Your browser does not support the video tag. [Download Demo Video](demo/demo.mkv) instead.
+</video>
+
+**Features demonstrated:**
+- SQL parsing with semantic type inference
+- AST tree visualization with type annotations
+- Bidirectional SQL ↔ AST transformation
+- Zero Trust Architecture (ZTA) security validation
+
+**AST Flowchart Example:**
+
+<img src="demo/birdeye-ast.svg" alt="AST Flowchart" width="100%"/>
+
+## 🧪 Testing Strategy (864 Tests Across 33 Suite Files)
+
+We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a **Red → Green → Zero Regression** cycle. The project currently contains **864 comprehensive test cases** across **33 test suite files** with **99% line coverage**. Representative core suites are listed below:
 
 | Test Suite | Tests | Coverage |
 |---|---|---|
@@ -179,6 +253,61 @@ python -m venv .venv
 pip install -r requirements.txt
 ```
 
+### 快速上手（3 分鐘）
+第一次使用時，建議按以下順序直接跑：
+
+```powershell
+# 1) SQL -> AST（一次輸出 tree/json/mermaid）
+python main.py --sql "SELECT TOP 5 Name FROM SalesLT.Product" --format all
+
+# 2) SQL 檔案 + 你的 schema metadata CSV
+python main.py --file query.sql --csv schema.csv --format tree
+
+# 3) AST JSON -> SQL
+python main.py --ast-file ast.json
+
+# 4) 先產生有效 ast.json，再進行 AST -> SQL（建議流程）
+python main.py --sql "SELECT TOP 5 Name FROM SalesLT.Product" --format json > ast.json
+python main.py --ast-file ast.json
+```
+
+重要：
+- `SELECT_STATEMENT ...` 這種樹狀文字不是 JSON。
+- `--ast` / `--ast-file` 只能接受 serializer 產生的 JSON。
+
+預期結果：
+- `--format tree`：可讀的語意樹
+- `--format mermaid`：可直接貼到 Mermaid 的流程圖文字
+- `--format json`：序列化 AST JSON
+
+可直接建立的範例檔：
+
+`query.sql`
+```sql
+SELECT TOP 5 ProductID, Name, ListPrice
+FROM SalesLT.Product
+WHERE ListPrice > 100
+ORDER BY ListPrice DESC;
+```
+
+`ast.json`
+```json
+{
+    "node_type": "SelectStatement",
+    "select_list": [
+        {
+            "node_type": "ColumnNode",
+            "column_name": "Name"
+        }
+    ],
+    "from_clause": {
+        "node_type": "TableNode",
+        "table_name": "SalesLT.Product",
+        "alias": null
+    }
+}
+```
+
 ### Web 視覺化儀表板
 BirdEye-SQL 內建了一個基於 Flask 的現代化 Web UI，支援動態載入 CSV 元數據，並能即時渲染帶有型別推導的 AST Tree 與 Mermaid 流程圖（支援平移縮放與圖片下載）。
 ```powershell
@@ -196,7 +325,7 @@ python web/app.py
 
 ### Schema 元數據匯出
 
-BirdEye-SQL 透過 CSV 檔案描述資料庫結構，支援以下兩種格式：
+BirdEye-SQL 透過 CSV 檔案描述資料庫結構。若為新匯出資料，建議應包含 schema 並使用 4 欄格式；3 欄格式僅保留給舊資料相容使用。
 
 **4 欄（建議，含 schema 名稱）：**
 ```
@@ -281,9 +410,28 @@ python main.py --ast-file my_ast.json
 | **函數** | 60+ 內建函數：聚合、字串、數值、日期、NULL 處理 |
 | **MSSQL** | DECLARE @var、#temp / ##global 暫存表、GO、BULK INSERT |
 
-## 🧪 測試策略（864 個測試案例，涵蓋 21 個套件）
+## 🎬 演示影片
 
-我們嚴格遵守**測試驅動開發 (TDD)**，每個功能均遵循 **Red → Green → 零回歸** 循環。專案內包含 **21 個專門化測試套件**、**864 個全面測試案例**，**行覆蓋率達 99%**：
+觀看 BirdEye-SQL 的快速演示（自動撥放）：
+
+<video width="100%" controls autoplay>
+  <source src="demo/demo.mkv" type="video/x-matroska">
+  你的瀏覽器不支援視頻標籤。請改為 [下載演示影片](demo/demo.mkv)。
+</video>
+
+**演示內容：**
+- SQL 解析與語意型別推導
+- AST 樹狀圖視覺化及型別標註
+- 雙向 SQL ↔ AST 轉換
+- 零信任架構 (ZTA) 資安驗證
+
+**AST 流程圖範例：**
+
+<img src="demo/birdeye-ast.svg" alt="AST 流程圖" width="100%"/>
+
+## 🧪 測試策略（864 個測試案例，涵蓋 33 個測試套件檔案）
+
+我們嚴格遵守**測試驅動開發 (TDD)**，每個功能均遵循 **Red → Green → 零回歸** 循環。專案目前包含 **33 個測試套件檔案**、**864 個全面測試案例**，**行覆蓋率達 99%**。下表列出具代表性的核心測試套件：
 
 | 測試套件 | 測試數 | 涵蓋範圍 |
 |---|---|---|
