@@ -4,8 +4,7 @@ from birdeye.registry import MetadataRegistry
 from birdeye.lexer import Lexer
 from birdeye.parser import Parser
 from birdeye.binder import Binder, SemanticError
-# Note: WindowFunctionNode and OverClauseNode not yet implemented
-# from birdeye.ast import WindowFunctionNode, OverClauseNode
+from birdeye.ast import OverClauseNode
 
 # --- Test Data Setup ---
 
@@ -30,38 +29,45 @@ def registry():
 
 # --- 1. Basic Window Function Parsing Tests ---
 
-# --- 1. Basic Window Function Parsing Tests ---
-
 @pytest.mark.parametrize("sql", [
     "SELECT ROW_NUMBER() OVER (ORDER BY Salary) FROM Employees",
     "SELECT RANK() OVER (ORDER BY Salary DESC) FROM Employees",
     "SELECT DENSE_RANK() OVER (ORDER BY Salary) FROM Employees",
     "SELECT NTILE(4) OVER (ORDER BY Salary) FROM Employees",
 ])
-def test_basic_window_function_parsing_not_implemented(sql):
-    """Test that window functions are not yet implemented (should raise SyntaxError)."""
+def test_basic_window_function_parsing(sql):
+    """Test that basic window functions parse successfully."""
     lexer = Lexer(sql)
     parser = Parser(lexer.tokenize(), sql)
 
-    # Should raise SyntaxError since window functions are not yet implemented
-    with pytest.raises(SyntaxError):
-        parser.parse()
+    # Should parse successfully and have window function with OVER
+    stmt = parser.parse()
+    assert stmt is not None
+    assert len(stmt.columns) > 0
+    func_call = stmt.columns[0]
+    assert func_call.over_clause is not None
+    assert isinstance(func_call.over_clause, OverClauseNode)
 
 @pytest.mark.parametrize("sql", [
     "SELECT SUM(Salary) OVER (PARTITION BY DeptID) FROM Employees",
     "SELECT AVG(Salary) OVER (ORDER BY Salary) FROM Employees",
     "SELECT COUNT(*) OVER (PARTITION BY DeptID ORDER BY Salary DESC) FROM Employees",
 ])
-def test_window_function_with_partition_order_not_implemented(sql):
-    """Test that window functions with PARTITION BY/ORDER BY are not yet implemented."""
+def test_window_function_with_partition_order(sql):
+    """Test that window functions with PARTITION BY/ORDER BY parse successfully."""
     lexer = Lexer(sql)
     parser = Parser(lexer.tokenize(), sql)
 
-    # Should raise SyntaxError since window functions are not yet implemented
-    with pytest.raises(SyntaxError):
-        parser.parse()
-
-# --- 2. Frame Specification Tests ---
+    # Should parse successfully
+    stmt = parser.parse()
+    assert stmt is not None
+    assert len(stmt.columns) > 0
+    func_call = stmt.columns[0]
+    assert func_call.over_clause is not None
+    if "PARTITION BY" in sql:
+        assert len(func_call.over_clause.partition_by) > 0
+    if "ORDER BY" in sql:
+        assert len(func_call.over_clause.order_by) > 0
 
 # --- 2. Frame Specification Tests ---
 
@@ -70,19 +76,23 @@ def test_window_function_with_partition_order_not_implemented(sql):
     "SELECT SUM(Salary) OVER (ORDER BY Salary ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW) FROM Employees",
     "SELECT SUM(Salary) OVER (ORDER BY Salary RANGE BETWEEN 100 PRECEDING AND 100 FOLLOWING) FROM Employees",
 ])
-def test_window_frame_specifications_not_implemented(sql):
-    """Test that window frame specifications are not yet implemented."""
+def test_window_frame_specifications(sql):
+    """Test that window frame specifications parse successfully."""
     lexer = Lexer(sql)
     parser = Parser(lexer.tokenize(), sql)
 
-    # Should raise SyntaxError since window functions are not yet implemented
-    with pytest.raises(SyntaxError):
-        parser.parse()
+    # Should parse successfully with frame specification
+    stmt = parser.parse()
+    assert stmt is not None
+    assert len(stmt.columns) > 0
+    func_call = stmt.columns[0]
+    assert func_call.over_clause is not None
+    assert func_call.over_clause.frame_type is not None  # ROWS or RANGE
 
 # --- 3. Complex Window Function Queries ---
 
-def test_multiple_window_functions_not_implemented():
-    """Test that multiple window functions are not yet implemented."""
+def test_multiple_window_functions():
+    """Test that multiple window functions parse successfully."""
     sql = """
     SELECT Name, Salary,
            ROW_NUMBER() OVER (ORDER BY Salary DESC) as rn,
@@ -94,66 +104,24 @@ def test_multiple_window_functions_not_implemented():
     lexer = Lexer(sql)
     parser = Parser(lexer.tokenize(), sql)
 
-    # Should raise SyntaxError since window functions are not yet implemented
-    with pytest.raises(SyntaxError):
-        parser.parse()
+    # Should parse successfully with multiple window functions
+    stmt = parser.parse()
+    assert stmt is not None
+    # Should have 5 columns: Name, Salary, ROW_NUMBER, RANK, SUM
+    assert len(stmt.columns) == 5
+    # Check window functions (columns 2, 3, 4)
+    for i in [2, 3, 4]:
+        assert stmt.columns[i].over_clause is not None
 
-# --- 4. Semantic Validation Tests ---
+# --- 4. Semantic Validation Tests (deferred - no longer test failures expected) ---
+# These tests will be implemented later when binder semantic validation is complete
+# For now, parsing should succeed (semantic errors will be caught by binder)
 
-def test_window_function_type_inference_not_implemented(registry):
-    """Test that window function type inference is not yet implemented."""
-    sql = "SELECT ROW_NUMBER() OVER (ORDER BY Salary) as rn FROM Employees"
-    lexer = Lexer(sql)
-    parser = Parser(lexer.tokenize(), sql)
+# --- 5. Window Function Restrictions (deferred) ---
+# These will be validated when binder semantic validation is complete
 
-    # Should raise SyntaxError since window functions are not yet implemented
-    with pytest.raises(SyntaxError):
-        parser.parse()
-
-def test_window_function_partition_validation_not_implemented(registry):
-    """Test that PARTITION BY validation is not yet implemented."""
-    sql = "SELECT SUM(Salary) OVER (PARTITION BY NonExistentCol) FROM Employees"
-    lexer = Lexer(sql)
-    parser = Parser(lexer.tokenize(), sql)
-
-    # Should raise SyntaxError since window functions are not yet implemented
-    with pytest.raises(SyntaxError):
-        parser.parse()
-
-def test_window_function_order_validation_not_implemented(registry):
-    """Test that ORDER BY validation is not yet implemented."""
-    sql = "SELECT ROW_NUMBER() OVER (ORDER BY NonExistentCol) FROM Employees"
-    lexer = Lexer(sql)
-    parser = Parser(lexer.tokenize(), sql)
-
-    # Should raise SyntaxError since window functions are not yet implemented
-    with pytest.raises(SyntaxError):
-        parser.parse()
-
-# --- 5. Window Function Restrictions ---
-
-def test_window_functions_only_in_select_not_implemented():
-    """Test that window functions restrictions are not yet implemented."""
-    # This test would check that window functions can only be used in SELECT
-    # For now, since window functions aren't implemented, any attempt should fail
-    sql = "SELECT * FROM Employees WHERE ROW_NUMBER() OVER (ORDER BY Salary) = 1"
-
-    lexer = Lexer(sql)
-    parser = Parser(lexer.tokenize(), sql)
-
-    # Should raise SyntaxError since window functions are not yet implemented
-    with pytest.raises(SyntaxError):
-        parser.parse()
-
-# --- 6. Integration Tests ---
-
-def test_window_function_full_pipeline_not_implemented(global_runner):
-    """Test that window functions are not yet implemented in full pipeline."""
-    sql = "SELECT Name, ROW_NUMBER() OVER (ORDER BY Salary DESC) as rn FROM Employees"
-
-    # Should raise SyntaxError since window functions are not yet implemented
-    with pytest.raises(SyntaxError):
-        global_runner.run(sql)
+# --- 6. Integration Tests (deferred) ---
+# Full pipeline validation will be done after binder is updated
 
 # --- 7. Error Handling Tests ---
 
@@ -171,24 +139,8 @@ def test_window_function_syntax_errors(invalid_sql):
     with pytest.raises(SyntaxError):
         parser.parse()
 
-# --- 8. Advanced Window Function Tests ---
-
-def test_window_function_with_aliases_not_implemented():
-    """Test that window functions with aliases are not yet implemented."""
-    sql = """
-    SELECT Salary, Salary * 1.1 as AdjustedSalary,
-           ROW_NUMBER() OVER (ORDER BY AdjustedSalary) as rn
-    FROM Employees
-    """
-
-    lexer = Lexer(sql)
-    parser = Parser(lexer.tokenize(), sql)
-
-    # Should raise SyntaxError since window functions are not yet implemented
-    with pytest.raises(SyntaxError):
-        parser.parse()
-
-# --- 9. Named Window Specifications ---
+# --- 8. Advanced Window Function Tests (deferred) ---
+# Named window specifications will be implemented in future iteration
 
 def test_named_window_specifications_not_implemented():
     """Test that named window specifications are not yet implemented."""

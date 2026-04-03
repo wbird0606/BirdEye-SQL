@@ -26,9 +26,11 @@ class TokenType(Enum):
     KEYWORD_PARTITION = auto()  # For Window Functions
     KEYWORD_ROWS = auto()       # For Window Functions
     KEYWORD_RANGE = auto()      # For Window Functions
+    KEYWORD_ROW = auto()        # For Window Functions (CURRENT ROW)
     KEYWORD_PRECEDING = auto()  # For Window Functions
     KEYWORD_FOLLOWING = auto()  # For Window Functions
     KEYWORD_CURRENT = auto()    # For Window Functions
+    KEYWORD_UNBOUNDED = auto()  # For Window Functions
     KEYWORD_ON = auto()
     KEYWORD_AND = auto()
     KEYWORD_OR = auto()
@@ -172,9 +174,11 @@ class Lexer:
             "PARTITION": TokenType.KEYWORD_PARTITION,
             "ROWS": TokenType.KEYWORD_ROWS,
             "RANGE": TokenType.KEYWORD_RANGE,
+            "ROW": TokenType.KEYWORD_ROW,
             "PRECEDING": TokenType.KEYWORD_PRECEDING,
             "FOLLOWING": TokenType.KEYWORD_FOLLOWING,
             "CURRENT": TokenType.KEYWORD_CURRENT,
+            "UNBOUNDED": TokenType.KEYWORD_UNBOUNDED,
             "ON": TokenType.KEYWORD_ON,            "AND": TokenType.KEYWORD_AND,
             "OR": TokenType.KEYWORD_OR,
             "TOP": TokenType.KEYWORD_TOP,
@@ -211,9 +215,11 @@ class Lexer:
             "PARTITION": TokenType.KEYWORD_PARTITION,
             "ROWS": TokenType.KEYWORD_ROWS,
             "RANGE": TokenType.KEYWORD_RANGE,
+            "ROW": TokenType.KEYWORD_ROW,
             "PRECEDING": TokenType.KEYWORD_PRECEDING,
             "FOLLOWING": TokenType.KEYWORD_FOLLOWING,
             "CURRENT": TokenType.KEYWORD_CURRENT,
+            "UNBOUNDED": TokenType.KEYWORD_UNBOUNDED,
             "CASE": TokenType.KEYWORD_CASE,
             "WHEN": TokenType.KEYWORD_WHEN,
             "THEN": TokenType.KEYWORD_THEN,

@@ -121,6 +121,7 @@ class FunctionCallNode(ExpressionNode):
         super().__init__()
         self.name = name
         self.args = args or []
+        self.over_clause = None  # OverClauseNode for window functions
 
 class CaseExpressionNode(ExpressionNode):
     def __init__(self, input_expr=None):
@@ -145,6 +146,15 @@ class CastExpressionNode(ExpressionNode):
         self.expr = expr
         self.target_type = target_type
         self.is_convert = is_convert
+
+class OverClauseNode:
+    """用於 OVER (PARTITION BY ... ORDER BY ... [ROWS/RANGE ...])"""
+    def __init__(self):
+        self.partition_by = []      # List of ExpressionNodes
+        self.order_by = []          # List of OrderByNodes
+        self.frame_type = None      # "ROWS", "RANGE", or None
+        self.frame_start = None     # "UNBOUNDED PRECEDING", "CURRENT ROW", etc.
+        self.frame_end = None       # "UNBOUNDED FOLLOWING", "CURRENT ROW", etc.
 
 # --- 4. 結構輔助節點 ---
 

@@ -7,7 +7,7 @@ from birdeye.ast import (
     UnionStatement, CTENode, TruncateStatement, DeclareStatement, ApplyNode,
     IfStatement, ExecStatement, SetStatement, ColumnDefinitionNode,
     CreateTableStatement, DropTableStatement, AlterTableStatement,
-    MergeClauseNode, MergeStatement, PrintStatement
+    MergeClauseNode, MergeStatement, PrintStatement, OverClauseNode
 )
 
 class Parser:
@@ -627,7 +627,9 @@ class Parser:
                     args.append(self._parse_expression())
                     if not self._match(TokenType.SYMBOL_COMMA): break
             self._consume(TokenType.SYMBOL_RPAREN, "Expected )")
-            return FunctionCallNode(name=func_name, args=args)
+            func_node = FunctionCallNode(name=func_name, args=args)
+            func_node.over_clause = self._parse_over_clause()
+            return func_node
 
         if tok.type == TokenType.IDENTIFIER:
             id_node, is_func = self._parse_full_identifier_safe()
@@ -674,7 +676,9 @@ class Parser:
                         args.append(self._parse_expression())
                         if not self._match(TokenType.SYMBOL_COMMA): break
                 self._consume(TokenType.SYMBOL_RPAREN, "Expected )")
-                return FunctionCallNode(name=id_node.name, args=args)
+                func_node = FunctionCallNode(name=id_node.name, args=args)
+                func_node.over_clause = self._parse_over_clause()
+                return func_node
             return id_node
         
         raise SyntaxError(f"Unexpected expression token: {self._get_text(tok)}")
@@ -707,6 +711,67 @@ class Parser:
         is_func = (self._peek() and self._peek().type == TokenType.SYMBOL_LPAREN)
         name = parts.pop()
         return IdentifierNode(name=name, qualifiers=parts), is_func
+
+    def _parse_over_clause(self):
+        """Parse OVER (PARTITION BY ... ORDER BY ... [ROWS/RANGE ...])
+        Returns OverClauseNode or None if no OVER clause present."""
+        if not self._match(TokenType.KEYWORD_OVER):
+            return None
+        
+        self._consume(TokenType.SYMBOL_LPAREN, "Expected ( after OVER")
+        over_node = OverClauseNode()
+        
+        # PARTITION BY clause
+        if self._match(TokenType.KEYWORD_PARTITION):
+            self._consume(TokenType.KEYWORD_BY, "Expected BY after PARTITION")
+            while True:
+                over_node.partition_by.append(self._parse_expression())
+                if not self._match(TokenType.SYMBOL_COMMA): break
+        
+        # ORDER BY clause
+        if self._match(TokenType.KEYWORD_ORDER):
+            self._consume(TokenType.KEYWORD_BY, "Expected BY after ORDER")
+            while True:
+                col_expr = self._parse_expression()
+                direction = "ASC"
+                if self._match(TokenType.KEYWORD_DESC): direction = "DESC"
+                elif self._match(TokenType.KEYWORD_ASC): direction = "ASC"
+                over_node.order_by.append(OrderByNode(column=col_expr, direction=direction))
+                if not self._match(TokenType.SYMBOL_COMMA): break
+        
+        # Frame specification (ROWS/RANGE)
+        if self._peek() and self._peek().type in [TokenType.KEYWORD_ROWS, TokenType.KEYWORD_RANGE]:
+            over_node.frame_type = self._get_text(self._advance()).upper()
+            
+            # Handle BETWEEN ... AND or simple specification
+            if self._match(TokenType.KEYWORD_BETWEEN):
+                over_node.frame_start = self._parse_frame_boundary()
+                self._consume(TokenType.KEYWORD_AND, "Expected AND in frame specification")
+                over_node.frame_end = self._parse_frame_boundary()
+            else:
+                over_node.frame_start = self._parse_frame_boundary()
+        
+        self._consume(TokenType.SYMBOL_RPAREN, "Expected ) after OVER clause")
+        return over_node
+
+    def _parse_frame_boundary(self):
+        """Parse frame boundary like 'UNBOUNDED PRECEDING' or 'CURRENT ROW'"""
+        if self._match(TokenType.KEYWORD_UNBOUNDED):
+            if self._match(TokenType.KEYWORD_PRECEDING): return "UNBOUNDED PRECEDING"
+            elif self._match(TokenType.KEYWORD_FOLLOWING): return "UNBOUNDED FOLLOWING"
+            else: raise SyntaxError("Expected PRECEDING or FOLLOWING after UNBOUNDED")
+        elif self._match(TokenType.KEYWORD_CURRENT):
+            self._consume(TokenType.KEYWORD_ROW, "Expected ROW after CURRENT")
+            return "CURRENT ROW"
+        else:
+            # Numeric offset (e.g., 10 PRECEDING)
+            num_tok = self._consume(TokenType.NUMERIC_LITERAL, "Expected number or boundary in frame specification")
+            if self._match(TokenType.KEYWORD_PRECEDING):
+                return f"{num_tok.value} PRECEDING"
+            elif self._match(TokenType.KEYWORD_FOLLOWING):
+                return f"{num_tok.value} FOLLOWING"
+            else:
+                raise SyntaxError("Expected PRECEDING or FOLLOWING after number")
 
     # --- 8. New statement parsers ---
 

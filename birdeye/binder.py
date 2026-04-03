@@ -7,7 +7,7 @@ from birdeye.ast import (
     TruncateStatement, DeclareStatement, ApplyNode,
     IfStatement, ExecStatement, SetStatement,
     CreateTableStatement, DropTableStatement, AlterTableStatement,
-    MergeStatement, MergeClauseNode, PrintStatement
+    MergeStatement, MergeClauseNode, PrintStatement, OverClauseNode
 )
 
 class SemanticError(Exception):
@@ -249,6 +249,19 @@ class Binder:
         if (type1 in DATES and type2 in STRS) or (type1 in STRS and type2 in DATES): return True
         return False
 
+    def _bind_over_clause(self, over_clause):
+        """驗證 OVER 子句中的 PARTITION BY 和 ORDER BY 表達式"""
+        if over_clause is None:
+            return
+        
+        # 驗證 PARTITION BY 表達式
+        for expr in over_clause.partition_by:
+            self._visit_expression(expr)
+        
+        # 驗證 ORDER BY 表達式
+        for order_by_node in over_clause.order_by:
+            self._visit_expression(order_by_node.column)
+
     def _visit_expression(self, expr) -> str:
         if isinstance(expr, IdentifierNode): self._resolve_identifier(expr); return expr.inferred_type
         elif isinstance(expr, LiteralNode): return "INT" if expr.inferred_type == "DECIMAL" else expr.inferred_type
@@ -302,22 +315,46 @@ class Binder:
         elif isinstance(expr, FunctionCallNode):
             f_name = expr.name.upper()
             if self.registry.is_restricted(f_name): raise SemanticError(f"Function '{f_name}' is restricted")
-            if not self.registry.has_function(f_name): raise SemanticError(f"Unknown function '{f_name}'")
+            
+            # 如果函數有 OVER 子句，檢查是否為已知窗函數或聚合函數
+            is_window_call = expr.over_clause is not None
+            if is_window_call:
+                # 檢查是否為已知的窗函數或聚合函數
+                if not self.registry.has_function(f_name):
+                    raise SemanticError(f"Unknown function '{f_name}' for window context")
+            else:
+                # 常規函數調用檢查
+                if not self.registry.has_function(f_name):
+                    raise SemanticError(f"Unknown function '{f_name}'")
+            
             f_meta = self.registry.get_function(f_name)
+            
+            # 驗證參數數量
             if not (f_meta.min_args <= len(expr.args) <= f_meta.max_args):
                 raise SemanticError(f"Function '{f_name}' expects {f_meta.min_args} arguments, got {len(expr.args)}")
+            
+            # 驗證參數類型
             for i, arg in enumerate(expr.args):
                 act = self._visit_expression(arg)
                 if i < len(f_meta.expected_types):
                     exp = f_meta.expected_types[i]
                     if exp != "ANY" and act != "UNKNOWN" and not self._is_type_compatible(exp, act):
                         raise SemanticError(f"Function '{f_name}' expects {exp}, but got {act}")
-            # MAX/MIN: 回傳型別跟著第一個參數的型別
-            if f_meta.return_type == "ANY" and expr.args:
-                arg_type = self._visit_expression(expr.args[0]) if not hasattr(expr.args[0], 'inferred_type') or expr.args[0].inferred_type == "UNKNOWN" else expr.args[0].inferred_type
-                expr.inferred_type = arg_type if arg_type != "UNKNOWN" else "ANY"
+            
+            # 處理 OVER 子句
+            if is_window_call:
+                # 驗證窗函數規範
+                self._bind_over_clause(expr.over_clause)
+                # 窗函數返回 BIGINT（大多數排序窗函數）或函數特定的返回類型
+                expr.inferred_type = f_meta.return_type if f_meta.return_type != "ANY" else "BIGINT"
             else:
-                expr.inferred_type = f_meta.return_type
+                # MAX/MIN: 回傳型別跟著第一個參數的型別
+                if f_meta.return_type == "ANY" and expr.args:
+                    arg_type = self._visit_expression(expr.args[0]) if not hasattr(expr.args[0], 'inferred_type') or expr.args[0].inferred_type == "UNKNOWN" else expr.args[0].inferred_type
+                    expr.inferred_type = arg_type if arg_type != "UNKNOWN" else "ANY"
+                else:
+                    expr.inferred_type = f_meta.return_type
+            
             return expr.inferred_type
         elif isinstance(expr, CaseExpressionNode):
             if expr.input_expr: self._visit_expression(expr.input_expr)

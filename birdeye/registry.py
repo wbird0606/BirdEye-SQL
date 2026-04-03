@@ -120,6 +120,32 @@ class MetadataRegistry:
         self.register_function("JSON_MODIFY", "SCALAR", 3, 3, ["ANY", "NVARCHAR", "ANY"], "NVARCHAR")
         self.register_function("ISJSON",      "SCALAR", 1, 1, ["ANY"], "BIT")
 
+        # --- 窗函數 (Window Functions) ---
+        # 排序函數（純窗函數，不能不加 OVER 使用）
+        self.register_function("ROW_NUMBER", "WINDOW", 0, 0, [], "BIGINT")
+        self.register_function("RANK", "WINDOW", 0, 0, [], "BIGINT")
+        self.register_function("DENSE_RANK", "WINDOW", 0, 0, [], "BIGINT")
+        self.register_function("NTILE", "WINDOW", 1, 1, ["INT"], "INT")
+        
+        # 分析函數
+        self.register_function("LAG", "WINDOW", 1, 3, ["ANY", "INT", "ANY"], "ANY")
+        self.register_function("LEAD", "WINDOW", 1, 3, ["ANY", "INT", "ANY"], "ANY")
+        self.register_function("FIRST_VALUE", "WINDOW", 1, 1, ["ANY"], "ANY")
+        self.register_function("LAST_VALUE", "WINDOW", 1, 1, ["ANY"], "ANY")
+        self.register_function("NTH_VALUE", "WINDOW", 2, 2, ["ANY", "INT"], "ANY")
+        self.register_function("PERCENT_RANK", "WINDOW", 0, 0, [], "DECIMAL")
+        self.register_function("CUME_DIST", "WINDOW", 0, 0, [], "DECIMAL")
+        self.register_function("PERCENT_CONT", "WINDOW", 1, 1, ["DECIMAL"], "ANY")
+        self.register_function("PERCENTILE_CONT", "WINDOW", 1, 1, ["DECIMAL"], "ANY")
+        self.register_function("PERCENTILE_DISC", "WINDOW", 1, 1, ["DECIMAL"], "ANY")
+        
+        # 聚合函數（支援 OVER）
+        self.register_function("SUM_WINDOW", "WINDOW", 1, 1, ["ANY"], "INT")
+        self.register_function("AVG_WINDOW", "WINDOW", 1, 1, ["ANY"], "DECIMAL")
+        self.register_function("COUNT_WINDOW", "WINDOW", 0, 1, ["ANY"], "INT")
+        self.register_function("MIN_WINDOW", "WINDOW", 1, 1, ["ANY"], "ANY")
+        self.register_function("MAX_WINDOW", "WINDOW", 1, 1, ["ANY"], "ANY")
+
     # --- 1. 資料表與欄位類型管理 ---
 
     def load_from_csv(self, csv_file_obj):
