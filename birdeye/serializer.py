@@ -1,4 +1,7 @@
-import json
+try:
+    import ujson as json
+except ImportError:
+    import json
 from birdeye.ast import (
     SelectStatement, UpdateStatement, DeleteStatement,
     InsertStatement, SqlBulkCopyStatement,
