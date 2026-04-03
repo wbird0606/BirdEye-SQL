@@ -5,7 +5,7 @@ from birdeye.ast import (
     FunctionCallNode, JoinNode, AssignmentNode,
     OrderByNode, CaseExpressionNode, BetweenExpressionNode,
     CastExpressionNode, UnionStatement, CTENode, TruncateStatement,
-    DeclareStatement, ApplyNode
+    DeclareStatement, ApplyNode, OverClauseNode
 )
 
 class ASTVisualizer:
@@ -162,8 +162,14 @@ class ASTVisualizer:
             type_info = f" [Type: {node.inferred_type}]" if hasattr(node, 'inferred_type') and node.inferred_type != "UNKNOWN" else ""
             arg_info = f" ({len(node.args)} args)" if node.args else " ()"
             self.lines.append(f"{prefix}FUNCTION: {node.name}{arg_info}{type_info}{alias}")
+            
+            # 顯示函數參數
             for i, arg in enumerate(node.args):
                 self._visit(arg, indent + 1, f"ARG#{i+1}")
+            
+            # 顯示 OVER 子句（窗函數）
+            if hasattr(node, 'over_clause') and node.over_clause:
+                self._visit(node.over_clause, indent + 1, "OVER")
 
         elif isinstance(node, CaseExpressionNode):
             type_info = f" [Type: {node.inferred_type}]" if hasattr(node, 'inferred_type') and node.inferred_type != "UNKNOWN" else ""
@@ -256,3 +262,26 @@ class ASTVisualizer:
                 self.lines.append(f"{current_indent}  ├── ALIAS: {node.alias}")
             self.lines.append(f"{current_indent}  └── SUBQUERY")
             self._visit(node.subquery, indent + 2, "SUBQUERY")
+
+        elif isinstance(node, OverClauseNode):
+            self.lines.append(f"{prefix}OVER_CLAUSE")
+            
+            # 顯示 PARTITION BY
+            if node.partition_by:
+                self.lines.append(f"{current_indent}  ├── PARTITION_BY")
+                for i, expr in enumerate(node.partition_by):
+                    self._visit(expr, indent + 2, f"EXPR#{i+1}")
+            
+            # 顯示 ORDER BY
+            if node.order_by:
+                self.lines.append(f"{current_indent}  ├── ORDER_BY")
+                for order_by_node in node.order_by:
+                    self._visit(order_by_node, indent + 2, "COL")
+            
+            # 顯示 Frame 規範
+            if node.frame_type:
+                self.lines.append(f"{current_indent}  └── FRAME: {node.frame_type}")
+                if node.frame_start:
+                    self.lines.append(f"{current_indent}      ├── START: {node.frame_start}")
+                if node.frame_end:
+                    self.lines.append(f"{current_indent}      └── END: {node.frame_end}")

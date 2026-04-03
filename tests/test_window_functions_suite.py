@@ -158,3 +158,76 @@ def test_named_window_specifications_not_implemented():
     # Should raise SyntaxError since window functions and WINDOW clause are not yet implemented
     with pytest.raises(SyntaxError):
         parser.parse()
+
+# --- 10. Restored Window Function Coverage ---
+
+def test_window_function_type_inference(registry):
+    """Window function results should infer BIGINT."""
+    sql = "SELECT ROW_NUMBER() OVER (ORDER BY Salary) AS rn FROM Employees"
+    lexer = Lexer(sql)
+    parser = Parser(lexer.tokenize(), sql)
+    ast = parser.parse()
+
+    bound_ast = Binder(registry).bind(ast)
+    assert bound_ast.columns[0].inferred_type == "BIGINT"
+
+
+def test_window_function_partition_validation(registry):
+    """Invalid PARTITION BY columns should raise a semantic error."""
+    sql = "SELECT SUM(Salary) OVER (PARTITION BY NonExistentCol) FROM Employees"
+    lexer = Lexer(sql)
+    parser = Parser(lexer.tokenize(), sql)
+    ast = parser.parse()
+
+    with pytest.raises(SemanticError, match="Column 'NonExistentCol' not found in 'Employees'"):
+        Binder(registry).bind(ast)
+
+
+def test_window_function_order_validation(registry):
+    """Invalid ORDER BY columns in OVER should raise a semantic error."""
+    sql = "SELECT ROW_NUMBER() OVER (ORDER BY NonExistentCol) FROM Employees"
+    lexer = Lexer(sql)
+    parser = Parser(lexer.tokenize(), sql)
+    ast = parser.parse()
+
+    with pytest.raises(SemanticError, match="Column 'NonExistentCol' not found in 'Employees'"):
+        Binder(registry).bind(ast)
+
+
+def test_window_functions_in_where_clause_are_bound(registry):
+    """Window functions inside WHERE are parsed and bound in the current pipeline."""
+    sql = "SELECT * FROM Employees WHERE ROW_NUMBER() OVER (ORDER BY Salary) = 1"
+    lexer = Lexer(sql)
+    parser = Parser(lexer.tokenize(), sql)
+    ast = parser.parse()
+
+    bound_ast = Binder(registry).bind(ast)
+    assert bound_ast.where_condition.inferred_type == "BIT"
+
+
+def test_window_function_full_pipeline(registry):
+    """Window functions should survive the full Runner pipeline."""
+    from birdeye.runner import BirdEyeRunner
+
+    runner = BirdEyeRunner(registry)
+    result = runner.run("SELECT Name, ROW_NUMBER() OVER (ORDER BY Salary DESC) AS rn FROM Employees")
+
+    assert "OVER" in result["tree"]
+    assert "ROW_NUMBER" in result["json"]
+    assert result["ast"].columns[1].inferred_type == "BIGINT"
+
+
+def test_window_function_with_aliases(registry):
+    """Aliases referenced in OVER should still be invalidated by ZTA rules."""
+    sql = """
+    SELECT Salary, Salary * 1.1 AS AdjustedSalary,
+           ROW_NUMBER() OVER (ORDER BY AdjustedSalary) AS rn
+    FROM Employees
+    """
+
+    lexer = Lexer(sql)
+    parser = Parser(lexer.tokenize(), sql)
+    ast = parser.parse()
+
+    with pytest.raises(SemanticError, match="Column 'AdjustedSalary' not found in 'Employees'"):
+        Binder(registry).bind(ast)

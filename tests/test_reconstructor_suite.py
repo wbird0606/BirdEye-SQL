@@ -189,3 +189,27 @@ def test_from_json_string():
     json_str = ASTSerializer().to_json(ast)
     sql = ASTReconstructor().from_json_str(json_str)
     assert "SELECT" in sql and "AddressID" in sql
+
+# ─────────────────────────────────────────────
+# 窗函數 (Window Functions) - JSON → SQL
+# ─────────────────────────────────────────────
+
+def test_window_function_row_number_basic():
+    """ROW_NUMBER() OVER - 基本窗函數"""
+    sql = roundtrip("SELECT AddressID, ROW_NUMBER() OVER (ORDER BY AddressID) AS rn FROM Address")
+    assert "ROW_NUMBER" in sql and "OVER" in sql and "ORDER BY" in sql
+
+def test_window_function_partition_by():
+    """ROW_NUMBER() OVER PARTITION BY"""
+    sql = roundtrip("SELECT AddressID, ROW_NUMBER() OVER (PARTITION BY PostalCode ORDER BY AddressID) AS rn FROM Address")
+    assert "PARTITION BY" in sql and "PostalCode" in sql
+
+def test_window_function_rank():
+    """RANK() 窗函數"""
+    sql = roundtrip("SELECT RANK() OVER (ORDER BY City) AS rnk FROM Address")
+    assert "RANK" in sql and "OVER" in sql
+
+def test_window_function_lag_lead():
+    """LAG() 窗函數"""
+    sql = roundtrip("SELECT LAG(City) OVER (ORDER BY AddressID) FROM Address")
+    assert "LAG" in sql and "OVER" in sql

@@ -327,7 +327,14 @@ class ASTReconstructor:
             inner = self._sql_expr(args[0]) if args else ""
             return f"{name} ({inner})"
         args_sql = ", ".join(self._sql_expr(a) for a in args)
-        return f"{name}({args_sql})"
+        sql = f"{name}({args_sql})"
+        
+        # OVER 子句（窗函數）
+        over = n.get("over")
+        if over:
+            sql += f" {self._sql_OverClauseNode(over)}"
+        
+        return sql
 
     def _sql_CaseExpressionNode(self, n: dict) -> str:
         parts = ["CASE"]
@@ -398,6 +405,39 @@ class ASTReconstructor:
 
     def _sql_CTENode(self, n: dict) -> str:
         return f"{n['name']} AS ({self.to_sql(n['query'])})"
+
+    def _sql_OverClauseNode(self, n: dict) -> str:
+        """重建窗函數的 OVER 子句"""
+        inner_parts = []
+        
+        # PARTITION BY
+        partition_by = n.get("partition_by") or []
+        if partition_by:
+            part_exprs = [self._sql_expr(p) for p in partition_by]
+            inner_parts.append("PARTITION BY " + ", ".join(part_exprs))
+        
+        # ORDER BY
+        order_by = n.get("order_by") or []
+        if order_by:
+            order_exprs = [self._sql_OrderByNode(o) for o in order_by]
+            inner_parts.append("ORDER BY " + ", ".join(order_exprs))
+        
+        # ROWS / RANGE
+        frame_type = n.get("frame_type")
+        if frame_type:
+            frame_part = frame_type
+            frame_start = n.get("frame_start")
+            frame_end = n.get("frame_end")
+            if frame_start:
+                frame_part += f" {frame_start}"
+            if frame_end:
+                frame_part += f" AND {frame_end}"
+            inner_parts.append(frame_part)
+        
+        inner_sql = " ".join(inner_parts) if inner_parts else ""
+        if inner_sql:
+            return f"OVER ({inner_sql})"
+        return "OVER ()"
 
     # ─── 輔助 ────────────────────────────────────────
 

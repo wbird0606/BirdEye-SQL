@@ -12,7 +12,8 @@ from birdeye.ast import (
     DeclareStatement, ApplyNode,
     IfStatement, ExecStatement, SetStatement,
     CreateTableStatement, DropTableStatement, AlterTableStatement,
-    MergeStatement, MergeClauseNode, PrintStatement, ColumnDefinitionNode
+    MergeStatement, MergeClauseNode, PrintStatement, ColumnDefinitionNode,
+    OverClauseNode
 )
 
 class ASTSerializer:
@@ -144,6 +145,7 @@ class ASTSerializer:
             res.update({
                 "name": node.name,
                 "args": self._serialize(node.args),
+                "over": self._serialize(node.over_clause) if node.over_clause else None,
                 "alias": node.alias
             })
 
@@ -190,6 +192,15 @@ class ASTSerializer:
                 "apply_type": node.type,
                 "subquery": self._serialize(node.subquery),
                 "alias": node.alias
+            })
+
+        elif isinstance(node, OverClauseNode):
+            res.update({
+                "partition_by": self._serialize(node.partition_by),
+                "order_by": self._serialize(node.order_by),
+                "frame_type": node.frame_type,
+                "frame_start": node.frame_start,
+                "frame_end": node.frame_end
             })
 
         elif isinstance(node, IfStatement):

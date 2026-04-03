@@ -28,6 +28,7 @@ from birdeye.visualizer import ASTVisualizer
 from birdeye.intent_extractor import IntentExtractor
 from birdeye.ast import (
     IdentifierNode, LiteralNode, InsertStatement, CaseExpressionNode,
+    FunctionCallNode, OverClauseNode, OrderByNode,
 )
 
 
@@ -95,6 +96,27 @@ def test_binder_276_any_all_list_type_mismatch():
     sql = "SELECT AddressID FROM Address WHERE AddressID > ANY (1, 'hello')"
     with pytest.raises(SemanticError, match="Incompatible"):
         runner.run(sql)
+
+
+def test_binder_over_clause_none_is_noop():
+    """binder.py 255: _bind_over_clause(None) returns immediately."""
+    binder = Binder(MetadataRegistry())
+    assert binder._bind_over_clause(None) is None
+
+
+def test_binder_unknown_window_function_with_over_raises():
+    """binder.py 324: unknown function with OVER raises window-context error."""
+    registry = MetadataRegistry()
+    registry.load_from_csv(io.StringIO("table_name,column_name,data_type\nAddress,City,NVARCHAR\n"))
+    binder = Binder(registry)
+
+    fn = FunctionCallNode("FAKE_WINDOW", [])
+    over = OverClauseNode()
+    over.order_by = [OrderByNode(IdentifierNode(name="City"), "ASC")]
+    fn.over_clause = over
+
+    with pytest.raises(SemanticError, match="Unknown function 'FAKE_WINDOW' for window context"):
+        binder._visit_expression(fn)
 
 
 def test_binder_419_424_bind_if():
@@ -423,6 +445,26 @@ def test_visualizer_172_case_with_input_expr():
     assert "CustomerID" in output
 
 
+def test_visualizer_over_clause_partition_order_frame():
+    """visualizer.py 271-273, 283-287: OVER clause details should render."""
+    fn = FunctionCallNode("ROW_NUMBER", [])
+    over = OverClauseNode()
+    over.partition_by = [IdentifierNode(name="CustomerID")]
+    over.order_by = [OrderByNode(IdentifierNode(name="OrderDate"), "DESC")]
+    over.frame_type = "ROWS"
+    over.frame_start = "UNBOUNDED PRECEDING"
+    over.frame_end = "CURRENT ROW"
+    fn.over_clause = over
+
+    output = ASTVisualizer().dump(fn)
+    assert "OVER_CLAUSE" in output
+    assert "PARTITION_BY" in output
+    assert "ORDER_BY" in output
+    assert "FRAME: ROWS" in output
+    assert "START: UNBOUNDED PRECEDING" in output
+    assert "END: CURRENT ROW" in output
+
+
 # ─────────────────────────────────────────────────────────────────
 # intent_extractor.py
 # ─────────────────────────────────────────────────────────────────
@@ -452,6 +494,24 @@ def test_parser_765_unrecognized_token_in_single_stmt():
         parse("IF 1=1 ROLLBACK")
 
 
+def test_parser_over_clause_unbounded_without_direction_raises():
+    """parser.py 761-762: UNBOUNDED without PRECEDING/FOLLOWING should raise."""
+    with pytest.raises(SyntaxError, match="Expected PRECEDING or FOLLOWING after UNBOUNDED"):
+        parse("SELECT SUM(Salary) OVER (ORDER BY Salary ROWS UNBOUNDED) FROM Address")
+
+
+def test_parser_over_clause_current_without_row_raises():
+    """parser.py 763-765: CURRENT without ROW should raise."""
+    with pytest.raises(SyntaxError, match="Expected ROW after CURRENT"):
+        parse("SELECT SUM(Salary) OVER (ORDER BY Salary ROWS CURRENT) FROM Address")
+
+
+def test_parser_over_clause_numeric_without_direction_raises():
+    """parser.py 774: numeric boundary without PRECEDING/FOLLOWING should raise."""
+    with pytest.raises(SyntaxError, match="Expected PRECEDING or FOLLOWING after number"):
+        parse("SELECT SUM(Salary) OVER (ORDER BY Salary ROWS 5) FROM Address")
+
+
 def test_reconstructor_264_merge_unknown_action():
     """reconstructor.py 264: MERGE clause with non-standard action falls back."""
     rec = ASTReconstructor()
@@ -466,6 +526,48 @@ def test_reconstructor_264_merge_unknown_action():
     }
     result = rec.to_sql(clause_dict)
     assert "UNKNOWN_ACTION" in result
+
+
+def test_reconstructor_over_clause_with_frame_bounds():
+    """reconstructor.py 428-435: OVER clause frame start/end should serialize."""
+    rec = ASTReconstructor()
+    sql = rec.to_sql({
+        "node_type": "FunctionCallNode",
+        "name": "ROW_NUMBER",
+        "args": [],
+        "over": {
+            "node_type": "OverClauseNode",
+            "partition_by": [
+                {"node_type": "IdentifierNode", "name": "CustomerID", "qualifiers": [], "alias": None}
+            ],
+            "order_by": [
+                {
+                    "node_type": "OrderByNode",
+                    "column": {"node_type": "IdentifierNode", "name": "OrderDate", "qualifiers": [], "alias": None},
+                    "direction": "DESC",
+                }
+            ],
+            "frame_type": "ROWS",
+            "frame_start": "UNBOUNDED PRECEDING",
+            "frame_end": "CURRENT ROW",
+        },
+        "alias": None,
+    })
+    assert "ROWS UNBOUNDED PRECEDING AND CURRENT ROW" in sql
+
+
+def test_reconstructor_over_clause_empty_returns_over_empty():
+    """reconstructor.py 440: empty OVER clause should render OVER ()."""
+    rec = ASTReconstructor()
+    sql = rec.to_sql({
+        "node_type": "OverClauseNode",
+        "partition_by": [],
+        "order_by": [],
+        "frame_type": None,
+        "frame_start": None,
+        "frame_end": None,
+    })
+    assert sql == "OVER ()"
 
 
 def test_intent_extractor_454_three_part_qualifier():

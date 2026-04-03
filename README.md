@@ -1,7 +1,7 @@
 # 🦅 BirdEye-SQL: Semantic-Aware & Zero-Trust SQL Parser
 
 [![Testing: pytest](https://img.shields.io/badge/Testing-pytest-blue.svg)](https://docs.pytest.org/)
-[![Tests](https://img.shields.io/badge/Tests-864%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-911%20passed-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 🌍 **Language Switch / 語言切換**: [English](#english-version) | [繁體中文](#繁體中文版本)
@@ -50,6 +50,45 @@ Expected outcome:
 - `--format tree`: readable semantic tree
 - `--format mermaid`: flowchart text for Mermaid rendering
 - `--format json`: serialized AST JSON
+
+### SQL Demo Samples
+Use these when you want to demo different parser / binder / serializer paths:
+
+```sql
+-- 1) Basic SELECT
+SELECT AddressID, City, PostalCode
+FROM SalesLT.Address;
+
+-- 2) TOP + ORDER BY
+SELECT TOP 5 ProductID, Name, ListPrice
+FROM SalesLT.Product
+ORDER BY ListPrice DESC;
+
+-- 3) JOIN
+SELECT c.CustomerID, c.FirstName, c.LastName, a.City
+FROM SalesLT.Customer AS c
+JOIN SalesLT.CustomerAddress AS ca ON c.CustomerID = ca.CustomerID
+JOIN SalesLT.Address AS a ON ca.AddressID = a.AddressID;
+
+-- 4) GROUP BY + HAVING
+SELECT CustomerID, COUNT(*) AS OrderCount
+FROM SalesLT.SalesOrderHeader
+GROUP BY CustomerID
+HAVING COUNT(*) > 1;
+
+-- 5) Window function
+SELECT SalesOrderID, CustomerID,
+       ROW_NUMBER() OVER (PARTITION BY CustomerID ORDER BY OrderDate) AS rn
+FROM SalesLT.SalesOrderHeader;
+
+-- 6) Subquery
+SELECT ProductID, Name
+FROM SalesLT.Product
+WHERE ProductID IN (
+    SELECT ProductID
+    FROM SalesLT.SalesOrderDetail
+);
+```
 
 Sample files you can create directly:
 
@@ -201,9 +240,9 @@ This animated preview is useful when you want to watch the parsing and reconstru
 - AST → SQL reconstruction (round-trip)
 - Zero Trust Architecture (ZTA) security enforcement
 
-## 🧪 Testing Strategy (864 Tests Across 33 Suite Files)
+## 🧪 Testing Strategy (911 Tests Across 34 Suite Files)
 
-We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a **Red → Green → Zero Regression** cycle. The project currently contains **864 comprehensive test cases** across **33 test suite files** with **100% line coverage**. Representative core suites are listed below:
+We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a **Red → Green → Zero Regression** cycle. The project currently contains **911 comprehensive test cases** across **34 test suite files** with **100% line coverage**. Representative core suites are listed below:
 
 | Test Suite | Tests | Coverage |
 |---|---|---|
@@ -220,16 +259,17 @@ We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a
 | `test_mssql_features_suite.py` | 49 | DECLARE, #temp tables, CROSS/OUTER APPLY, advanced types (Geography, XML…) |
 | `test_mssql_boundary_suite.py` | 42 | Edge cases: negative literals, global ##temp, operators, INTERSECT/EXCEPT, string functions |
 | `test_integration_suite.py` | 23 | End-to-end pipeline with real AdventureWorks metadata, cross-feature integration |
-| `test_window_functions_suite.py` | 22 | Window function syntax boundaries (expected-failure suite) |
+| `test_window_functions_suite.py` | 35 | Window function parsing, binder validation, and full-pipeline coverage |
+| `test_metadata_roundtrip_suite.py` | 35 | Metadata-driven SQL → JSON → SQL roundtrip coverage |
 | `test_visualizer_suite.py` | 39 | Tree rendering, Mermaid output, type annotation, all statement types |
 | `test_serializer_suite.py` | 29 | JSON serialization of all AST node types, round-trip accuracy |
 | `test_cli_suite.py` | 4 | CLI argument parsing, file I/O, output format validation |
 | `test_web_api_suite.py` | 3 | RESTful endpoints, JSON response format, HTTP error codes |
 | `test_mermaid_suite.py` | 3 | Mermaid flowchart generation and node structure |
 | `test_reconstructor_suite.py` | 32 | AST JSON → SQL reconstruction, round-trip accuracy, all statement types |
-| `test_final_coverage_suite.py` | 46 | Targeted coverage for binder, parser, lexer, reconstructor, visualizer edge cases |
+| `test_final_coverage_suite.py` | 54 | Targeted coverage for binder, parser, lexer, reconstructor, visualizer edge cases |
 
-**Current Status**: ✅ **100% Tests Passed** (864/864) — **100% Line Coverage**
+**Current Status**: ✅ **100% Tests Passed** (911/911) — **100% Line Coverage**
 ```powershell
 pytest tests/
 ```
@@ -285,6 +325,45 @@ python main.py --ast-file ast.json
 - `--format tree`：可讀的語意樹
 - `--format mermaid`：可直接貼到 Mermaid 的流程圖文字
 - `--format json`：序列化 AST JSON
+
+### SQL Demo 範例
+如果你要做簡報或 demo，可以直接用下面幾組 SQL：
+
+```sql
+-- 1) 基本查詢
+SELECT AddressID, City, PostalCode
+FROM SalesLT.Address;
+
+-- 2) TOP + ORDER BY
+SELECT TOP 5 ProductID, Name, ListPrice
+FROM SalesLT.Product
+ORDER BY ListPrice DESC;
+
+-- 3) JOIN
+SELECT c.CustomerID, c.FirstName, c.LastName, a.City
+FROM SalesLT.Customer AS c
+JOIN SalesLT.CustomerAddress AS ca ON c.CustomerID = ca.CustomerID
+JOIN SalesLT.Address AS a ON ca.AddressID = a.AddressID;
+
+-- 4) GROUP BY + HAVING
+SELECT CustomerID, COUNT(*) AS OrderCount
+FROM SalesLT.SalesOrderHeader
+GROUP BY CustomerID
+HAVING COUNT(*) > 1;
+
+-- 5) Window Function
+SELECT SalesOrderID, CustomerID,
+       ROW_NUMBER() OVER (PARTITION BY CustomerID ORDER BY OrderDate) AS rn
+FROM SalesLT.SalesOrderHeader;
+
+-- 6) 子查詢
+SELECT ProductID, Name
+FROM SalesLT.Product
+WHERE ProductID IN (
+    SELECT ProductID
+    FROM SalesLT.SalesOrderDetail
+);
+```
 
 可直接建立的範例檔：
 
@@ -438,9 +517,9 @@ python main.py --ast-file my_ast.json
 
 如果你想看動態版本，可以打開上面的 GIF 備用連結。
 
-## 🧪 測試策略（864 個測試案例，涵蓋 33 個測試套件檔案）
+## 🧪 測試策略（911 個測試案例，涵蓋 34 個測試套件檔案）
 
-我們嚴格遵守**測試驅動開發 (TDD)**，每個功能均遵循 **Red → Green → 零回歸** 循環。專案目前包含 **33 個測試套件檔案**、**864 個全面測試案例**，**行覆蓋率達 100%**。下表列出具代表性的核心測試套件：
+我們嚴格遵守**測試驅動開發 (TDD)**，每個功能均遵循 **Red → Green → 零回歸** 循環。專案目前包含 **34 個測試套件檔案**、**911 個全面測試案例**，**行覆蓋率達 100%**。下表列出具代表性的核心測試套件：
 
 | 測試套件 | 測試數 | 涵蓋範圍 |
 |---|---|---|
@@ -457,16 +536,17 @@ python main.py --ast-file my_ast.json
 | `test_mssql_features_suite.py` | 49 | DECLARE、#temp 暫存表、CROSS/OUTER APPLY、進階型別（Geography、XML…） |
 | `test_mssql_boundary_suite.py` | 42 | 邊界案例：負數字面值、##global temp、位元運算子、INTERSECT/EXCEPT、字串函數 |
 | `test_integration_suite.py` | 23 | 載入真實 AdventureWorks 元數據的端到端流水線、跨功能整合 |
-| `test_window_functions_suite.py` | 22 | 視窗函數語法邊界（預期失敗套件） |
+| `test_window_functions_suite.py` | 35 | 視窗函數解析、binder 驗證、完整流程覆蓋 |
+| `test_metadata_roundtrip_suite.py` | 35 | 由 metadata 驅動的 SQL → JSON → SQL 往返覆蓋 |
 | `test_visualizer_suite.py` | 39 | 樹狀圖渲染、Mermaid 輸出、型別標註、全語句類型 |
 | `test_serializer_suite.py` | 29 | 所有 AST 節點的 JSON 序列化、往返準確性 |
 | `test_cli_suite.py` | 4 | CLI 參數解析、檔案 I/O、輸出格式驗證 |
 | `test_web_api_suite.py` | 3 | RESTful 端點、JSON 回應格式、HTTP 錯誤代碼 |
 | `test_mermaid_suite.py` | 3 | Mermaid 流程圖產生與節點結構 |
 | `test_reconstructor_suite.py` | 32 | AST JSON → SQL 重建、往返準確性、所有語句類型 |
-| `test_final_coverage_suite.py` | 46 | 針對 binder、parser、lexer、reconstructor、visualizer 邊界行的精準覆蓋 |
+| `test_final_coverage_suite.py` | 54 | 針對 binder、parser、lexer、reconstructor、visualizer 邊界行的精準覆蓋 |
 
-**目前狀態**: ✅ **100% 測試通過** (864/864) — **行覆蓋率 100%**
+**目前狀態**: ✅ **100% 測試通過** (911/911) — **行覆蓋率 100%**
 ```powershell
 pytest tests/
 ```
