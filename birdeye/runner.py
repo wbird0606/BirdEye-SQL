@@ -7,7 +7,10 @@ from birdeye.serializer import ASTSerializer
 from birdeye.mermaid_exporter import MermaidExporter
 from birdeye.registry import MetadataRegistry
 import io
-import json
+try:
+    import ujson as json
+except ImportError:
+    import json
 
 class BirdEyeRunner:
     """

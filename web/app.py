@@ -1,19 +1,26 @@
 import os
 import io
 import json
+import functools
 from flask import Flask, request, jsonify, render_template
 
 try:
     import requests as http_requests
     _REQUESTS_AVAILABLE = True
+    _http_session = http_requests.Session()  # TCP keep-alive 重用
 except ImportError:
     _REQUESTS_AVAILABLE = False
+    _http_session = None
 from flask_cors import CORS
 from birdeye.runner import BirdEyeRunner
 from birdeye.binder import SemanticError
 from birdeye.registry import MetadataRegistry
 from birdeye.reconstructor import ASTReconstructor
 from birdeye.intent_extractor import IntentExtractor
+
+# ── 模組層級 singleton（無狀態，無需每次重建）──────────────────────────────
+_reconstructor   = ASTReconstructor()
+_intent_extractor = IntentExtractor()
 
 # 初始化 Flask 應用
 app = Flask(__name__)
@@ -30,6 +37,13 @@ def init_default_runner():
     return r
 
 global_runner = init_default_runner()
+
+@functools.lru_cache(maxsize=32)
+def _get_runner_for_schema(metadata_csv: str) -> BirdEyeRunner:
+    """同一份 schema CSV 字串只建一次 runner，後續請求直接重用。"""
+    r = BirdEyeRunner()
+    r.load_metadata_from_csv(io.StringIO(metadata_csv))
+    return r
 
 # DbRolePermissionMapping API 設定（可透過環境變數覆寫）
 PERMISSION_API_URL = os.environ.get('PERMISSION_API_URL', '')   # e.g. http://localhost:50010
@@ -52,7 +66,7 @@ def _fetch_schema_for_tables(db_id, tables):
 
     for schema, table in tables:
         try:
-            resp = http_requests.get(
+            resp = _http_session.get(
                 f'{PERMISSION_API_URL}/api/zta/columns',
                 params={'dbId': db_id, 'schema': schema or 'dbo', 'table': table},
                 headers=headers,
@@ -169,9 +183,9 @@ def reconstruct_sql():
     try:
         # 支援 dict 或 JSON string 兩種格式
         if isinstance(ast_input, str):
-            sql = ASTReconstructor().from_json_str(ast_input)
+            sql = _reconstructor.from_json_str(ast_input)
         else:
-            sql = ASTReconstructor().to_sql(ast_input)
+            sql = _reconstructor.to_sql(ast_input)
         return jsonify({"status": "success", "sql": sql}), 200
     except Exception as e:
         return jsonify({
@@ -219,16 +233,15 @@ def extract_intent():
         if db_id is not None:
             metadata_csv = _fetch_schema_for_tables(db_id, tables)
             if metadata_csv:
-                runner = BirdEyeRunner()
-                runner.load_metadata_from_csv(io.StringIO(metadata_csv))
+                runner = _get_runner_for_schema(metadata_csv)
 
         # Step 3: 完整 pipeline（含 binder 型別推導）
         result   = runner.run(sql)
         ast_dict = json.loads(result['json'])
-        intents  = IntentExtractor().extract(ast_dict)
+        intents  = _intent_extractor.extract(ast_dict)
         # #74: 展開 SELECT * / COUNT(*) 的 table-level READ 為逐欄 intent
-        intents  = IntentExtractor().expand_star_intents(intents, runner)
-        reconstructed = ASTReconstructor().from_json_str(result['json'])
+        intents  = _intent_extractor.expand_star_intents(intents, runner)
+        reconstructed = _reconstructor.from_json_str(result['json'])
         return jsonify({
             "status": "success",
             "trace_id": trace_id or None,  # Fix 5: 回傳供 BirdEye 自身 log 使用
@@ -246,4 +259,4 @@ def extract_intent():
 
 if __name__ == '__main__':
     # 提供預設啟動腳本
-    app.run(host='0.0.0.0', port=5000, debug=True)
+    app.run(host='0.0.0.0', port=5000, debug=False)

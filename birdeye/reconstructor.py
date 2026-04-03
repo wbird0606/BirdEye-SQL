@@ -4,7 +4,10 @@ AST JSON → SQL 重建器
 
 將 ASTSerializer 輸出的 JSON dict 轉回可執行的 SQL 字串。
 """
-import json
+try:
+    import ujson as json
+except ImportError:
+    import json
 
 
 class ASTReconstructor:
