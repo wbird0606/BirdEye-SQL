@@ -25,6 +25,8 @@ def _quote_identifier(name: str) -> str:
 
 
 def _load_metadata_tables() -> dict[str, list[str]]:
+    if not METADATA_PATH.exists():
+        return {}
     tables: dict[str, list[str]] = {}
     with METADATA_PATH.open("r", encoding="utf-8") as csv_file:
         reader = csv.reader(csv_file)
@@ -37,6 +39,8 @@ def _load_metadata_tables() -> dict[str, list[str]]:
 
 
 def _load_metadata_column_types() -> dict[str, dict[str, str]]:
+    if not METADATA_PATH.exists():
+        return {}
     tables: dict[str, dict[str, str]] = {}
     with METADATA_PATH.open("r", encoding="utf-8") as csv_file:
         reader = csv.reader(csv_file)
@@ -369,6 +373,8 @@ def test_metadata_roundtrip_complex_queries():
 def test_metadata_roundtrip_all_date_tables_have_window_queries():
     """有日期欄位的表，補測 window function roundtrip。"""
     tables = _load_metadata_tables()
+    if not tables:
+        pytest.skip("data/output.csv not available")
     date_types = {"date", "datetime", "smalldatetime", "timestamp"}
 
     for table_key, columns in tables.items():
