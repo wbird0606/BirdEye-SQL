@@ -1,5 +1,6 @@
 .venv/
-data/
+data/*
+!data/output.csv
 __pycache__/
 *.pyc
 .claude/
