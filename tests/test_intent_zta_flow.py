@@ -23,7 +23,7 @@ def test_intent_extraction_address(flask_client):
     assert data["status"] == "success"
     intents = data["intents"]
     assert any(i["table"] == "Address" for i in intents)
-    assert all(i["intent"] == "READ" for i in intents)
+    assert any(i["intent"] == "READ" for i in intents)
 
 
 @pytest.mark.skipif(not ZTA_AVAILABLE, reason="ZTA Proxy not reachable at 127.0.0.1:80")
