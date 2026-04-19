@@ -7,7 +7,7 @@ from birdeye.ast import (
     TruncateStatement, DeclareStatement, ApplyNode,
     IfStatement, ExecStatement, SetStatement,
     CreateTableStatement, DropTableStatement, AlterTableStatement,
-    MergeStatement, MergeClauseNode, PrintStatement, OverClauseNode
+    MergeStatement, MergeClauseNode, PrintStatement, OverClauseNode, ScriptNode
 )
 
 class SemanticError(Exception):
@@ -28,6 +28,13 @@ class Binder:
     def bind(self, stmt):
         self.scopes = []; self.nullable_stack = []; self._last_root_nullables = set()
         self.cte_schemas = {}
+        if isinstance(stmt, ScriptNode):
+            # 多語句：每條語句共享 temp_schemas / variable_scope（模擬同一 session）
+            for s in stmt.statements:
+                self.scopes = []; self.nullable_stack = []
+                self.cte_schemas = {}
+                self._bind_node(s)
+            return stmt
         return self._bind_node(stmt)
 
     def _bind_node(self, stmt):
@@ -175,7 +182,10 @@ class Binder:
             if key in self.variable_scope:
                 node.inferred_type = self.variable_scope[key]
                 return
-            raise SemanticError(f"Variable '{node.name}' is not declared")
+            # 未宣告的 @param 視為外部輸入參數（parameterized query placeholder），
+            # type=UNKNOWN，不報錯。應用程式層傳入的 @CustomerId 等無需 DECLARE。
+            node.inferred_type = "UNKNOWN"
+            return
         f_qual = node.qualifier.upper() if node.qualifier else None
         col_up = node.name.upper(); found_qual = False
         for scope in reversed(self.scopes):
@@ -491,15 +501,29 @@ class Binder:
                 self.temp_schemas[tname] = schema
 
     def _bind_merge(self, stmt):
-        """Bind MERGE statement — check source/target tables and clause expressions."""
-        if stmt.on_condition:
-            self._visit_expression(stmt.on_condition)
-        for clause in (stmt.clauses or []):
-            if clause.condition:
-                self._visit_expression(clause.condition)
-            for sc in (clause.set_clauses or []):
-                if hasattr(sc, 'right') and sc.right:
-                    self._visit_expression(sc.right)
+        """Bind MERGE statement — register target/source aliases then check expressions."""
+        self.scopes.append({})
+        self.nullable_stack.append(set())
+        try:
+            # 注冊目標資料表（含 alias，如 t）
+            if stmt.target:
+                self._register_scope(stmt.target, stmt.target_alias)
+            # 注冊來源（子查詢或資料表，含 alias，如 s）
+            if stmt.source is not None:
+                self._register_scope_node(stmt.source, stmt.source_alias)
+            if stmt.on_condition:
+                self._visit_expression(stmt.on_condition)
+            for clause in (stmt.clauses or []):
+                if clause.condition:
+                    self._visit_expression(clause.condition)
+                for sc in (clause.set_clauses or []):
+                    if hasattr(sc, 'right') and sc.right:
+                        self._visit_expression(sc.right)
+                for v in (clause.insert_values or []):
+                    self._visit_expression(v)
+        finally:
+            self.scopes.pop()
+            self.nullable_stack.pop()
 
     def _bind_print(self, stmt):
         """Bind PRINT expression."""

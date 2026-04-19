@@ -13,7 +13,7 @@ from birdeye.ast import (
     IfStatement, ExecStatement, SetStatement,
     CreateTableStatement, DropTableStatement, AlterTableStatement,
     MergeStatement, MergeClauseNode, PrintStatement, ColumnDefinitionNode,
-    OverClauseNode
+    OverClauseNode, ScriptNode
 )
 
 class ASTSerializer:
@@ -40,6 +40,10 @@ class ASTSerializer:
             return [self._serialize(item) for item in node]
 
         res = {"node_type": node.__class__.__name__}
+
+        if isinstance(node, ScriptNode):
+            res["statements"] = [self._serialize(s) for s in node.statements]
+            return res
 
         if isinstance(node, SelectStatement):
             res.update({

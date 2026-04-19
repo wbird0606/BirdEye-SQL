@@ -254,3 +254,8 @@ class MergeStatement:
 class PrintStatement:
     def __init__(self, expr=None):
         self.expr = expr
+
+class ScriptNode:
+    """多語句腳本根節點，持有以分號分隔的語句清單。"""
+    def __init__(self, statements=None):
+        self.statements = statements or []

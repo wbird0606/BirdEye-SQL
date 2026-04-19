@@ -60,8 +60,16 @@ def _get_runner_for_schema(metadata_csv: str) -> BirdEyeRunner:
     return r
 
 # DbRolePermissionMapping API 設定（可透過環境變數覆寫）
-PERMISSION_API_URL = os.environ.get('PERMISSION_API_URL', '')   # e.g. http://localhost:50010
-PERMISSION_API_KEY = os.environ.get('ZTA_API_KEY', '')
+# 兼容舊名稱：PERMISSION_URL（部分專案/文件仍在使用）
+PERMISSION_API_URL = (
+    os.environ.get('PERMISSION_API_URL')
+    or os.environ.get('PERMISSION_URL', '')
+)   # e.g. http://localhost:50010
+PERMISSION_API_KEY = (
+    os.environ.get('ZTA_API_KEY')
+    or os.environ.get('PERMISSION_API_KEY', '')
+)
+PERMISSION_HTTP_TIMEOUT = int(os.environ.get('HTTP_TIMEOUT', '5'))
 
 
 def _fetch_schema_for_tables(db_id, tables):
@@ -84,7 +92,7 @@ def _fetch_schema_for_tables(db_id, tables):
                 f'{PERMISSION_API_URL}/api/zta/columns',
                 params={'dbId': db_id, 'schema': schema or 'dbo', 'table': table},
                 headers=headers,
-                timeout=5,
+                timeout=PERMISSION_HTTP_TIMEOUT,
             )
             if resp.status_code == 200:
                 payload = resp.json()
@@ -92,8 +100,17 @@ def _fetch_schema_for_tables(db_id, tables):
                     effective_schema = schema or 'dbo'
                     for col in (payload.get('data') or []):
                         rows.append(f"{effective_schema},{table},{col['ColumnName']},{col['DataType']}")
-        except Exception:
-            pass  # 單一資料表查詢失敗不影響其他資料表
+            else:
+                app.logger.warning(
+                    'Schema fetch failed: status=%s dbId=%s schema=%s table=%s',
+                    resp.status_code, db_id, schema or 'dbo', table,
+                )
+        except Exception as e:
+            # 單一資料表查詢失敗不影響其他資料表
+            app.logger.warning(
+                'Schema fetch exception: dbId=%s schema=%s table=%s error=%s',
+                db_id, schema or 'dbo', table, e,
+            )
 
     return '\n'.join(rows) if len(rows) > 1 else None
 
@@ -151,8 +168,8 @@ def parse_sql():
     
     try:
         # 使用當前的全域 runner 進行解析
-        result = global_runner.run(sql)
-        
+        result = global_runner.run_multi(sql)
+
         return jsonify({
             "status": "success",
             "result": {
@@ -237,8 +254,8 @@ def extract_intent():
     trace_id = request.headers.get('X-Trace-Id', '')  # Fix 5: 接收 ZTA trace_id
 
     try:
-        # Step 1: parse_only → 拿 table 清單（不跑 binder，避免 chicken-and-egg）
-        raw     = global_runner.parse_only(sql)
+        # Step 1: parse_only_multi → 拿 table 清單（不跑 binder，避免 chicken-and-egg）
+        raw     = global_runner.parse_only_multi(sql)
         raw_ast = json.loads(global_runner.serializer.to_json(raw['ast']))
         tables  = IntentExtractor().extract_tables(raw_ast)
 
@@ -248,9 +265,14 @@ def extract_intent():
             metadata_csv = _fetch_schema_for_tables(db_id, tables)
             if metadata_csv:
                 runner = _get_runner_for_schema(metadata_csv)
+            else:
+                app.logger.warning(
+                    'Intent API fallback to default metadata: db_id=%s tables=%s permission_api_url=%s',
+                    db_id, len(tables), bool(PERMISSION_API_URL),
+                )
 
         # Step 3: 完整 pipeline（含 binder 型別推導）
-        result   = runner.run(sql)
+        result   = runner.run_multi(sql)
         ast_dict = json.loads(result['json'])
         intents  = _intent_extractor.extract(ast_dict)
         # #74: 展開 SELECT * / COUNT(*) 的 table-level READ 為逐欄 intent

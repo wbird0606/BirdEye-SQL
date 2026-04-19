@@ -7,7 +7,7 @@ from birdeye.ast import (
     UnionStatement, CTENode, TruncateStatement, DeclareStatement, ApplyNode,
     IfStatement, ExecStatement, SetStatement, ColumnDefinitionNode,
     CreateTableStatement, DropTableStatement, AlterTableStatement,
-    MergeClauseNode, MergeStatement, PrintStatement, OverClauseNode
+    MergeClauseNode, MergeStatement, PrintStatement, OverClauseNode, ScriptNode
 )
 
 class Parser:
@@ -119,6 +119,75 @@ class Parser:
         peek = self._peek()
         if peek and peek.type != TokenType.EOF:
             raise SyntaxError(f"Unexpected token: {self._get_text(peek)}")
+        return stmt
+
+    def parse_script(self):
+        """
+        多語句入口：以分號為分隔符解析一個或多個語句，回傳 ScriptNode。
+        單一語句時仍包裝為 ScriptNode(statements=[stmt])，供下游統一處理。
+        """
+        statements = []
+        while True:
+            peek = self._peek()
+            if not peek or peek.type == TokenType.EOF:
+                break
+            stmt = self._parse_one_statement()
+            statements.append(stmt)
+        if not statements:
+            raise SyntaxError("Empty source")
+        return ScriptNode(statements=statements)
+
+    def _parse_one_statement(self):
+        """解析一條語句（含尾端可選分號），位置推進到下一條語句起點。"""
+        tok = self._peek()
+        if not tok or tok.type == TokenType.EOF:
+            raise SyntaxError("Unexpected end of input")
+
+        ctes = []
+        if tok.type == TokenType.KEYWORD_WITH:
+            ctes = self._parse_ctes()
+            tok = self._peek()
+
+        if not tok: raise SyntaxError("Unexpected end of input")
+
+        if tok.type == TokenType.KEYWORD_SELECT:
+            stmt = self._parse_select_with_set_ops()
+            if ctes: stmt.ctes = ctes
+        elif tok.type == TokenType.KEYWORD_UPDATE:
+            stmt = self._parse_update()
+            if ctes: stmt.ctes = ctes
+        elif tok.type == TokenType.KEYWORD_DELETE:
+            stmt = self._parse_delete()
+            if ctes: stmt.ctes = ctes
+        elif tok.type == TokenType.KEYWORD_INSERT: stmt = self._parse_insert()
+        elif tok.type == TokenType.KEYWORD_TRUNCATE: stmt = self._parse_truncate()
+        elif tok.type == TokenType.KEYWORD_DECLARE: stmt = self._parse_declare()
+        elif tok.type == TokenType.IDENTIFIER and self._get_text(tok).upper() == "BULK":
+            stmt = self._parse_bulk_insert()
+        elif tok.type == TokenType.KEYWORD_IF:
+            self._advance(); stmt = self._parse_if()
+        elif tok.type == TokenType.KEYWORD_BEGIN:
+            stmts = self._parse_block()
+            stmt = stmts[0] if len(stmts) == 1 else stmts[0]
+        elif tok.type == TokenType.KEYWORD_EXEC:
+            self._advance(); stmt = self._parse_exec()
+        elif tok.type == TokenType.KEYWORD_CREATE:
+            self._advance(); stmt = self._parse_create()
+        elif tok.type == TokenType.KEYWORD_DROP:
+            self._advance(); stmt = self._parse_drop()
+        elif tok.type == TokenType.KEYWORD_ALTER:
+            self._advance(); stmt = self._parse_alter()
+        elif tok.type == TokenType.KEYWORD_MERGE:
+            self._advance(); stmt = self._parse_merge()
+        elif tok.type == TokenType.KEYWORD_PRINT:
+            self._advance(); stmt = self._parse_print()
+        elif tok.type == TokenType.KEYWORD_SET:
+            self._advance(); stmt = self._parse_set_statement()
+        else:
+            raise SyntaxError(f"Unexpected token: {self._get_text(tok)}")
+
+        # 消耗尾端分號（語句間分隔符）
+        self._match(TokenType.SYMBOL_SEMICOLON)
         return stmt
 
     # --- 2. CTE 解析 ---
@@ -304,7 +373,7 @@ class Parser:
         return stmt
 
     def _contains_identifier(self, node) -> bool:
-        if isinstance(node, IdentifierNode): return True
+        if isinstance(node, IdentifierNode): return not (node.name or "").startswith("@")
         if isinstance(node, BinaryExpressionNode): return self._contains_identifier(node.left) or self._contains_identifier(node.right)
         if isinstance(node, FunctionCallNode): return any(self._contains_identifier(arg) for arg in node.args)
         if isinstance(node, CaseExpressionNode):

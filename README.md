@@ -1,7 +1,7 @@
 # 🦅 BirdEye-SQL: Semantic-Aware & Zero-Trust SQL Parser
 
 [![Testing: pytest](https://img.shields.io/badge/Testing-pytest-blue.svg)](https://docs.pytest.org/)
-[![Tests](https://img.shields.io/badge/Tests-911%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-988%20passed-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 🌍 **Language Switch / 語言切換**: [English](#english-version) | [繁體中文](#繁體中文版本)
@@ -213,12 +213,14 @@ python main.py --ast-file my_ast.json
 | **APPLY** | CROSS APPLY, OUTER APPLY |
 | **Set Ops** | UNION, UNION ALL, INTERSECT, EXCEPT |
 | **Subqueries** | Scalar, correlated, derived tables, ANY/ALL |
-| **DML** | INSERT (single/multi-row/SELECT), UPDATE, DELETE, TRUNCATE |
+| **DML** | INSERT (single/multi-row/SELECT), UPDATE, DELETE, TRUNCATE, MERGE (INSERT/UPDATE/DELETE clauses) |
+| **DDL** | CREATE TABLE, DROP TABLE [IF EXISTS], ALTER TABLE (ADD/DROP/ALTER COLUMN) |
+| **Procedural** | IF/ELSE, EXEC (stored procedure), PRINT, multi-statement scripts (ScriptNode) |
 | **CTE** | Single, multiple, WITH + DML (UPDATE/DELETE) |
 | **Expressions** | CASE WHEN, BETWEEN, CAST(x AS TYPE(len)), CONVERT(TYPE, x, style) |
 | **Operators** | Arithmetic, bitwise, modulo, comparison, LIKE, IN/NOT IN |
 | **Functions** | 60+ built-in: aggregates, string, numeric, date, NULL-handling |
-| **MSSQL** | DECLARE @var, #temp / ##global temp tables, GO, BULK INSERT |
+| **MSSQL** | DECLARE @var, SET @var, #temp / ##global temp tables, GO, BULK INSERT |
 
 ## 🖼️ Demo Preview
 
@@ -240,9 +242,9 @@ This animated preview is useful when you want to watch the parsing and reconstru
 - AST → SQL reconstruction (round-trip)
 - Zero Trust Architecture (ZTA) security enforcement
 
-## 🧪 Testing Strategy (911 Tests Across 34 Suite Files)
+## 🧪 Testing Strategy (988 Tests Across 39 Suite Files)
 
-We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a **Red → Green → Zero Regression** cycle. The project currently contains **911 comprehensive test cases** across **34 test suite files** with **100% line coverage**. Representative core suites are listed below:
+We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a **Red → Green → Zero Regression** cycle. The project currently contains **988 comprehensive test cases** across **39 test suite files** with **100% line coverage**. Representative core suites are listed below:
 
 | Test Suite | Tests | Coverage |
 |---|---|---|
@@ -268,8 +270,13 @@ We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a
 | `test_mermaid_suite.py` | 3 | Mermaid flowchart generation and node structure |
 | `test_reconstructor_suite.py` | 32 | AST JSON → SQL reconstruction, round-trip accuracy, all statement types |
 | `test_final_coverage_suite.py` | 54 | Targeted coverage for binder, parser, lexer, reconstructor, visualizer edge cases |
+| `test_intent_api.py` | 3 | Flask test client: `/api/intent` success, intent list, missing-sql 400 |
+| `test_intent_zta_flow.py` | 2 | Intent extraction + ZTA permission check flow (ZTA parts skip if proxy unreachable) |
+| `test_denied_intent.py` | 2 | Denied columns (EmailAddress, Phone) rejected by ZTA IBAC |
+| `test_security_adversarial_suite.py` | — | SQL injection adversarial suite: boolean-blind, stacked queries, comment injection, UNION, linked server |
+| `test_adversarial_appendix.py` | — | Supplementary adversarial edge cases |
 
-**Current Status**: ✅ **100% Tests Passed** (911/911) — **100% Line Coverage**
+**Current Status**: ✅ **100% Tests Passed** (988/988) — **100% Line Coverage**
 ```powershell
 pytest tests/
 ```
@@ -488,12 +495,14 @@ python main.py --ast-file my_ast.json
 | **APPLY** | CROSS APPLY、OUTER APPLY |
 | **集合運算** | UNION、UNION ALL、INTERSECT、EXCEPT |
 | **子查詢** | 純量、關聯、衍生資料表、ANY/ALL |
-| **DML** | INSERT（單列/多列/SELECT來源）、UPDATE、DELETE、TRUNCATE |
+| **DML** | INSERT（單列/多列/SELECT來源）、UPDATE、DELETE、TRUNCATE、MERGE（INSERT/UPDATE/DELETE clause）|
+| **DDL** | CREATE TABLE、DROP TABLE [IF EXISTS]、ALTER TABLE（ADD/DROP/ALTER COLUMN）|
+| **程序型** | IF/ELSE、EXEC（預存程序呼叫）、PRINT、多語句腳本（ScriptNode）|
 | **CTE** | 單一/多個 CTE、WITH + DML（UPDATE/DELETE） |
 | **表達式** | CASE WHEN、BETWEEN、CAST(x AS TYPE(len))、CONVERT(TYPE, x, style) |
 | **運算子** | 算術、位元、模數、比較、LIKE、IN/NOT IN |
 | **函數** | 60+ 內建函數：聚合、字串、數值、日期、NULL 處理 |
-| **MSSQL** | DECLARE @var、#temp / ##global 暫存表、GO、BULK INSERT |
+| **MSSQL** | DECLARE @var、SET @var、#temp / ##global 暫存表、GO、BULK INSERT |
 
 ## 🖼️ Demo 預覽
 
@@ -517,9 +526,9 @@ python main.py --ast-file my_ast.json
 
 如果你想看動態版本，可以打開上面的 GIF 備用連結。
 
-## 🧪 測試策略（911 個測試案例，涵蓋 34 個測試套件檔案）
+## 🧪 測試策略（988 個測試案例，涵蓋 39 個測試套件檔案）
 
-我們嚴格遵守**測試驅動開發 (TDD)**，每個功能均遵循 **Red → Green → 零回歸** 循環。專案目前包含 **34 個測試套件檔案**、**911 個全面測試案例**，**行覆蓋率達 100%**。下表列出具代表性的核心測試套件：
+我們嚴格遵守**測試驅動開發 (TDD)**，每個功能均遵循 **Red → Green → 零回歸** 循環。專案目前包含 **39 個測試套件檔案**、**988 個全面測試案例**，**行覆蓋率達 100%**。下表列出具代表性的核心測試套件：
 
 | 測試套件 | 測試數 | 涵蓋範圍 |
 |---|---|---|
@@ -545,8 +554,13 @@ python main.py --ast-file my_ast.json
 | `test_mermaid_suite.py` | 3 | Mermaid 流程圖產生與節點結構 |
 | `test_reconstructor_suite.py` | 32 | AST JSON → SQL 重建、往返準確性、所有語句類型 |
 | `test_final_coverage_suite.py` | 54 | 針對 binder、parser、lexer、reconstructor、visualizer 邊界行的精準覆蓋 |
+| `test_intent_api.py` | 3 | Flask test client：`/api/intent` 成功回應、intent 清單、缺少 sql 回傳 400 |
+| `test_intent_zta_flow.py` | 2 | Intent 提取 + ZTA 權限檢查流程（ZTA 部分在 Proxy 不可達時自動略過） |
+| `test_denied_intent.py` | 2 | 敏感欄位（EmailAddress、Phone）被 ZTA IBAC 拒絕 |
+| `test_security_adversarial_suite.py` | — | SQL 注入對抗性測試：boolean-blind、stacked queries、comment injection、UNION、linked server |
+| `test_adversarial_appendix.py` | — | 補充對抗性邊界案例 |
 
-**目前狀態**: ✅ **100% 測試通過** (911/911) — **行覆蓋率 100%**
+**目前狀態**: ✅ **100% 測試通過** (988/988) — **行覆蓋率 100%**
 ```powershell
 pytest tests/
 ```

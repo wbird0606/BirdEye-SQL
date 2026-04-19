@@ -2,6 +2,7 @@ import pytest
 import os
 from birdeye.runner import BirdEyeRunner
 
+
 @pytest.fixture(scope="session")
 def global_runner():
     """
@@ -14,3 +15,11 @@ def global_runner():
         with open(csv_path, "r", encoding="utf-8") as f:
             runner.load_metadata_from_csv(f)
     return runner
+
+
+@pytest.fixture
+def flask_client():
+    from web.app import app as flask_app
+    flask_app.config["TESTING"] = True
+    with flask_app.test_client() as c:
+        yield c

@@ -62,6 +62,27 @@ class BirdEyeRunner:
             "mermaid": mermaid_code
         }
 
+    def run_multi(self, sql):
+        """
+        多語句入口：以分號分隔多條 T-SQL 語句，回傳與 run() 相同格式的結果。
+        ScriptNode 作為根節點貫穿整個 pipeline，Binder 共享 temp_schemas / variable_scope。
+        """
+        lexer = Lexer(sql)
+        tokens = lexer.tokenize()
+        parser = Parser(tokens, sql)
+        script = parser.parse_script()
+        self._binder.bind(script)
+        tree_text = self.visualizer.dump(script)
+        ast_json = self.serializer.to_json(script)
+        mermaid_code = self.exporter.export(json.loads(ast_json))
+        return {
+            "status": "success",
+            "ast": script,
+            "tree": tree_text,
+            "json": ast_json,
+            "mermaid": mermaid_code,
+        }
+
     def parse_only(self, sql):
         """
         僅執行 Lexer + Parser，跳過 Binder。
@@ -73,6 +94,18 @@ class BirdEyeRunner:
         parser = Parser(tokens, sql)
         ast = parser.parse()
         return {"ast": ast}
+
+    def parse_only_multi(self, sql):
+        """
+        多語句版 parse_only：Lexer + parse_script()，跳過 Binder。
+        適合多語句 first-pass table discovery。
+        回傳 {"ast": <ScriptNode>}
+        """
+        lexer = Lexer(sql)
+        tokens = lexer.tokenize()
+        parser = Parser(tokens, sql)
+        script = parser.parse_script()
+        return {"ast": script}
 
     def run_script(self, sql):
         """

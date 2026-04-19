@@ -103,10 +103,11 @@ def test_variable_usable_in_where_after_declare(global_runner):
     result = global_runner.run_script(script)
     assert result["status"] == "success"
 
-def test_undeclared_variable_raises_error(global_runner):
-    """使用未宣告的 @x 應拋出 SemanticError"""
-    with pytest.raises(SemanticError):
-        global_runner.run_script("SELECT AddressID FROM Address WHERE AddressID = @undeclared")
+def test_undeclared_variable_treated_as_external_param(global_runner):
+    """未宣告的 @param 視為外部輸入參數（parameterized query placeholder），不報錯。
+    應用程式層以 @CustomerId、@Amount 等方式傳入參數值，無需 DECLARE。"""
+    result = global_runner.run("SELECT AddressID FROM Address WHERE AddressID = @undeclared")
+    assert result["status"] == "success"
 
 
 # ─────────────────────────────────────────────

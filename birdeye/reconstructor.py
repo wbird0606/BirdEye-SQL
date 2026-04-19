@@ -29,6 +29,12 @@ class ASTReconstructor:
             return method(node)
         return ""
 
+    # ─── 多語句腳本節點 ──────────────────────────────
+
+    def _sql_ScriptNode(self, n: dict) -> str:
+        stmts = n.get("statements") or []
+        return ";\n".join(self.to_sql(s) for s in stmts)
+
     # ─── 語句節點 ───────────────────────────────────
 
     def _sql_SelectStatement(self, n: dict) -> str:

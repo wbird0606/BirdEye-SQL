@@ -5,7 +5,10 @@ from birdeye.ast import (
     FunctionCallNode, JoinNode, AssignmentNode,
     OrderByNode, CaseExpressionNode, BetweenExpressionNode,
     CastExpressionNode, UnionStatement, CTENode, TruncateStatement,
-    DeclareStatement, ApplyNode, OverClauseNode
+    DeclareStatement, ApplyNode, OverClauseNode, ScriptNode,
+    CreateTableStatement, DropTableStatement, AlterTableStatement,
+    IfStatement, ExecStatement, SetStatement,
+    MergeStatement, MergeClauseNode, PrintStatement,
 )
 
 class ASTVisualizer:
@@ -26,6 +29,16 @@ class ASTVisualizer:
     def _visit(self, node, indent: int, label: str):
         prefix = "  " * indent + "└── " if indent > 0 else ""
         current_indent = "  " * indent
+
+        # --- 0. 多語句腳本根節點 ---
+
+        if isinstance(node, ScriptNode):
+            self.lines.append(f"{prefix}SCRIPT ({len(node.statements)} statements)")
+            for i, stmt in enumerate(node.statements):
+                connector = "├── " if i < len(node.statements) - 1 else "└── "
+                self.lines.append(f"{current_indent}  {connector}STATEMENT #{i + 1}")
+                self._visit(stmt, indent + 2, f"STMT{i+1}")
+            return
 
         # --- 1. 語句類節點 (Statements) ---
 
@@ -151,9 +164,101 @@ class ASTVisualizer:
             self.lines.append(f"{prefix}TRUNCATE_STATEMENT")
             self.lines.append(f"{current_indent}  └── TABLE: {node.table.name}")
 
+        elif isinstance(node, DropTableStatement):
+            if_exists = " IF EXISTS" if node.if_exists else ""
+            self.lines.append(f"{prefix}DROP_TABLE_STATEMENT{if_exists}")
+            if node.table:
+                self.lines.append(f"{current_indent}  └── TABLE: {node.table.name}")
+
+        elif isinstance(node, CreateTableStatement):
+            if_not_exists = " IF NOT EXISTS" if node.if_not_exists else ""
+            self.lines.append(f"{prefix}CREATE_TABLE_STATEMENT{if_not_exists}")
+            if node.table:
+                self.lines.append(f"{current_indent}  ├── TABLE: {node.table.name}")
+            if node.columns:
+                self.lines.append(f"{current_indent}  └── COLUMNS ({len(node.columns)})")
+
+        elif isinstance(node, AlterTableStatement):
+            self.lines.append(f"{prefix}ALTER_TABLE_STATEMENT")
+            if node.table:
+                self.lines.append(f"{current_indent}  ├── TABLE: {node.table.name}")
+            if node.action:
+                self.lines.append(f"{current_indent}  ├── ACTION: {node.action}")
+            if node.column:
+                self._visit(node.column, indent + 2, "COLUMN")
+
         elif isinstance(node, SqlBulkCopyStatement):
             self.lines.append(f"{prefix}BULK_COPY_STATEMENT")
             self.lines.append(f"{current_indent}  └── TARGET TABLE: {node.table.name}")
+
+        elif isinstance(node, SetStatement):
+            if node.is_option:
+                self.lines.append(f"{prefix}SET_OPTION")
+                if node.target:
+                    self._visit(node.target, indent + 1, "OPTION")
+            else:
+                self.lines.append(f"{prefix}SET_STATEMENT")
+                if node.target:
+                    self._visit(node.target, indent + 1, "TARGET")
+                if node.value is not None:
+                    self.lines.append(f"{current_indent}  └── VALUE")
+                    self._visit(node.value, indent + 2, "EXPR")
+
+        elif isinstance(node, IfStatement):
+            self.lines.append(f"{prefix}IF_STATEMENT")
+            if node.condition is not None:
+                self.lines.append(f"{current_indent}  ├── CONDITION")
+                self._visit(node.condition, indent + 2, "COND")
+            if node.then_block:
+                self.lines.append(f"{current_indent}  ├── THEN ({len(node.then_block)} stmt(s))")
+                for i, stmt in enumerate(node.then_block):
+                    self._visit(stmt, indent + 2, f"THEN#{i+1}")
+            if node.else_block:
+                self.lines.append(f"{current_indent}  └── ELSE ({len(node.else_block)} stmt(s))")
+                for i, stmt in enumerate(node.else_block):
+                    self._visit(stmt, indent + 2, f"ELSE#{i+1}")
+
+        elif isinstance(node, ExecStatement):
+            if node.proc_name and hasattr(node.proc_name, 'name'):
+                qualifiers = getattr(node.proc_name, 'qualifiers', [])
+                proc = ".".join(qualifiers + [node.proc_name.name])
+            else:
+                proc = str(node.proc_name) if node.proc_name else "?"
+            self.lines.append(f"{prefix}EXEC_STATEMENT: {proc}")
+            if node.return_var:
+                self.lines.append(f"{current_indent}  ├── RETURN_VAR: {node.return_var}")
+            for i, arg in enumerate(node.args or []):
+                self._visit(arg, indent + 1, f"ARG#{i+1}")
+            for i, kv in enumerate(node.named_args or []):
+                self._visit(kv, indent + 1, f"PARAM#{i+1}")
+
+        elif isinstance(node, MergeStatement):
+            self.lines.append(f"{prefix}MERGE_STATEMENT")
+            if node.target:
+                alias = f" AS {node.target_alias}" if node.target_alias else ""
+                self.lines.append(f"{current_indent}  ├── TARGET: {node.target.name if hasattr(node.target, 'name') else '?'}{alias}")
+            if node.source is not None:
+                self.lines.append(f"{current_indent}  ├── USING")
+                self._visit(node.source, indent + 2, "SOURCE")
+                if node.source_alias:
+                    self.lines.append(f"{current_indent}    └── ALIAS: {node.source_alias}")
+            if node.on_condition is not None:
+                self.lines.append(f"{current_indent}  ├── ON")
+                self._visit(node.on_condition, indent + 2, "COND")
+            for i, clause in enumerate(node.clauses or []):
+                self._visit(clause, indent + 1, f"CLAUSE#{i+1}")
+
+        elif isinstance(node, MergeClauseNode):
+            self.lines.append(f"{prefix}MERGE_CLAUSE: {node.match_type or '?'} / {node.action or '?'}")
+            if node.condition is not None:
+                self._visit(node.condition, indent + 1, "AND COND")
+            for asgn in (node.set_clauses or []):
+                self._visit(asgn, indent + 1, "SET")
+
+        elif isinstance(node, PrintStatement):
+            self.lines.append(f"{prefix}PRINT_STATEMENT")
+            if node.expr is not None:
+                self._visit(node.expr, indent + 1, "EXPR")
 
         # --- 2. 表達式與函數節點 ---
 

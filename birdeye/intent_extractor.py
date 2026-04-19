@@ -125,6 +125,10 @@ class IntentExtractor:
             for col in (node.get("columns") or []):
                 self._collect_tables(col, tables, local_ctes)
 
+        elif nt == "ScriptNode":
+            for stmt in (node.get("statements") or []):
+                self._collect_tables(stmt, tables, cte_names)
+
         elif nt == "UnionStatement":
             self._collect_tables(node.get("left"),  tables, cte_names)
             self._collect_tables(node.get("right"), tables, cte_names)
@@ -183,7 +187,10 @@ class IntentExtractor:
 
         nt = node.get("node_type", "")
 
-        if nt == "SelectStatement":
+        if nt == "ScriptNode":
+            for stmt in (node.get("statements") or []):
+                self._walk(stmt, intents, cte_names)
+        elif nt == "SelectStatement":
             self._walk_select(node, intents, cte_names)
         elif nt == "UnionStatement":
             self._walk(node.get("left"),  intents, cte_names)
@@ -198,6 +205,25 @@ class IntentExtractor:
             schema, table = self._table_info(node.get("table"))
             if table and table not in cte_names:
                 self._add(intents, schema, table, None, INTENT_DELETE)
+
+        elif nt == "IfStatement":
+            # condition 可含子查詢（如 IF (SELECT ...) > 0），用空 alias_map 走訪
+            self._walk_expr(node.get("condition"), {}, INTENT_FILTER, intents, cte_names)
+            self._walk(node.get("then_block"), intents, cte_names)
+            self._walk(node.get("else_block"), intents, cte_names)
+
+        elif nt == "MergeStatement":
+            self._walk_merge(node, intents, cte_names)
+
+        elif nt == "SetStatement":
+            # value 可為純量子查詢（SET @v = (SELECT ...)）或運算式，用空 alias_map 走訪
+            if not node.get("is_option"):
+                self._walk_expr(node.get("value"), {}, INTENT_READ, intents, cte_names)
+
+        elif nt == "DeclareStatement":
+            # default_value 可含表達式（如 DECLARE @v INT = (SELECT ...)）
+            if node.get("default_value"):
+                self._walk_expr(node.get("default_value"), {}, INTENT_READ, intents, cte_names)
 
     # ── SelectStatement ───────────────────────────────────────────
 
@@ -326,6 +352,50 @@ class IntentExtractor:
         if node.get("source"):
             self._walk(node["source"], intents, cte_names)
 
+    # ── MergeStatement ────────────────────────────────────────────
+
+    def _walk_merge(self, node, intents, cte_names):
+        source = node.get("source")
+        source_alias = (node.get("source_alias") or "").upper()
+
+        # Walk USING source (subquery or table) → READ intents
+        if source:
+            self._walk(source, intents, cte_names)
+
+        # Build alias_map for target table
+        target = node.get("target")
+        target_alias = node.get("target_alias") or ""
+        schema, table = self._table_info(target)
+        alias_map = {}
+        if table and table.upper() not in cte_names:
+            alias_map[table] = (schema, table)
+            if target_alias:
+                alias_map[target_alias] = (schema, table)
+
+        # Source alias 是衍生資料表 — 欄位引用已由 USING 子查詢走訪，此處跳過
+        derived_aliases = {source_alias} if source_alias else set()
+
+        # ON condition → FILTER（僅目標表欄位，來源 alias 跳過）
+        self._walk_expr(node.get("on_condition"), alias_map, INTENT_FILTER, intents, cte_names, derived_aliases)
+
+        for clause in (node.get("clauses") or []):
+            action = (clause.get("action") or "").upper()
+            if action == "UPDATE":
+                for sc in (clause.get("set_clauses") or []):
+                    col_node = sc.get("column")
+                    if col_node and col_node.get("node_type") == "IdentifierNode":
+                        c_schema, c_table, c_name = self._resolve_col(col_node, alias_map)
+                        self._add(intents, c_schema or schema, c_table or table, c_name, INTENT_UPDATE)
+                    self._walk_expr(sc.get("expr"), alias_map, INTENT_READ, intents, cte_names, derived_aliases)
+            elif action == "INSERT":
+                for col_node in (clause.get("insert_columns") or []):
+                    if col_node and col_node.get("node_type") == "IdentifierNode":
+                        self._add(intents, schema, table, col_node.get("name"), INTENT_INSERT)
+                for v in (clause.get("insert_values") or []):
+                    self._walk_expr(v, alias_map, INTENT_READ, intents, cte_names, derived_aliases)
+            elif action == "DELETE":
+                self._add(intents, schema, table, None, INTENT_DELETE)
+
     # ── Expression walker ─────────────────────────────────────────
 
     def _walk_expr(self, expr, alias_map, intent_type, intents, cte_names,
@@ -336,6 +406,9 @@ class IntentExtractor:
         nt = expr.get("node_type", "") if isinstance(expr, dict) else ""
 
         if nt == "IdentifierNode":
+            # @param 是外部輸入參數，不是欄位引用，跳過
+            if (expr.get("name") or "").startswith("@"):
+                return
             # derived table alias 的欄位引用無法歸屬來源 table，跳過
             qualifiers = expr.get("qualifiers") or []
             if derived_aliases and len(qualifiers) == 1 and qualifiers[0] in derived_aliases:
