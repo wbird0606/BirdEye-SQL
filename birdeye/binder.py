@@ -667,6 +667,7 @@ class Binder:
             if isinstance(d, dict):
                 d.pop("alias", None)
                 d.pop("resolved_table", None)   # 排除 binder 運行時序造成的差異
+                d.pop("resolved_from_param", None)  # 排除新加的結構參數屬性
                 for v in d.values(): _strip(v)
             elif isinstance(d, list):
                 for item in d: _strip(item)
@@ -681,7 +682,9 @@ class Binder:
                 raise SemanticError(f"Column '{expr.name}' must appear in the GROUP BY clause or be used in an aggregate function")
         elif isinstance(expr, BinaryExpressionNode): self._check_agg_integrity(expr.left, groups); self._check_agg_integrity(expr.right, groups)
         elif isinstance(expr, FunctionCallNode):
-            for a in expr.args: self._check_agg_integrity(a, groups)
+            # 如果同名函數在 GROUP BY中，其參數被視為已分組
+            if not any(isinstance(g, FunctionCallNode) and g.name == expr.name and len(g.args) == len(expr.args) for g in groups):
+                for a in expr.args: self._check_agg_integrity(a, groups)
         elif isinstance(expr, CaseExpressionNode):
             if expr.input_expr: self._check_agg_integrity(expr.input_expr, groups)
             for w, t in expr.branches: self._check_agg_integrity(w, groups); self._check_agg_integrity(t, groups)
