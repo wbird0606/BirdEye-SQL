@@ -55,9 +55,13 @@ class ASTVisualizer:
                 param_info = f" [Params: {len(node.bound_params)}]"
             self.lines.append(f"{prefix}SELECT_STATEMENT{param_info}")
             if hasattr(node, "bound_params") and node.bound_params:
-                self.lines.append(f"{current_indent}  ├── BOUND PARAMS")
+                self.lines.append(f"{current_indent}  ├── BOUND PARAMS (types)")
                 for name, type_name in sorted(node.bound_params.items()):
                     self.lines.append(f"{current_indent}  │   └── {name}: {type_name}")
+            if hasattr(node, "bound_param_values") and node.bound_param_values:
+                self.lines.append(f"{current_indent}  ├── BOUND PARAM VALUES")
+                for name, value in sorted(node.bound_param_values.items()):
+                    self.lines.append(f"{current_indent}  │   └── {name}: {repr(value)}")
             
             # 💡 視覺化 CTE
             if hasattr(node, 'ctes') and node.ctes:

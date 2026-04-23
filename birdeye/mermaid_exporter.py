@@ -35,7 +35,8 @@ class MermaidExporter:
         if node_type == "ScriptNode":
             count = len(node.get("statements") or [])
             params = node.get("bound_params") or {}
-            param_info = f", params={len(params)}" if params else ""
+            values = node.get("bound_param_values") or {}
+            param_info = f", params={len(params)}, values={len(values)}" if (params or values) else ""
             label = f"SCRIPT ({count} stmts{param_info})"
         elif node_type == "IdentifierNode":
             qualifiers = node.get('qualifiers') or []

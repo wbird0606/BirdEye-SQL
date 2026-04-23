@@ -43,6 +43,8 @@ class ASTSerializer:
 
         if hasattr(node, "bound_params") and node.bound_params:
             res["bound_params"] = dict(node.bound_params)
+        if hasattr(node, "bound_param_values") and node.bound_param_values:
+            res["bound_param_values"] = dict(node.bound_param_values)
         if hasattr(node, "inferred_type") and node.inferred_type != "UNKNOWN":
             res["inferred_type"] = node.inferred_type
 
