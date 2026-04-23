@@ -244,6 +244,8 @@ This animated preview is useful when you want to watch the parsing and reconstru
 
 ## 🧪 Testing Strategy (988 Tests Across 39 Suite Files)
 
+Unified governance document: [UNIFIED_TEST_STRATEGY.md](UNIFIED_TEST_STRATEGY.md)
+
 We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a **Red → Green → Zero Regression** cycle. The project currently contains **988 comprehensive test cases** across **39 test suite files** with **100% line coverage**. Representative core suites are listed below:
 
 | Test Suite | Tests | Coverage |
@@ -527,6 +529,8 @@ python main.py --ast-file my_ast.json
 如果你想看動態版本，可以打開上面的 GIF 備用連結。
 
 ## 🧪 測試策略（988 個測試案例，涵蓋 39 個測試套件檔案）
+
+統一治理主文件：[UNIFIED_TEST_STRATEGY.md](UNIFIED_TEST_STRATEGY.md)
 
 我們嚴格遵守**測試驅動開發 (TDD)**，每個功能均遵循 **Red → Green → 零回歸** 循環。專案目前包含 **39 個測試套件檔案**、**988 個全面測試案例**，**行覆蓋率達 100%**。下表列出具代表性的核心測試套件：
 

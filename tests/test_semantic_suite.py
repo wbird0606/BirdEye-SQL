@@ -117,6 +117,72 @@ def test_zta_alias_invalidation_deep(registry):
         binder = Binder(registry)
         binder.bind(ast)
 
+def test_external_param_type_inference(global_runner):
+    """外部傳入的 params 應參與語意推導，讓 @param 不再停在 UNKNOWN。"""
+    result = global_runner.run(
+        "SELECT AddressID FROM Address WHERE AddressID = @customerId",
+        params={"customerId": 123},
+    )
+    assert result["status"] == "success"
+    assert result["ast"].where_condition.right.inferred_type == "INT"
+    assert "BOUND PARAMS" in result["tree"]
+    assert "@CUSTOMERID: INT" in result["tree"]
+
+
+def test_structural_param_resolution_success(global_runner):
+    """結構參數有安全值時，應解析為實際識別符並通過綁定。"""
+    result = global_runner.run(
+        "SELECT TOP 5 ProductID FROM @tableName ORDER BY @sortCol",
+        params={"tableName": "Product", "sortCol": "ProductID"},
+    )
+    assert result["status"] == "success"
+    assert result["ast"].table.name == "Product"
+    assert result["ast"].order_by_terms[0].column.name == "ProductID"
+
+
+def test_structural_param_resolution_blocks_unsafe_identifier(global_runner):
+    """結構參數若解析為可疑識別符（含注入片段）應拒絕。"""
+    with pytest.raises(SemanticError, match="requires a runtime parameter value"):
+        run_bind_with_runner(
+            "SELECT TOP 5 ProductID FROM Product ORDER BY @sortCol",
+            global_runner,
+        )
+
+    with pytest.raises(SemanticError, match="unsafe identifier"):
+        global_runner.run(
+            "SELECT TOP 5 ProductID FROM Product ORDER BY @sortCol",
+            params={"sortCol": "ProductID; DROP TABLE Users;--"},
+        )
+
+
+def test_structural_param_resolution_blocks_missing_runtime_value(global_runner):
+    """結構參數未提供 runtime 值時，應 fail-closed。"""
+    with pytest.raises(SemanticError, match="requires a runtime parameter value"):
+        global_runner.run("SELECT TOP 1 * FROM @tableName")
+
+
+def test_structural_param_resolution_blocks_unknown_table(global_runner):
+    """FROM 結構參數解析後若資料表不存在，應由語意層拒絕。"""
+    with pytest.raises(SemanticError, match="Table 'GhostTable' not found"):
+        global_runner.run(
+            "SELECT TOP 1 * FROM @tableName",
+            params={"tableName": "GhostTable"},
+        )
+
+
+def test_structural_param_changes_ast_and_json(global_runner):
+    """同一 SQL 在不同結構參數下，AST/JSON 應反映不同語意。"""
+    sql = "SELECT ProductID, Name, ListPrice FROM Product ORDER BY @sortCol"
+
+    by_id = global_runner.run(sql, params={"sortCol": "ProductID"})
+    by_name = global_runner.run(sql, params={"sortCol": "Name"})
+
+    assert by_id["status"] == "success"
+    assert by_name["status"] == "success"
+    assert by_id["ast"].order_by_terms[0].column.name == "ProductID"
+    assert by_name["ast"].order_by_terms[0].column.name == "Name"
+    assert by_id["json"] != by_name["json"]
+
 
 # --- (from test_type_checking_suite.py) ---
 

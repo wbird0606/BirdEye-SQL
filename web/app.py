@@ -165,10 +165,11 @@ def parse_sql():
         return jsonify({"status": "error", "error_type": "Request Error", "message": "Missing 'sql' in payload"}), 400
 
     sql = data['sql']
+    params = data.get('params')
     
     try:
         # 使用當前的全域 runner 進行解析
-        result = global_runner.run_multi(sql)
+        result = global_runner.run_multi(sql, params=params)
 
         return jsonify({
             "status": "success",

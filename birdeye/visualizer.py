@@ -33,7 +33,14 @@ class ASTVisualizer:
         # --- 0. 多語句腳本根節點 ---
 
         if isinstance(node, ScriptNode):
-            self.lines.append(f"{prefix}SCRIPT ({len(node.statements)} statements)")
+            param_info = ""
+            if hasattr(node, "bound_params") and node.bound_params:
+                param_info = f", params={len(node.bound_params)}"
+            self.lines.append(f"{prefix}SCRIPT ({len(node.statements)} statements{param_info})")
+            if hasattr(node, "bound_params") and node.bound_params:
+                self.lines.append(f"{current_indent}  ├── BOUND PARAMS")
+                for name, type_name in sorted(node.bound_params.items()):
+                    self.lines.append(f"{current_indent}  │   └── {name}: {type_name}")
             for i, stmt in enumerate(node.statements):
                 connector = "├── " if i < len(node.statements) - 1 else "└── "
                 self.lines.append(f"{current_indent}  {connector}STATEMENT #{i + 1}")
@@ -43,7 +50,14 @@ class ASTVisualizer:
         # --- 1. 語句類節點 (Statements) ---
 
         if isinstance(node, SelectStatement):
-            self.lines.append(f"{prefix}SELECT_STATEMENT")
+            param_info = ""
+            if hasattr(node, "bound_params") and node.bound_params:
+                param_info = f" [Params: {len(node.bound_params)}]"
+            self.lines.append(f"{prefix}SELECT_STATEMENT{param_info}")
+            if hasattr(node, "bound_params") and node.bound_params:
+                self.lines.append(f"{current_indent}  ├── BOUND PARAMS")
+                for name, type_name in sorted(node.bound_params.items()):
+                    self.lines.append(f"{current_indent}  │   └── {name}: {type_name}")
             
             # 💡 視覺化 CTE
             if hasattr(node, 'ctes') and node.ctes:

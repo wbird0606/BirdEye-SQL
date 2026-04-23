@@ -34,17 +34,27 @@ class MermaidExporter:
         label = node_type
         if node_type == "ScriptNode":
             count = len(node.get("statements") or [])
-            label = f"SCRIPT ({count} stmts)"
+            params = node.get("bound_params") or {}
+            param_info = f", params={len(params)}" if params else ""
+            label = f"SCRIPT ({count} stmts{param_info})"
         elif node_type == "IdentifierNode":
             qualifiers = node.get('qualifiers') or []
             full_name = ".".join(qualifiers + [node.get('name', '')])
-            label = f"ID: {full_name}"
+            inferred = node.get("inferred_type")
+            type_info = f" [{inferred}]" if inferred and inferred != "UNKNOWN" else ""
+            label = f"ID: {full_name}{type_info}"
         elif node_type == "LiteralNode":
-            label = f"LITERAL: {node.get('value')}"
+            type_name = node.get("inferred_type") or node.get("type")
+            type_info = f" [{type_name}]" if type_name and type_name != "UNKNOWN" else ""
+            label = f"LITERAL: {node.get('value')}{type_info}"
         elif node_type == "BinaryExpressionNode":
-            label = f"OP: {node.get('op')}"
+            inferred = node.get("inferred_type")
+            type_info = f" [{inferred}]" if inferred and inferred != "UNKNOWN" else ""
+            label = f"OP: {node.get('op')}{type_info}"
         elif node_type == "FunctionCallNode":
-            label = f"FUNC: {node.get('name')}"
+            inferred = node.get("inferred_type")
+            type_info = f" [{inferred}]" if inferred and inferred != "UNKNOWN" else ""
+            label = f"FUNC: {node.get('name')}{type_info}"
         elif node_type == "BetweenExpressionNode":
             label = "BETWEEN"
         elif node_type == "CastExpressionNode":

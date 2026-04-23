@@ -35,6 +35,78 @@ def test_api_parse_success(client):
     assert "SELECT_STATEMENT" in data["result"]["tree"]
     assert "graph TD" in data["result"]["mermaid"]
 
+def test_api_parse_with_params(client):
+    """驗證 /api/parse 能將 params 傳入語意分析流程。"""
+    payload = {
+        "sql": "SELECT AddressID FROM Address WHERE AddressID = @customerId",
+        "params": {"customerId": 123},
+    }
+    response = client.post(
+        '/api/parse',
+        data=json.dumps(payload),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data["status"] == "success"
+
+
+def test_api_parse_structural_param_order_by_success(client):
+    """ORDER BY 結構參數有合法值時應可通過，且輸出 JSON 反映解析後欄位。"""
+    payload = {
+        "sql": "SELECT ProductID, Name, ListPrice FROM Product ORDER BY @sortCol",
+        "params": {"sortCol": "ProductID"},
+    }
+    response = client.post(
+        '/api/parse',
+        data=json.dumps(payload),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data["status"] == "success"
+    assert "ProductID" in data["result"]["json"]
+
+
+def test_api_parse_structural_param_order_by_unsafe_blocked(client):
+    """ORDER BY 結構參數含不安全識別符時應被擋下。"""
+    payload = {
+        "sql": "SELECT ProductID, Name, ListPrice FROM Product ORDER BY @sortCol",
+        "params": {"sortCol": "ProductID;X"},
+    }
+    response = client.post(
+        '/api/parse',
+        data=json.dumps(payload),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data["status"] == "error"
+    assert "Semantic Error" in data["error_type"]
+    assert "unsafe identifier" in data["message"]
+
+
+def test_api_parse_structural_param_from_missing_value_blocked(client):
+    """FROM 結構參數缺值時應 fail-closed。"""
+    payload = {
+        "sql": "SELECT TOP 1 * FROM @tableName",
+        "params": {},
+    }
+    response = client.post(
+        '/api/parse',
+        data=json.dumps(payload),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data["status"] == "error"
+    assert "Semantic Error" in data["error_type"]
+    assert "requires a runtime parameter value" in data["message"]
+
 def test_api_parse_semantic_error(client):
     """驗證 /api/parse 端點遇到 ZTA 攔截時，回傳 400 與明確的錯誤訊息"""
     # 嘗試查詢不存在的表

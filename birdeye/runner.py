@@ -33,7 +33,7 @@ class BirdEyeRunner:
             f = csv_content
         self.registry.load_from_csv(f)
 
-    def run(self, sql):
+    def run(self, sql, params=None):
         """
         執行完整 Pipeline 並回傳結果物件。
         包含原始 AST, 樹狀圖與 Mermaid 代碼。
@@ -47,7 +47,7 @@ class BirdEyeRunner:
         ast = parser.parse()
 
         # 3. Semantic Analysis (ZTA Enforcement & Type Inference)
-        bound_ast = self._binder.bind(ast)
+        bound_ast = self._binder.bind(ast, external_params=params)
 
         # 4. Generate Outputs
         tree_text = self.visualizer.dump(bound_ast)
@@ -62,7 +62,7 @@ class BirdEyeRunner:
             "mermaid": mermaid_code
         }
 
-    def run_multi(self, sql):
+    def run_multi(self, sql, params=None):
         """
         多語句入口：以分號分隔多條 T-SQL 語句，回傳與 run() 相同格式的結果。
         ScriptNode 作為根節點貫穿整個 pipeline，Binder 共享 temp_schemas / variable_scope。
@@ -71,7 +71,7 @@ class BirdEyeRunner:
         tokens = lexer.tokenize()
         parser = Parser(tokens, sql)
         script = parser.parse_script()
-        self._binder.bind(script)
+        self._binder.bind(script, external_params=params)
         tree_text = self.visualizer.dump(script)
         ast_json = self.serializer.to_json(script)
         mermaid_code = self.exporter.export(json.loads(ast_json))
@@ -83,7 +83,7 @@ class BirdEyeRunner:
             "mermaid": mermaid_code,
         }
 
-    def parse_only(self, sql):
+    def parse_only(self, sql, params=None):
         """
         僅執行 Lexer + Parser，跳過 Binder。
         適合 intent extraction：不需要 schema 驗證，任何欄位名稱都接受。
@@ -95,7 +95,7 @@ class BirdEyeRunner:
         ast = parser.parse()
         return {"ast": ast}
 
-    def parse_only_multi(self, sql):
+    def parse_only_multi(self, sql, params=None):
         """
         多語句版 parse_only：Lexer + parse_script()，跳過 Binder。
         適合多語句 first-pass table discovery。
@@ -107,7 +107,7 @@ class BirdEyeRunner:
         script = parser.parse_script()
         return {"ast": script}
 
-    def run_script(self, sql):
+    def run_script(self, sql, params=None):
         """
         Issue #51: 執行多語句腳本。
         - 以 GO (單獨成行) 分隔批次
@@ -140,7 +140,7 @@ class BirdEyeRunner:
                 tokens = lexer.tokenize()
                 parser = Parser(tokens, stmt_sql)
                 ast = parser.parse()
-                binder.bind(ast)
+                binder.bind(ast, external_params=params)
                 batch_asts.append(ast)
             all_batches.append(batch_asts)
 

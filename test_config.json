@@ -1,0 +1,10 @@
+{
+  "keycloak_url":  "http://192.168.150.132:8080",
+  "realm":         "Company",
+  "client_id":     "ADVENTUREWORKS",
+  "proxy_url":     "http://192.168.150.131:8888",
+  "birdeye_url":   "http://192.168.150.131:5000",
+  "callback_port": 9090,
+  "redirect_host": "http://192.168.150.131",
+  "db_id":         2
+}

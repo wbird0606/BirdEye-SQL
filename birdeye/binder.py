@@ -1,4 +1,6 @@
 # birdeye/binder.py (v6.7)
+import re
+
 from birdeye.ast import (
     SelectStatement, UpdateStatement, DeleteStatement, InsertStatement,
     SqlBulkCopyStatement, IdentifierNode, BinaryExpressionNode,
@@ -14,20 +16,29 @@ class SemanticError(Exception):
     pass
 
 class Binder:
+    _IDENTIFIER_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+
     def __init__(self, registry):
         self.registry = registry
         self.scopes = []; self.nullable_stack = []; self._last_root_nullables = set()
         self.cte_schemas = {}
         self.variable_scope = {}  # Issue #51: @var_name.upper() → type str
         self.temp_schemas = {}    # Issue #52: #TABLE_NAME.upper() → {COL: type}
+        self.external_params = {} # @param_name.upper() → type str
+        self.external_param_values = {} # @param_name.upper() → runtime value
 
     @property
     def nullable_scopes(self):
         return self.nullable_stack[-1] if self.nullable_stack else self._last_root_nullables
 
-    def bind(self, stmt):
+    def bind(self, stmt, external_params=None):
         self.scopes = []; self.nullable_stack = []; self._last_root_nullables = set()
         self.cte_schemas = {}
+        self.external_params, self.external_param_values = self._normalize_external_params(external_params)
+        if self.external_params:
+            setattr(stmt, "bound_params", dict(self.external_params))
+        if self.external_param_values:
+            setattr(stmt, "bound_param_values", dict(self.external_param_values))
         if isinstance(stmt, ScriptNode):
             # 多語句：每條語句共享 temp_schemas / variable_scope（模擬同一 session）
             for s in stmt.statements:
@@ -38,6 +49,10 @@ class Binder:
         return self._bind_node(stmt)
 
     def _bind_node(self, stmt):
+        if self.external_params:
+            setattr(stmt, "bound_params", dict(self.external_params))
+        if self.external_param_values:
+            setattr(stmt, "bound_param_values", dict(self.external_param_values))
         if isinstance(stmt, SelectStatement): self._bind_select(stmt)
         elif isinstance(stmt, UnionStatement): self._bind_union(stmt)
         elif isinstance(stmt, UpdateStatement): self._bind_update(stmt)
@@ -87,9 +102,14 @@ class Binder:
         if stmt.where_condition: self._visit_expression(stmt.where_condition)
         if any(self._is_agg_raw(c) for c in stmt.columns) or stmt.group_by_cols:
             for c in stmt.columns: self._check_agg_integrity(c, stmt.group_by_cols)
-        for g in stmt.group_by_cols: self._visit_expression(g)
+        for g in stmt.group_by_cols:
+            if isinstance(g, IdentifierNode):
+                self._resolve_structural_identifier(g, "GROUP BY", allow_qualified=True)
+            self._visit_expression(g)
         projected_aliases = {c.alias.upper(): c.inferred_type for c in stmt.columns if hasattr(c, 'alias') and c.alias}
         for o in stmt.order_by_terms:
+            if isinstance(o.column, IdentifierNode):
+                self._resolve_structural_identifier(o.column, "ORDER BY", allow_qualified=True)
             if isinstance(o.column, IdentifierNode) and o.column.name.upper() in projected_aliases:
                 o.column.inferred_type = projected_aliases[o.column.name.upper()]
             else: self._visit_expression(o.column)
@@ -154,7 +174,71 @@ class Binder:
             return f"{table_node.qualifiers[0].upper()}.{name_up}"
         return name_up
 
+    @staticmethod
+    def _infer_type_from_value(value):
+        if value is None:
+            return "UNKNOWN"
+        if isinstance(value, bool):
+            return "BIT"
+        if isinstance(value, int):
+            return "INT"
+        if isinstance(value, float):
+            return "FLOAT"
+        if isinstance(value, (bytes, bytearray, memoryview)):
+            return "VARBINARY"
+        if isinstance(value, str):
+            return "NVARCHAR"
+        return "UNKNOWN"
+
+    def _normalize_external_params(self, params):
+        normalized = {}
+        values = {}
+        if not params:
+            return normalized, values
+        for key, value in params.items():
+            param_name = key.upper() if str(key).startswith("@") else f"@{str(key).upper()}"
+            if isinstance(value, dict):
+                declared_type = value.get("type") or value.get("data_type")
+                runtime_value = value.get("value")
+                inferred = declared_type.upper() if isinstance(declared_type, str) and declared_type else self._infer_type_from_value(runtime_value)
+            else:
+                runtime_value = value
+                inferred = self._infer_type_from_value(value)
+            normalized[param_name] = inferred
+            values[param_name] = runtime_value
+        return normalized, values
+
+    def _is_safe_identifier(self, candidate, allow_qualified=False):
+        parts = candidate.split(".")
+        if len(parts) > 2:
+            return False
+        if len(parts) == 2 and not allow_qualified:
+            return False
+        return all(self._IDENTIFIER_PATTERN.match(p) for p in parts)
+
+    def _resolve_structural_identifier(self, node, context, allow_qualified=False):
+        if not isinstance(node, IdentifierNode) or not isinstance(node.name, str) or not node.name.startswith("@"):
+            return
+        key = node.name.upper()
+        if key not in self.external_param_values:
+            raise SemanticError(f"{context} placeholder '{node.name}' requires a runtime parameter value")
+
+        raw_value = self.external_param_values[key]
+        if not isinstance(raw_value, str) or not raw_value.strip():
+            raise SemanticError(f"{context} placeholder '{node.name}' must be a non-empty identifier string")
+
+        candidate = raw_value.strip()
+        if not self._is_safe_identifier(candidate, allow_qualified=allow_qualified):
+            raise SemanticError(f"{context} placeholder '{node.name}' resolved to unsafe identifier '{candidate}'")
+
+        parts = candidate.split(".")
+        node.name = parts[-1]
+        node.qualifiers = parts[:-1]
+        setattr(node, "resolved_from_param", key)
+
     def _register_scope(self, table_node, alias):
+        if hasattr(table_node, "name") and isinstance(table_node.name, str) and table_node.name.startswith("@"):
+            self._resolve_structural_identifier(table_node, "FROM/JOIN table", allow_qualified=True)
         rt = self._table_key(table_node)
         table_name_up = table_node.name.upper()
         is_temp = table_name_up.startswith('#')
@@ -181,6 +265,9 @@ class Binder:
             key = node.name.upper()
             if key in self.variable_scope:
                 node.inferred_type = self.variable_scope[key]
+                return
+            if key in self.external_params:
+                node.inferred_type = self.external_params[key]
                 return
             # 未宣告的 @param 視為外部輸入參數（parameterized query placeholder），
             # type=UNKNOWN，不報錯。應用程式層傳入的 @CustomerId 等無需 DECLARE。

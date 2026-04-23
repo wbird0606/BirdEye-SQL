@@ -50,6 +50,8 @@
             <div id="panel-sql2ast" style="display:flex; flex-direction:column; flex:1; min-height:0;">
                 <h3 style="margin:0 0 8px;">SQL Query</h3>
                 <textarea id="sql-input" placeholder="Type your SQL here...&#10;e.g. SELECT AddressID, City FROM Address"></textarea>
+                <h3 style="margin:6px 0 8px; font-size:14px; color:#c5c5c5;">Params (JSON, optional)</h3>
+                <textarea id="params-input" style="flex:0.45;" placeholder='e.g. {"customerId": 123, "minPrice": {"type": "INT", "value": 100}}'></textarea>
                 <button onclick="parseSql()">Parse & Visualize</button>
             </div>
 
@@ -205,16 +207,28 @@
 
         async function parseSql() {
             const sql = document.getElementById('sql-input').value;
+            const paramsText = document.getElementById('params-input').value;
             const errorBox = document.getElementById('error-box');
             errorBox.style.display = 'none';
 
             if (!sql.trim()) return;
 
+            let paramsPayload = null;
+            if (paramsText && paramsText.trim()) {
+                try {
+                    paramsPayload = JSON.parse(paramsText);
+                } catch (e) {
+                    errorBox.style.display = 'block';
+                    errorBox.innerHTML = `<strong>Params JSON Error:</strong><br/>${e.message}`;
+                    return;
+                }
+            }
+
             try {
                 const response = await fetch('/api/parse', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ sql })
+                    body: JSON.stringify({ sql, params: paramsPayload })
                 });
 
                 const data = await response.json();
