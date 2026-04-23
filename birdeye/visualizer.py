@@ -38,9 +38,13 @@ class ASTVisualizer:
                 param_info = f", params={len(node.bound_params)}"
             self.lines.append(f"{prefix}SCRIPT ({len(node.statements)} statements{param_info})")
             if hasattr(node, "bound_params") and node.bound_params:
-                self.lines.append(f"{current_indent}  ├── BOUND PARAMS")
+                self.lines.append(f"{current_indent}  ├── BOUND PARAMS (types)")
                 for name, type_name in sorted(node.bound_params.items()):
                     self.lines.append(f"{current_indent}  │   └── {name}: {type_name}")
+            if hasattr(node, "bound_param_values") and node.bound_param_values:
+                self.lines.append(f"{current_indent}  ├── BOUND PARAM VALUES")
+                for name, value in sorted(node.bound_param_values.items()):
+                    self.lines.append(f"{current_indent}  │   └── {name}: {repr(value)}")
             for i, stmt in enumerate(node.statements):
                 connector = "├── " if i < len(node.statements) - 1 else "└── "
                 self.lines.append(f"{current_indent}  {connector}STATEMENT #{i + 1}")

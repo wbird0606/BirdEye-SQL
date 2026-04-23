@@ -26,6 +26,7 @@ class Binder:
         self.temp_schemas = {}    # Issue #52: #TABLE_NAME.upper() → {COL: type}
         self.external_params = {} # @param_name.upper() → type str
         self.external_param_values = {} # @param_name.upper() → runtime value
+        self._attach_param_metadata_to_nodes = True
 
     @property
     def nullable_scopes(self):
@@ -34,24 +35,28 @@ class Binder:
     def bind(self, stmt, external_params=None):
         self.scopes = []; self.nullable_stack = []; self._last_root_nullables = set()
         self.cte_schemas = {}
+        self._attach_param_metadata_to_nodes = True
         self.external_params, self.external_param_values = self._normalize_external_params(external_params)
         if self.external_params:
             setattr(stmt, "bound_params", dict(self.external_params))
         if self.external_param_values:
             setattr(stmt, "bound_param_values", dict(self.external_param_values))
         if isinstance(stmt, ScriptNode):
+            # Script 根節點保留參數資訊，避免每個子語句重複掛載相同 metadata。
+            self._attach_param_metadata_to_nodes = False
             # 多語句：每條語句共享 temp_schemas / variable_scope（模擬同一 session）
             for s in stmt.statements:
                 self.scopes = []; self.nullable_stack = []
                 self.cte_schemas = {}
                 self._bind_node(s)
+            self._attach_param_metadata_to_nodes = True
             return stmt
         return self._bind_node(stmt)
 
     def _bind_node(self, stmt):
-        if self.external_params:
+        if self._attach_param_metadata_to_nodes and self.external_params:
             setattr(stmt, "bound_params", dict(self.external_params))
-        if self.external_param_values:
+        if self._attach_param_metadata_to_nodes and self.external_param_values:
             setattr(stmt, "bound_param_values", dict(self.external_param_values))
         if isinstance(stmt, SelectStatement): self._bind_select(stmt)
         elif isinstance(stmt, UnionStatement): self._bind_union(stmt)

@@ -105,6 +105,23 @@ class MermaidExporter:
             if key in ["node_type", "alias", "direction", "op", "name", "target", "is_convert", "is_not", "is_star", "top"]:
                 continue
 
+            # 將參數型別與值合併為同一個節點，避免閱讀跳轉
+            if key == "bound_params" and isinstance(value, dict):
+                value_map = node.get("bound_param_values") if isinstance(node.get("bound_param_values"), dict) else {}
+                param_names = sorted(set(value.keys()) | set(value_map.keys()))
+                for p_name in param_names:
+                    p_type = value.get(p_name, "UNKNOWN")
+                    p_val = value_map.get(p_name)
+                    leaf_id = self._get_node_id()
+                    leaf_label = f"PARAM: {p_name} [{p_type}] = {repr(p_val)}"
+                    self.lines.append(f"  {leaf_id}[\"{self._clean_text(leaf_label)}\"];")
+                    self.lines.append(f"  {node_id} -- \"param\" --> {leaf_id};")
+                continue
+
+            if key == "bound_param_values" and isinstance(value, dict):
+                # 已於 bound_params 區塊合併輸出
+                continue
+
             if isinstance(value, dict):
                 child_id = self._build_tree(value)
                 if child_id:
