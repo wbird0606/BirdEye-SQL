@@ -1,7 +1,7 @@
 # 🦅 BirdEye-SQL: Semantic-Aware & Zero-Trust SQL Parser
 
 [![Testing: pytest](https://img.shields.io/badge/Testing-pytest-blue.svg)](https://docs.pytest.org/)
-[![Tests](https://img.shields.io/badge/Tests-988%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-998%20passed-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 🌍 **Language Switch / 語言切換**: [English](#english-version) | [繁體中文](#繁體中文版本)
@@ -133,6 +133,33 @@ Open your browser and navigate to `http://127.0.0.1:5000`!
 | `POST` | `/api/upload_csv` | Upload a CSV metadata file to update the schema context |
 | `POST` | `/api/intent` | SQL → column-level intent list (`READ`/`WRITE`/`DELETE`) for ZTA permission evaluation |
 
+**`/api/parse` params notes:**
+- `params` is optional.
+- You can pass direct values (type inferred automatically):
+
+```json
+{
+    "sql": "SELECT @city AS c, @age AS a, @ok AS o",
+    "params": {
+        "@city": "Taipei",
+        "@age": 30,
+        "@ok": true
+    }
+}
+```
+
+- You can also pass explicit type/value objects when needed:
+
+```json
+{
+    "params": {
+        "@city": {"type": "NVARCHAR", "value": "Taipei"}
+    }
+}
+```
+
+- Structural placeholders such as `FROM @table_name` and `ORDER BY @col_name` are fail-closed and only accept safe identifier values.
+
 ### Schema Metadata Export
 
 BirdEye-SQL uses a CSV file to describe your database schema. For new exports, you should include schema and use the 4-column format. The 3-column format is kept for backward compatibility.
@@ -242,11 +269,11 @@ This animated preview is useful when you want to watch the parsing and reconstru
 - AST → SQL reconstruction (round-trip)
 - Zero Trust Architecture (ZTA) security enforcement
 
-## 🧪 Testing Strategy (988 Tests Across 39 Suite Files)
+## 🧪 Testing Strategy (998 Tests Across 39 Suite Files)
 
 Unified governance document: [UNIFIED_TEST_STRATEGY.md](UNIFIED_TEST_STRATEGY.md)
 
-We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a **Red → Green → Zero Regression** cycle. The project currently contains **988 comprehensive test cases** across **39 test suite files** with **100% line coverage**. Representative core suites are listed below:
+We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a **Red → Green → Zero Regression** cycle. The project currently contains **998 comprehensive test cases** across **39 test suite files** with **100% line coverage**. Representative core suites are listed below:
 
 | Test Suite | Tests | Coverage |
 |---|---|---|
@@ -278,7 +305,7 @@ We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a
 | `test_security_adversarial_suite.py` | — | SQL injection adversarial suite: boolean-blind, stacked queries, comment injection, UNION, linked server |
 | `test_adversarial_appendix.py` | — | Supplementary adversarial edge cases |
 
-**Current Status**: ✅ **100% Tests Passed** (988/988) — **100% Line Coverage**
+**Current Status**: ✅ **100% Tests Passed** (998/998) — **100% Line Coverage**
 ```powershell
 pytest tests/
 ```
@@ -417,6 +444,33 @@ python web/app.py
 | `POST` | `/api/upload_csv` | 上傳 CSV 元數據檔案以更新 schema 上下文 |
 | `POST` | `/api/intent` | SQL → 欄位層級操作意圖清單（`READ`/`WRITE`/`DELETE`），供 ZTA 權限驗證使用 |
 
+**`/api/parse` 的 params 說明：**
+- `params` 為可選欄位。
+- 可直接傳值（自動推斷型別）：
+
+```json
+{
+    "sql": "SELECT @city AS c, @age AS a, @ok AS o",
+    "params": {
+        "@city": "Taipei",
+        "@age": 30,
+        "@ok": true
+    }
+}
+```
+
+- 也可在需要時傳 `type/value` 物件：
+
+```json
+{
+    "params": {
+        "@city": {"type": "NVARCHAR", "value": "Taipei"}
+    }
+}
+```
+
+- `FROM @table_name`、`ORDER BY @col_name` 這類結構性 placeholder 採 fail-closed，只接受安全的識別符值。
+
 ### Schema 元數據匯出
 
 BirdEye-SQL 透過 CSV 檔案描述資料庫結構。若為新匯出資料，建議應包含 schema 並使用 4 欄格式；3 欄格式僅保留給舊資料相容使用。
@@ -528,11 +582,11 @@ python main.py --ast-file my_ast.json
 
 如果你想看動態版本，可以打開上面的 GIF 備用連結。
 
-## 🧪 測試策略（988 個測試案例，涵蓋 39 個測試套件檔案）
+## 🧪 測試策略（998 個測試案例，涵蓋 39 個測試套件檔案）
 
 統一治理主文件：[UNIFIED_TEST_STRATEGY.md](UNIFIED_TEST_STRATEGY.md)
 
-我們嚴格遵守**測試驅動開發 (TDD)**，每個功能均遵循 **Red → Green → 零回歸** 循環。專案目前包含 **39 個測試套件檔案**、**988 個全面測試案例**，**行覆蓋率達 100%**。下表列出具代表性的核心測試套件：
+我們嚴格遵守**測試驅動開發 (TDD)**，每個功能均遵循 **Red → Green → 零回歸** 循環。專案目前包含 **39 個測試套件檔案**、**998 個全面測試案例**，**行覆蓋率達 100%**。下表列出具代表性的核心測試套件：
 
 | 測試套件 | 測試數 | 涵蓋範圍 |
 |---|---|---|
@@ -564,7 +618,7 @@ python main.py --ast-file my_ast.json
 | `test_security_adversarial_suite.py` | — | SQL 注入對抗性測試：boolean-blind、stacked queries、comment injection、UNION、linked server |
 | `test_adversarial_appendix.py` | — | 補充對抗性邊界案例 |
 
-**目前狀態**: ✅ **100% 測試通過** (988/988) — **行覆蓋率 100%**
+**目前狀態**: ✅ **100% 測試通過** (998/998) — **行覆蓋率 100%**
 ```powershell
 pytest tests/
 ```
