@@ -4,6 +4,7 @@ from birdeye.registry import MetadataRegistry
 from birdeye.lexer import Lexer
 from birdeye.parser import Parser
 from birdeye.binder import Binder, SemanticError
+from birdeye.reconstructor import ASTReconstructor
 
 
 def run_bind_with_runner(sql, runner):
@@ -182,6 +183,40 @@ def test_structural_param_changes_ast_and_json(global_runner):
     assert by_id["ast"].order_by_terms[0].column.name == "ProductID"
     assert by_name["ast"].order_by_terms[0].column.name == "Name"
     assert by_id["json"] != by_name["json"]
+
+
+def test_qmark_params_success(global_runner):
+    """支援 ? + list 位置參數，並正確映射型別與值。"""
+    result = global_runner.run(
+        "SELECT ProductID FROM Product WHERE ProductID = ? AND Name = ?",
+        params=[1, "Adjustable Race"],
+    )
+    assert result["status"] == "success"
+    assert "?: INT" in result["tree"]
+    assert "?: NVARCHAR" in result["tree"]
+    assert "?: 1" in result["tree"]
+
+    reconstructed = ASTReconstructor().from_json_str(result["json"])
+    assert "ProductID = ?" in reconstructed
+    assert "Name = ?" in reconstructed
+
+
+def test_qmark_params_count_mismatch_raises(global_runner):
+    """? 數量與 params 長度不一致時應 fail-closed。"""
+    with pytest.raises(ValueError, match="PARAM_COUNT_MISMATCH"):
+        global_runner.run(
+            "SELECT ProductID FROM Product WHERE ProductID = ? AND Name = ?",
+            params=[1],
+        )
+
+
+def test_qmark_params_mixed_mode_blocked(global_runner):
+    """SQL 使用 ? 但 params 傳 object 時應拒絕。"""
+    with pytest.raises(ValueError, match="PARAM_MODE_MIXED"):
+        global_runner.run(
+            "SELECT ProductID FROM Product WHERE ProductID = ?",
+            params={"productId": 1},
+        )
 
 
 # --- (from test_type_checking_suite.py) ---

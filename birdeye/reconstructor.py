@@ -15,6 +15,9 @@ class ASTReconstructor:
     將 AST JSON（dict 或 JSON 字串）重建為 SQL 字串。
     """
 
+    def __init__(self):
+        self._param_input_mode = None
+
     def from_json_str(self, json_str: str) -> str:
         """接受 JSON 字串，回傳 SQL"""
         return self.to_sql(json.loads(json_str))
@@ -23,6 +26,7 @@ class ASTReconstructor:
         """接受 dict，回傳 SQL"""
         if node is None:
             return ""
+        self._param_input_mode = node.get("param_input_mode", getattr(self, "_param_input_mode", None))
         nt = node.get("node_type", "")
         method = getattr(self, f"_sql_{nt}", None)
         if method:
@@ -293,7 +297,10 @@ class ASTReconstructor:
         return sql
 
     def _sql_IdentifierNode(self, n: dict) -> str:
-        parts = list(n.get("qualifiers") or []) + [n["name"]]
+        name = n["name"]
+        if self._param_input_mode == "qmark" and isinstance(name, str) and name.upper().startswith("@P") and name[2:].isdigit():
+            name = "?"
+        parts = list(n.get("qualifiers") or []) + [name]
         return ".".join(parts)
 
     def _sql_LiteralNode(self, n: dict) -> str:

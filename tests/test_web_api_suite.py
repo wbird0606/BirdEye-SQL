@@ -107,6 +107,42 @@ def test_api_parse_structural_param_from_missing_value_blocked(client):
     assert "Semantic Error" in data["error_type"]
     assert "requires a runtime parameter value" in data["message"]
 
+
+def test_api_parse_qmark_params_success(client):
+    """驗證 /api/parse 支援 ? + array params。"""
+    payload = {
+        "sql": "SELECT ProductID FROM Product WHERE ProductID = ? AND Name = ?",
+        "params": [1, "Adjustable Race"],
+    }
+    response = client.post(
+        '/api/parse',
+        data=json.dumps(payload),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 200
+    data = json.loads(response.data)
+    assert data["status"] == "success"
+    assert "?:" in data["result"]["tree"]
+
+
+def test_api_parse_qmark_params_count_mismatch(client):
+    """? 數量與 params 陣列長度不一致時，API 應回傳 400。"""
+    payload = {
+        "sql": "SELECT ProductID FROM Product WHERE ProductID = ? AND Name = ?",
+        "params": [1],
+    }
+    response = client.post(
+        '/api/parse',
+        data=json.dumps(payload),
+        content_type='application/json'
+    )
+
+    assert response.status_code == 400
+    data = json.loads(response.data)
+    assert data["status"] == "error"
+    assert "PARAM_COUNT_MISMATCH" in data["message"]
+
 def test_api_parse_semantic_error(client):
     """驗證 /api/parse 端點遇到 ZTA 攔截時，回傳 400 與明確的錯誤訊息"""
     # 嘗試查詢不存在的表

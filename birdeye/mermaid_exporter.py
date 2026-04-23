@@ -40,7 +40,11 @@ class MermaidExporter:
             label = f"SCRIPT ({count} stmts{param_info})"
         elif node_type == "IdentifierNode":
             qualifiers = node.get('qualifiers') or []
-            full_name = ".".join(qualifiers + [node.get('name', '')])
+            name = node.get('name', '')
+            internal = node.get('internal_param_name')
+            if internal and name == "?":
+                name = f"?<{internal}>"
+            full_name = ".".join(qualifiers + [name])
             inferred = node.get("inferred_type")
             type_info = f" [{inferred}]" if inferred and inferred != "UNKNOWN" else ""
             label = f"ID: {full_name}{type_info}"
@@ -109,11 +113,14 @@ class MermaidExporter:
             if key == "bound_params" and isinstance(value, dict):
                 value_map = node.get("bound_param_values") if isinstance(node.get("bound_param_values"), dict) else {}
                 param_names = sorted(set(value.keys()) | set(value_map.keys()))
+                qmark_mode = node.get("param_input_mode") == "qmark"
                 for p_name in param_names:
                     p_type = value.get(p_name, "UNKNOWN")
                     p_val = value_map.get(p_name)
                     leaf_id = self._get_node_id()
-                    leaf_label = f"PARAM: {p_name} [{p_type}] = {repr(p_val)}"
+                    is_positional = qmark_mode and isinstance(p_name, str) and p_name.upper().startswith("@P")
+                    disp_name = f"?<{p_name}>" if is_positional else p_name
+                    leaf_label = f"PARAM: {disp_name} [{p_type}] = {repr(p_val)}"
                     self.lines.append(f"  {leaf_id}[\"{self._clean_text(leaf_label)}\"];")
                     self.lines.append(f"  {node_id} -- \"param\" --> {leaf_id};")
                 continue

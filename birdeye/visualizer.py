@@ -26,6 +26,19 @@ class ASTVisualizer:
         self._visit(node, 0, "ROOT")
         return "\n".join(self.lines)
 
+    @staticmethod
+    def _qmark_mode(node):
+        return getattr(node, "param_input_mode", None) == "qmark"
+
+    @staticmethod
+    def _param_sort_key(name):
+        if isinstance(name, str) and name.upper().startswith("@P") and name[2:].isdigit():
+            return (0, int(name[2:]))
+        return (1, str(name))
+
+    def _display_param_name(self, node, name):
+        return "?" if self._qmark_mode(node) and isinstance(name, str) and name.upper().startswith("@P") else name
+
     def _visit(self, node, indent: int, label: str):
         prefix = "  " * indent + "└── " if indent > 0 else ""
         current_indent = "  " * indent
@@ -39,12 +52,14 @@ class ASTVisualizer:
             self.lines.append(f"{prefix}SCRIPT ({len(node.statements)} statements{param_info})")
             if hasattr(node, "bound_params") and node.bound_params:
                 self.lines.append(f"{current_indent}  ├── BOUND PARAMS (types)")
-                for name, type_name in sorted(node.bound_params.items()):
-                    self.lines.append(f"{current_indent}  │   └── {name}: {type_name}")
+                for name, type_name in sorted(node.bound_params.items(), key=lambda kv: self._param_sort_key(kv[0])):
+                    disp = self._display_param_name(node, name)
+                    self.lines.append(f"{current_indent}  │   └── {disp}: {type_name}")
             if hasattr(node, "bound_param_values") and node.bound_param_values:
                 self.lines.append(f"{current_indent}  ├── BOUND PARAM VALUES")
-                for name, value in sorted(node.bound_param_values.items()):
-                    self.lines.append(f"{current_indent}  │   └── {name}: {repr(value)}")
+                for name, value in sorted(node.bound_param_values.items(), key=lambda kv: self._param_sort_key(kv[0])):
+                    disp = self._display_param_name(node, name)
+                    self.lines.append(f"{current_indent}  │   └── {disp}: {repr(value)}")
             for i, stmt in enumerate(node.statements):
                 connector = "├── " if i < len(node.statements) - 1 else "└── "
                 self.lines.append(f"{current_indent}  {connector}STATEMENT #{i + 1}")
@@ -60,12 +75,14 @@ class ASTVisualizer:
             self.lines.append(f"{prefix}SELECT_STATEMENT{param_info}")
             if hasattr(node, "bound_params") and node.bound_params:
                 self.lines.append(f"{current_indent}  ├── BOUND PARAMS (types)")
-                for name, type_name in sorted(node.bound_params.items()):
-                    self.lines.append(f"{current_indent}  │   └── {name}: {type_name}")
+                for name, type_name in sorted(node.bound_params.items(), key=lambda kv: self._param_sort_key(kv[0])):
+                    disp = self._display_param_name(node, name)
+                    self.lines.append(f"{current_indent}  │   └── {disp}: {type_name}")
             if hasattr(node, "bound_param_values") and node.bound_param_values:
                 self.lines.append(f"{current_indent}  ├── BOUND PARAM VALUES")
-                for name, value in sorted(node.bound_param_values.items()):
-                    self.lines.append(f"{current_indent}  │   └── {name}: {repr(value)}")
+                for name, value in sorted(node.bound_param_values.items(), key=lambda kv: self._param_sort_key(kv[0])):
+                    disp = self._display_param_name(node, name)
+                    self.lines.append(f"{current_indent}  │   └── {disp}: {repr(value)}")
             
             # 💡 視覺化 CTE
             if hasattr(node, 'ctes') and node.ctes:

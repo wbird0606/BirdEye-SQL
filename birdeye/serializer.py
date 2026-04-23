@@ -22,9 +22,18 @@ class ASTSerializer:
     v1.8.0: 支援全節點遞迴序列化，包括 UNION, CTE, CAST, BETWEEN。
     """
 
+    def __init__(self):
+        self._param_input_mode = None
+
     def to_json(self, node, indent=2) -> str:
         """主入口：將 AST 根節點轉換為 JSON 字串"""
+        self._param_input_mode = getattr(node, "param_input_mode", None)
         return json.dumps(self._serialize(node), indent=indent, ensure_ascii=False)
+
+    def _display_identifier_name(self, name):
+        if self._param_input_mode == "qmark" and isinstance(name, str) and name.upper().startswith("@P") and name[2:].isdigit():
+            return "?"
+        return name
 
     def _serialize(self, node):
         """遞迴將節點物件轉換為 dict"""
@@ -40,6 +49,9 @@ class ASTSerializer:
             return [self._serialize(item) for item in node]
 
         res = {"node_type": node.__class__.__name__}
+
+        if hasattr(node, "param_input_mode") and node.param_input_mode:
+            res["param_input_mode"] = node.param_input_mode
 
         if hasattr(node, "bound_params") and node.bound_params:
             res["bound_params"] = dict(node.bound_params)
@@ -132,8 +144,12 @@ class ASTSerializer:
             })
 
         elif isinstance(node, IdentifierNode):
+            internal_param_name = None
+            if self._param_input_mode == "qmark" and isinstance(node.name, str) and node.name.upper().startswith("@P") and node.name[2:].isdigit():
+                internal_param_name = node.name.upper()
             res.update({
-                "name":           node.name,
+                "name":           self._display_identifier_name(node.name),
+                "internal_param_name": internal_param_name,
                 "qualifiers":     node.qualifiers,
                 "alias":          node.alias,
                 "resolved_table": getattr(node, "resolved_table", None),
