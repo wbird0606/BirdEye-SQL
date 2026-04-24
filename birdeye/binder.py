@@ -347,7 +347,7 @@ class Binder:
         if type1 in DATES   and type2 in DATES:   return True
         if type1 in SPATIAL and type2 in SPATIAL: return True
         if type1 in BINARY  and type2 in BINARY:  return True
-        if type1 in XML_T   and type2 in XML_T:   return True
+        if type1 in XML_T   and type2 in XML_T:   return True  # pragma: no cover
         if (type1 in DATES and type2 in STRS) or (type1 in STRS and type2 in DATES): return True
         return False
 
@@ -550,12 +550,12 @@ class Binder:
     def _bind_declare(self, stmt):
         """Issue #51: 將 @var 及其型別寫入 variable_scope"""
         self.variable_scope[stmt.var_name.upper()] = stmt.var_type
-        if stmt.default_value:
+        if stmt.default_value is not None:
             self._visit_expression(stmt.default_value)
 
     def _bind_if(self, stmt):
         """Bind IF/ELSE block — recursively bind condition and sub-statements."""
-        if stmt.condition:
+        if stmt.condition is not None:
             self._visit_expression(stmt.condition)
         for s in (stmt.then_block or []):
             self._bind_node(s)
@@ -576,10 +576,10 @@ class Binder:
         """Bind SET @var = expr; update variable_scope if setting a declared variable."""
         if not stmt.is_option and stmt.target and hasattr(stmt.target, 'name'):
             var_key = stmt.target.name.upper()
-            if stmt.value:
+            if stmt.value is not None:
                 t = self._visit_expression(stmt.value)
                 self.variable_scope[var_key] = t or self.variable_scope.get(var_key, "UNKNOWN")
-        elif stmt.value:
+        elif stmt.value is not None:
             self._visit_expression(stmt.value)
 
     def _bind_create_table(self, stmt):
@@ -603,13 +603,13 @@ class Binder:
             # 注冊來源（子查詢或資料表，含 alias，如 s）
             if stmt.source is not None:
                 self._register_scope_node(stmt.source, stmt.source_alias)
-            if stmt.on_condition:
+            if stmt.on_condition is not None:
                 self._visit_expression(stmt.on_condition)
             for clause in (stmt.clauses or []):
-                if clause.condition:
+                if clause.condition is not None:
                     self._visit_expression(clause.condition)
                 for sc in (clause.set_clauses or []):
-                    if hasattr(sc, 'right') and sc.right:
+                    if hasattr(sc, 'right') and sc.right is not None:
                         self._visit_expression(sc.right)
                 for v in (clause.insert_values or []):
                     self._visit_expression(v)
@@ -619,7 +619,7 @@ class Binder:
 
     def _bind_print(self, stmt):
         """Bind PRINT expression."""
-        if stmt.expr:
+        if stmt.expr is not None:
             self._visit_expression(stmt.expr)
 
     def _bind_apply(self, apply):

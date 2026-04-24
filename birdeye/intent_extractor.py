@@ -32,6 +32,10 @@ class IntentExtractor:
         intents  = IntentExtractor().extract_from_str(ast_json_str)
     """
 
+    def __init__(self):
+        # Allow internal walker methods to be called safely in isolation.
+        self._seen = set()
+
     def extract(self, ast_dict):
         """
         入口：傳入 AST JSON dict（單一語句或 list），

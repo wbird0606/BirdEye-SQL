@@ -554,11 +554,12 @@ class Parser:
                     if self._peek() and self._peek().type == TokenType.KEYWORD_SELECT:
                         right_node = self._parse_select_with_set_ops()
                     else:
+                        if self._peek() and self._peek().type == TokenType.SYMBOL_RPAREN:
+                            raise SyntaxError(f"Expected expression list after {op_str}")
                         right_node = []
                         while True:
                             right_node.append(self._parse_expression())
                             if not self._match(TokenType.SYMBOL_COMMA): break
-                        if not right_node: raise SyntaxError(f"Expected expression list after {op_str}")
                     self._consume(TokenType.SYMBOL_RPAREN, f"Expected ) after {op_str} list")
                     node = BinaryExpressionNode(left=node, operator=op_str, right=right_node)
                 else:
