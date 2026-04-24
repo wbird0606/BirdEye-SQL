@@ -1,9 +1,160 @@
 import argparse
 import sys
 import json
+import re
 from birdeye.runner import BirdEyeRunner
 from birdeye.binder import SemanticError
 from birdeye.reconstructor import ASTReconstructor
+
+
+class _RelaxedParserError(ValueError):
+    pass
+
+
+def _to_scalar(token):
+    low = token.lower()
+    if low == "true":
+        return True
+    if low == "false":
+        return False
+    if low == "null" or low == "none":
+        return None
+    if re.fullmatch(r"[+-]?\d+", token):
+        return int(token)
+    if re.fullmatch(r"[+-]?(\d+\.\d*|\.\d+|\d+)([eE][+-]?\d+)?", token):
+        return float(token)
+    return token
+
+
+def _tokenize_relaxed(raw):
+    tokens = []
+    i = 0
+    n = len(raw)
+    punct = "{}[]:,"
+
+    while i < n:
+        ch = raw[i]
+        if ch.isspace():
+            i += 1
+            continue
+
+        if ch in punct:
+            tokens.append((ch, ch))
+            i += 1
+            continue
+
+        if ch in ('"', "'"):
+            quote = ch
+            i += 1
+            buf = []
+            while i < n:
+                c = raw[i]
+                if c == "\\" and i + 1 < n:
+                    buf.append(raw[i + 1])
+                    i += 2
+                    continue
+                if c == quote:
+                    i += 1
+                    break
+                buf.append(c)
+                i += 1
+            else:
+                raise _RelaxedParserError("Unterminated quoted string")
+            tokens.append(("STRING", "".join(buf)))
+            continue
+
+        j = i
+        while j < n and (not raw[j].isspace()) and raw[j] not in punct:
+            j += 1
+        tokens.append(("BARE", raw[i:j]))
+        i = j
+
+    return tokens
+
+
+def _parse_relaxed(raw):
+    tokens = _tokenize_relaxed(raw)
+    pos = 0
+
+    def peek():
+        return tokens[pos] if pos < len(tokens) else (None, None)
+
+    def consume(expected=None):
+        nonlocal pos
+        tok = peek()
+        if expected is not None and tok[0] != expected:
+            raise _RelaxedParserError(f"Expected token {expected}, got {tok[0]}")
+        pos += 1
+        return tok
+
+    def parse_value():
+        kind, val = peek()
+        if kind == "{":
+            consume("{")
+            obj = {}
+            if peek()[0] == "}":
+                consume("}")
+                return obj
+            while True:
+                k_kind, k_val = peek()
+                if k_kind not in ("STRING", "BARE"):
+                    raise _RelaxedParserError("Object key must be string or bare identifier")
+                consume()
+                consume(":")
+                obj[str(k_val)] = parse_value()
+                if peek()[0] == ",":
+                    consume(",")
+                    continue
+                consume("}")
+                return obj
+
+        if kind == "[":
+            consume("[")
+            arr = []
+            if peek()[0] == "]":
+                consume("]")
+                return arr
+            while True:
+                arr.append(parse_value())
+                if peek()[0] == ",":
+                    consume(",")
+                    continue
+                consume("]")
+                return arr
+
+        if kind == "STRING":
+            consume("STRING")
+            return val
+
+        if kind == "BARE":
+            consume("BARE")
+            return _to_scalar(val)
+
+        raise _RelaxedParserError("Invalid value token")
+
+    parsed = parse_value()
+    if pos != len(tokens):
+        raise _RelaxedParserError("Unexpected trailing tokens")
+    return parsed
+
+
+def _parse_cli_params(raw):
+    # 1) strict JSON first
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        pass
+
+    # 2) tolerate accidental wrapping quotes
+    if len(raw) >= 2 and raw[0] == raw[-1] and raw[0] in ("'", '"'):
+        inner = raw[1:-1]
+        try:
+            return json.loads(inner)
+        except json.JSONDecodeError:
+            pass
+
+    # 3) PowerShell-relaxed object/array syntax (e.g. {@city: Taipei})
+    return _parse_relaxed(raw)
 
 def main():
     parser = argparse.ArgumentParser(
@@ -75,9 +226,9 @@ def main():
     params = None
     if args.params:
         try:
-            params = json.loads(args.params)
-        except json.JSONDecodeError as e:
-            print(f"❌ 錯誤：--params JSON 解析失敗: {e}", file=sys.stderr)
+            params = _parse_cli_params(args.params)
+        except Exception as e:
+            print(f"❌ 錯誤：--params 解析失敗: {e}", file=sys.stderr)
             sys.exit(1)
     elif args.params_file:
         try:

@@ -260,6 +260,12 @@ python main.py --file my_query.sql \
   --format all
 ```
 
+PowerShell note:
+- In some PowerShell environments, quote escaping may transform strict JSON literals.
+- CLI now accepts both strict JSON and PowerShell-relaxed forms for `--params`.
+- Example relaxed object: `{@city: Taipei, @age: 30}`
+- Example relaxed array: `[col1, col2, Taipei]`
+
 **Output Formats:**
 - `tree`: Text-based AST tree with type annotations
 - `mermaid`: Mermaid flowchart syntax (for rendering)
