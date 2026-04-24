@@ -1,7 +1,7 @@
 # 🦅 BirdEye-SQL: Semantic-Aware & Zero-Trust SQL Parser
 
 [![Testing: pytest](https://img.shields.io/badge/Testing-pytest-blue.svg)](https://docs.pytest.org/)
-[![Tests](https://img.shields.io/badge/Tests-1003%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-1013%20passed-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 🌍 **Language Switch / 語言切換**: [English](#english-version) | [繁體中文](#繁體中文版本)
@@ -325,11 +325,11 @@ This animated preview is useful when you want to watch the parsing and reconstru
 - AST → SQL reconstruction (round-trip)
 - Zero Trust Architecture (ZTA) security enforcement
 
-## 🧪 Testing Strategy (1003 Tests Across 40+ Suite Files)
+## 🧪 Testing Strategy (1013 Tests Across 40+ Suite Files)
 
 Unified governance document: [UNIFIED_TEST_STRATEGY.md](UNIFIED_TEST_STRATEGY.md)
 
-We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a **Red → Green → Zero Regression** cycle. The project currently contains **1003 comprehensive test cases** across **40+ test suite files** with **100% line coverage**. Representative core suites are listed below:
+We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a **Red → Green → Zero Regression** cycle. The project currently contains **1013 comprehensive test cases** across **40+ test suite files** with **100% line coverage**. Representative core suites are listed below:
 
 | Test Suite | Tests | Coverage |
 |---|---|---|
@@ -361,7 +361,7 @@ We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a
 | `test_security_adversarial_suite.py` | — | SQL injection adversarial suite: boolean-blind, stacked queries, comment injection, UNION, linked server |
 | `test_adversarial_appendix.py` | — | Supplementary adversarial edge cases |
 
-**Current Status**: ✅ **100% Tests Passed** (998/998) — **100% Line Coverage**
+**Current Status**: ✅ **100% Tests Passed** (1013/1013) — **100% Line Coverage**
 ```powershell
 pytest tests/
 ```
@@ -674,7 +674,7 @@ python main.py --ast-file my_ast.json
 | `test_security_adversarial_suite.py` | — | SQL 注入對抗性測試：boolean-blind、stacked queries、comment injection、UNION、linked server |
 | `test_adversarial_appendix.py` | — | 補充對抗性邊界案例 |
 
-**目前狀態**: ✅ **100% 測試通過** (998/998) — **行覆蓋率 100%**
+**目前狀態**: ✅ **100% 測試通過** (1013/1013) — **行覆蓋率 100%**
 ```powershell
 pytest tests/
 ```
