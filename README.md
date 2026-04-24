@@ -361,6 +361,49 @@ We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a
 | `test_security_adversarial_suite.py` | — | SQL injection adversarial suite: boolean-blind, stacked queries, comment injection, UNION, linked server |
 | `test_adversarial_appendix.py` | — | Supplementary adversarial edge cases |
 
+### Complete Test Suite Inventory (40 Files)
+
+- test_74_star_intent_suite.py
+- test_adversarial_appendix.py
+- test_all_cases_intent_suite.py
+- test_binder_runner_coverage_suite.py
+- test_cli_suite.py
+- test_cte_suite.py
+- test_denied_intent.py
+- test_dml_suite.py
+- test_expressions_suite.py
+- test_final_coverage_suite.py
+- test_functions_suite.py
+- test_gap_to_100_suite.py
+- test_integration_suite.py
+- test_intent_api.py
+- test_intent_coverage_extra.py
+- test_intent_coverage_suite.py
+- test_intent_edge_cases_2_suite.py
+- test_intent_edge_cases_suite.py
+- test_intent_extractor_suite.py
+- test_intent_zta_flow.py
+- test_join_suite.py
+- test_lexer_suite.py
+- test_mermaid_suite.py
+- test_metadata_roundtrip_suite.py
+- test_mssql_boundary_suite.py
+- test_mssql_features_suite.py
+- test_new_syntax_suite.py
+- test_parser_coverage_suite.py
+- test_parser_suite.py
+- test_reconstructor_coverage_suite.py
+- test_reconstructor_suite.py
+- test_schema_registry_suite.py
+- test_security_adversarial_suite.py
+- test_select_features_suite.py
+- test_semantic_suite.py
+- test_serializer_suite.py
+- test_subquery_suite.py
+- test_visualizer_suite.py
+- test_web_api_suite.py
+- test_window_functions_suite.py
+
 **Current Status**: ✅ **100% Tests Passed** (1013/1013) — **100% Line Coverage**
 ```powershell
 pytest tests/
