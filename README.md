@@ -1,7 +1,7 @@
 # 🦅 BirdEye-SQL: Semantic-Aware & Zero-Trust SQL Parser
 
 [![Testing: pytest](https://img.shields.io/badge/Testing-pytest-blue.svg)](https://docs.pytest.org/)
-[![Tests](https://img.shields.io/badge/Tests-998%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-1003%20passed-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 🌍 **Language Switch / 語言切換**: [English](#english-version) | [繁體中文](#繁體中文版本)
@@ -133,10 +133,9 @@ Open your browser and navigate to `http://127.0.0.1:5000`!
 | `POST` | `/api/upload_csv` | Upload a CSV metadata file to update the schema context |
 | `POST` | `/api/intent` | SQL → column-level intent list (`READ`/`WRITE`/`DELETE`) for ZTA permission evaluation |
 
-**`/api/parse` params notes:**
-- `params` is optional.
-- You can pass direct values (type inferred automatically):
+**`/api/parse` parameter modes:**
 
+1. **Named Parameters (via object)** — type inferred automatically:
 ```json
 {
     "sql": "SELECT @city AS c, @age AS a, @ok AS o",
@@ -148,8 +147,16 @@ Open your browser and navigate to `http://127.0.0.1:5000`!
 }
 ```
 
-- You can also pass explicit type/value objects when needed:
+2. **Positional Parameters (via array)** — `?` placeholders map to array values:
+```json
+{
+    "sql": "SELECT ? AS city, ? AS age",
+    "params": ["Taipei", 30]
+}
+```
+(Internally mapped to `@P1`, `@P2`, ... but tree/json/reconstruct outputs preserve `?` display for style consistency)
 
+3. **Explicit Type/Value (optional)** — when type inference needs hints:
 ```json
 {
     "params": {
@@ -158,7 +165,18 @@ Open your browser and navigate to `http://127.0.0.1:5000`!
 }
 ```
 
-- Structural placeholders such as `FROM @table_name` and `ORDER BY @col_name` are fail-closed and only accept safe identifier values.
+**Structural Parameter Handling (fail-closed):**
+- Identifiers like `FROM @table_name`, `ORDER BY @col_name`, `GROUP BY @field` cannot be directly parameterized (MSSQL limit).
+- **Recommended approach**: Use application-layer whitelisting + dynamic SQL assembly, then validate with BirdEye:
+```python
+allowed_tables = {"Product", "Customer", "Address"}
+user_table = request.get('table')  # user input
+if user_table not in allowed_tables:
+    raise SecurityError("Not in whitelist")
+sql = f"SELECT TOP 10 * FROM {user_table}"
+result = runner.run(sql)  # BirdEye validates the assembled SQL
+```
+- **ZTA Enforcement**: Any structural parameter containing SQL syntax (comma, semicolon, keywords) is rejected at parse time.
 
 ### Schema Metadata Export
 
@@ -201,7 +219,9 @@ Save the output as `schema.csv`, then load it into BirdEye via:
 - **API**: `POST /api/upload_csv` with the file as multipart form data
 
 ### CLI Utility
-You can also use the parser directly from the terminal:
+You can use the parser directly from the terminal with optional parameter support:
+
+**Basic Usage (no parameters):**
 ```powershell
 # SQL → AST: parse SQL and output an AST tree
 python main.py --sql "SELECT * FROM Address" --format tree
@@ -215,6 +235,36 @@ python main.py --ast '{"node_type": "SelectStatement", ...}'
 # AST → SQL: reconstruct SQL from an AST JSON file
 python main.py --ast-file my_ast.json
 ```
+
+**With Parameters (named or positional):**
+```powershell
+# Named parameters (JSON object syntax)
+python main.py --sql "SELECT @city, @age FROM Address" \
+  --params '{"@city": "Taipei", "@age": 30}' \
+  --format tree
+
+# Positional parameters (JSON array syntax for ?)
+python main.py --sql "SELECT ?, ? FROM Address WHERE City = ?" \
+  --params '["col1", "col2", "Taipei"]' \
+  --format json
+
+# Load parameters from file
+python main.py --sql "SELECT @minPrice, @maxPrice" \
+  --params-file params.json \
+  --format tree
+
+# Combined: file SQL + parameters + custom metadata
+python main.py --file my_query.sql \
+  --csv custom_schema.csv \
+  --params '{"@minPrice": 100}' \
+  --format all
+```
+
+**Output Formats:**
+- `tree`: Text-based AST tree with type annotations
+- `mermaid`: Mermaid flowchart syntax (for rendering)
+- `json`: Raw AST JSON (suitable for `--ast-file` input)
+- `all`: All three formats at once
 
 ## ✨ Key Features
 
@@ -269,11 +319,11 @@ This animated preview is useful when you want to watch the parsing and reconstru
 - AST → SQL reconstruction (round-trip)
 - Zero Trust Architecture (ZTA) security enforcement
 
-## 🧪 Testing Strategy (998 Tests Across 39 Suite Files)
+## 🧪 Testing Strategy (1003 Tests Across 40+ Suite Files)
 
 Unified governance document: [UNIFIED_TEST_STRATEGY.md](UNIFIED_TEST_STRATEGY.md)
 
-We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a **Red → Green → Zero Regression** cycle. The project currently contains **998 comprehensive test cases** across **39 test suite files** with **100% line coverage**. Representative core suites are listed below:
+We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a **Red → Green → Zero Regression** cycle. The project currently contains **1003 comprehensive test cases** across **40+ test suite files** with **100% line coverage**. Representative core suites are listed below:
 
 | Test Suite | Tests | Coverage |
 |---|---|---|

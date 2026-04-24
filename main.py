@@ -26,6 +26,13 @@ def main():
                              "  mermaid: 輸出可用於渲染圖表的 Mermaid.js 語法\n"
                              "  json   : 輸出原始 AST JSON 結構\n"
                              "  all    : 同時輸出以上三種")
+    
+    # 參數選項（可選）
+    params_group = parser.add_mutually_exclusive_group()
+    params_group.add_argument("--params", type=str, help="[SQL→AST] 參數 (JSON 格式)\n"
+                             "  命名：{\"@city\": \"Taipei\", \"@age\": 30}\n"
+                             "  位置：[\"Taipei\", 30]")
+    params_group.add_argument("--params-file", type=str, dest="params_file", help="[SQL→AST] 從檔案讀取參數 (JSON 格式)")
 
     args = parser.parse_args()
 
@@ -64,8 +71,27 @@ def main():
     except FileNotFoundError:
         print(f"⚠️ 警告：找不到元數據檔案 '{args.csv}'。將在無元數據狀態下執行解析 (這可能導致語意綁定失敗)。", file=sys.stderr)
 
+    # 解析參數
+    params = None
+    if args.params:
+        try:
+            params = json.loads(args.params)
+        except json.JSONDecodeError as e:
+            print(f"❌ 錯誤：--params JSON 解析失敗: {e}", file=sys.stderr)
+            sys.exit(1)
+    elif args.params_file:
+        try:
+            with open(args.params_file, "r", encoding="utf-8") as f:
+                params = json.load(f)
+        except FileNotFoundError:
+            print(f"❌ 錯誤：找不到參數檔案 '{args.params_file}'", file=sys.stderr)
+            sys.exit(1)
+        except json.JSONDecodeError as e:
+            print(f"❌ 錯誤：參數檔案 JSON 解析失敗: {e}", file=sys.stderr)
+            sys.exit(1)
+
     try:
-        result = runner.run(sql)
+        result = runner.run(sql, params=params)
 
         if args.format in ["tree", "all"]:
             if args.format == "all": print("\n=== AST Tree ===")
