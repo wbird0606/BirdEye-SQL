@@ -327,6 +327,9 @@ class ASTReconstructor:
             return f"{left} {op} ({self._sql_expr(right_raw)})"
 
         right = self._sql_expr(right_raw)
+        # 純量子查詢需加括號：col = (SELECT ...)
+        if isinstance(right_raw, dict) and right_raw.get("node_type") in ("SelectStatement", "UnionStatement"):
+            right = f"({right})"
         # 加括號避免優先順序問題
         if op in ("AND", "OR"):
             return f"({left} {op} {right})"
