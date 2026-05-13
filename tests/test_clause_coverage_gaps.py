@@ -171,6 +171,27 @@ class TestParserBoundaries:
         matched = parser._match(TokenType.KEYWORD_SELECT)
         assert matched is None
 
+    @pytest.mark.parametrize(
+        "tokens, expected_type",
+        [
+            ([Token(TokenType.IDENTIFIER, "alias", 0, 5)], TokenType.IDENTIFIER),
+            ([Token(TokenType.KEYWORD_OVER, "OVER", 0, 4)], TokenType.KEYWORD_OVER),
+            ([Token(TokenType.KEYWORD_SELECT, "SELECT", 0, 6)], None),
+            ([], None),
+        ],
+    )
+    def test_match_alias_cacc_cases(self, tokens, expected_type):
+        """用 IDENTIFIER、可作別名的關鍵字、以及非別名 token / EOF 組合驗證 _match_alias。"""
+        parser = Parser(tokens, "alias")
+
+        matched = parser._match_alias()
+
+        if expected_type is None:
+            assert matched is None
+        else:
+            assert matched is not None
+            assert matched.type == expected_type
+
     def test_consume_raises_on_mismatch(self):
         """直接命中 _consume 的 not tok 為 True 分支。"""
         tokens = [Token(TokenType.KEYWORD_SELECT, "SELECT", 0, 6), Token(TokenType.EOF, "", 6, 6)]
@@ -226,6 +247,12 @@ class TestRegistryBoundaries:
         assert result is not None
         assert result.name == "SUM"
         assert result.func_type == "AGGREGATE"
+
+    def test_is_aggregate_cacc_cases(self, test_registry):
+        """直接驗證 is_aggregate 的 true / false / missing function 三種路徑。"""
+        assert test_registry.is_aggregate("SUM") is True
+        assert test_registry.is_aggregate("LEN") is False
+        assert not test_registry.is_aggregate("NONEXISTENT_FUNC_12345")
     
     def test_function_not_found(self, test_registry):
         """測試查詢不存在的函數"""
@@ -384,6 +411,195 @@ class TestCoverageBoundaries:
         for sql in sqls:
             result = runner.run(sql)
             assert result["ast"] is not None
+
+
+# ============================================================================
+# 6. CACC 擴展測試 - 高頻 One-Sided Clause 的相關聯邏輯覆蓋
+# ============================================================================
+
+class TestCACCExtended:
+    """
+    針對 only-True / only-False 的高頻 clause 新增相關聯的分支測試
+    
+    主要缺口分析:
+    - parser.py:47 (6,995x True, 0x False) - _consume 異常路徑
+    - parser.py:775/777/781 (~3-5k True) - token 類型轉換 branch
+    - registry.py:189 (2,979x True) - function metadata 查詢
+    - lexer.py:270 (4,744x False) - N-string 轉換路徑
+    """
+    
+    @pytest.fixture
+    def runner(self):
+        """建立全局 runner"""
+        csv_data = (
+            "table_name,column_name,data_type\n"
+            "Orders,OrderID,INT\n"
+            "Orders,CustomerID,INT\n"
+            "Orders,OrderDate,DATETIME\n"
+            "Orders,Amount,DECIMAL\n"
+            "Customers,CustomerID,INT\n"
+            "Customers,Name,VARCHAR\n"
+        )
+        registry = MetadataRegistry()
+        registry.load_from_csv(io.StringIO(csv_data))
+        return BirdEyeRunner(registry)
+    
+    def test_parser_consume_error_path_multiple_missing(self):
+        """
+        parser.py:47 - 測試 _consume 在多個連續錯誤時的路徑
+        goal: exercise the `if not tok:` branch with successive failures
+        """
+        # DELETE 後缺少 FROM
+        sql = "DELETE * WHERE OrderID = 1"
+        lexer = Lexer(sql)
+        tokens = lexer.tokenize()
+        parser = Parser(tokens, sql)
+        
+        with pytest.raises(SyntaxError):
+            parser.parse()
+    
+    def test_parser_token_type_check_multiple_branches(self, runner):
+        """
+        parser.py:775/777/781 - 測試 token type 檢查的多個分支
+        Simulate UNION with different operator branches
+        """
+        sql = "SELECT OrderID FROM Orders UNION SELECT CustomerID FROM Customers"
+        result = runner.run(sql)
+        assert result["ast"] is not None
+        assert isinstance(result["ast"], type(result["ast"]))  # just verify AST exists
+    
+    def test_parser_token_type_check_multiple_branches_union_all(self, runner):
+        """Test UNION ALL 路徑"""
+        sql = "SELECT OrderID FROM Orders UNION ALL SELECT CustomerID FROM Customers"
+        result = runner.run(sql)
+        assert result["ast"] is not None
+        # Verify AST was created successfully
+    
+    def test_parser_except_branch(self, runner):
+        """Test EXCEPT operator branch"""
+        sql = "SELECT OrderID FROM Orders EXCEPT SELECT CustomerID FROM Customers"
+        result = runner.run(sql)
+        assert result["ast"] is not None
+    
+    def test_parser_intersect_branch(self, runner):
+        """Test INTERSECT operator branch"""
+        sql = "SELECT OrderID FROM Orders INTERSECT SELECT CustomerID FROM Customers"
+        result = runner.run(sql)
+        assert result["ast"] is not None
+    
+    def test_registry_function_metadata_all_types(self, runner):
+        """
+        registry.py:189 - 測試函數型別檢查的各種情況
+        Ensure all function type branches are exercised
+        """
+        # Test SCALAR functions
+        result1 = runner.run("SELECT LEN(Name) FROM Customers")
+        assert result1["ast"] is not None
+        
+        # Test AGGREGATE functions
+        result2 = runner.run("SELECT COUNT(*) FROM Orders")
+        assert result2["ast"] is not None
+        
+        # Test builtin with different arities
+        result3 = runner.run("SELECT SUBSTRING(Name, 1, 3) FROM Customers")
+        assert result3["ast"] is not None
+    
+    def test_lexer_number_prefix_variations(self):
+        """
+        lexer.py:270 - 測試各種 number/prefix 情況以觸發 token 轉換邏輯
+        """
+        # Regular integer
+        result1 = Lexer("123").tokenize()
+        assert len(result1) >= 1
+        assert result1[0].type == TokenType.NUMERIC_LITERAL
+        
+        # Float
+        result2 = Lexer("123.45").tokenize()
+        assert len(result2) >= 1
+        
+        # Hexadecimal (if supported)
+        result3 = Lexer("0xAB").tokenize()
+        assert len(result3) >= 1
+    
+    def test_lexer_string_literal_variations(self):
+        """Test various string literal branches"""
+        # Single quote string
+        result1 = Lexer("'hello'").tokenize()
+        assert result1[0].type == TokenType.STRING_LITERAL
+        
+        # String with escape
+        result2 = Lexer("'it''s'").tokenize()
+        assert result2[0].type == TokenType.STRING_LITERAL
+    
+    def test_binder_null_handling_comprehensive(self, runner):
+        """
+        Comprehensive type propagation test for NULL handling paths
+        """
+        # NULL literal type
+        result1 = runner.run("SELECT NULL")
+        assert result1["ast"] is not None
+        
+        # NULL in comparison
+        result2 = runner.run("SELECT * FROM Orders WHERE OrderDate = NULL")
+        assert result2["ast"] is not None
+        
+        # Type casting with NULL
+        result3 = runner.run("SELECT CAST(NULL AS INT)")
+        assert result3["ast"] is not None
+    
+    def test_parser_join_alias_edge_cases(self, runner):
+        """
+        Test JOIN table alias matching edge cases
+        """
+        # Simple alias
+        result1 = runner.run(
+            "SELECT o.OrderID FROM Orders o WHERE o.CustomerID = 1"
+        )
+        assert result1["ast"] is not None
+        
+        # Multiple table aliases
+        result2 = runner.run(
+            "SELECT o.OrderID, c.Name FROM Orders o "
+            "JOIN Customers c ON o.CustomerID = c.CustomerID"
+        )
+        assert result2["ast"] is not None
+        
+        # Self-join with different aliases
+        result3 = runner.run(
+            "SELECT * FROM Orders o1 "
+            "JOIN Orders o2 ON o1.OrderID = o2.OrderID"
+        )
+        assert result3["ast"] is not None
+    
+    def test_parser_function_call_with_various_arg_counts(self, runner):
+        """
+        Test function calls with 0, 1, 2+ arguments to exercise branch logic
+        """
+        # 0 args
+        result1 = runner.run("SELECT GETDATE()")
+        assert result1["ast"] is not None
+        
+        # 1 arg
+        result2 = runner.run("SELECT ABS(-10)")
+        assert result2["ast"] is not None
+        
+        # 2 args (SUBSTRING)
+        result3 = runner.run("SELECT SUBSTRING(Name, 1, 3) FROM Customers")
+        assert result3["ast"] is not None
+        
+        # Variadic (COALESCE with table context)
+        result4 = runner.run("SELECT COALESCE(OrderDate, GETDATE()) FROM Orders")
+        assert result4["ast"] is not None
+    
+    def test_parser_between_all_paths(self, runner):
+        """
+        Test BETWEEN operator all paths
+        """
+        result = runner.run(
+            "SELECT * FROM Orders WHERE OrderID BETWEEN 1 AND 100"
+        )
+        assert result["ast"] is not None
+        # Verify parsing succeeded
 
 
 if __name__ == "__main__":

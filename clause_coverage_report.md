@@ -9,10 +9,10 @@ This document summarizes the latest clause-level coverage analysis for the BirdE
 ## Latest Results / 最新結果
 
 - Total clauses / 總 clause 數: 2,749
-- Fully covered clauses / 完全覆蓋: 2,090
+- Fully covered clauses / 完全覆蓋: 2,097
 - Clause coverage / Clause 覆蓋率: 76%
-- Only-True clauses / 只有 True: 436
-- Only-False clauses / 只有 False: 223
+- Only-True clauses / 只有 True: 433
+- Only-False clauses / 只有 False: 219
 - Never hit / 從未命中: 0
 
 ## Main Coverage Gaps / 主要覆蓋缺口
@@ -55,14 +55,16 @@ Targeted tests were added in [tests/test_clause_coverage_gaps.py](tests/test_cla
 
 已在 [tests/test_clause_coverage_gaps.py](tests/test_clause_coverage_gaps.py) 新增目標測試，用來覆蓋：
 
-- Parser helper failure paths
-- Lexer N-string handling
-- Registry function lookup behavior
-- Web API error handling
 
-## Related Files / 相關檔案
+ Recent CACC-focused additions also cover parser alias matching with identifier / reserved-keyword / EOF combinations, plus registry `is_aggregate()` true / false / missing-function cases.
 
-- Coverage analysis script: [tools/analyze_clause_coverage.py](tools/analyze_clause_coverage.py)
+ ## Recent updates / 最近更新
+
+ - Added 12 Correlated Active Clause Coverage (CACC) tests targeting high-value one-sided clauses in parser, lexer, registry, and binder.
+ - Gap test file [tests/test_clause_coverage_gaps.py](tests/test_clause_coverage_gaps.py) now passes: 45 tests passed.
+
+最近新增的 CACC 導向測試也涵蓋 parser alias matching 的 identifier / 保留字 / EOF 組合，以及 registry `is_aggregate()` 的 true / false / missing-function 路徑。
+
 - Coverage gap analysis helper: [tools/analyze_coverage_gaps.py](tools/analyze_coverage_gaps.py)
 - GitHub issue: https://github.com/wbird0606/BirdEye-SQL/issues/92
 

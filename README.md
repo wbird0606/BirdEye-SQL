@@ -330,6 +330,8 @@ This animated preview is useful when you want to watch the parsing and reconstru
 Unified governance document: [UNIFIED_TEST_STRATEGY.md](UNIFIED_TEST_STRATEGY.md)
 
 Clause coverage report: [clause_coverage_report.md](clause_coverage_report.md)
+Clause coverage notes: [clause_coverage_notes.md](clause_coverage_notes.md)
+Clause coverage CACC tests: [tests/test_clause_coverage_gaps.py](tests/test_clause_coverage_gaps.py)
 
 We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a **Red → Green → Zero Regression** cycle. The project currently contains **1013 comprehensive test cases** across **40+ test suite files** with **100% line coverage**. Representative core suites are listed below:
 
@@ -688,6 +690,7 @@ python main.py --ast-file my_ast.json
 統一治理主文件：[UNIFIED_TEST_STRATEGY.md](UNIFIED_TEST_STRATEGY.md)
 
 Clause coverage 報告：[clause_coverage_report.md](clause_coverage_report.md)
+Clause coverage 說明：[clause_coverage_notes.md](clause_coverage_notes.md)
 
 我們嚴格遵守**測試驅動開發 (TDD)**，每個功能均遵循 **Red → Green → 零回歸** 循環。專案目前包含 **40+ 個測試套件檔案**、**1013 個全面測試案例**，**行覆蓋率達 100%**。下表列出具代表性的核心測試套件：
 
