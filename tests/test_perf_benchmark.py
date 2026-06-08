@@ -1,8 +1,13 @@
 """
 Pipeline performance benchmarks — run with:
     PYTHONPATH=. pytest tests/test_perf_benchmark.py -v --benchmark-sort=mean
+
+Requires pytest-benchmark (pip install pytest-benchmark).
+Skipped automatically when the package is not installed.
 """
 import pytest
+
+pytest.importorskip("pytest_benchmark", reason="pytest-benchmark not installed; run: pip install pytest-benchmark")
 
 
 # ── SQL fixtures of increasing complexity ────────────────────────────────────
