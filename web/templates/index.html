@@ -19,8 +19,8 @@
         .tabs { display: flex; gap: 10px; margin-bottom: 10px; border-bottom: 1px solid #444; padding-bottom: 10px; }
         .tab-btn { background: transparent; color: #aaa; border: none; padding: 5px 10px; cursor: pointer; font-size: 14px; }
         .tab-btn.active { color: #4daafc; border-bottom: 2px solid #4daafc; }
-        .tab-content { display: none; height: 100%; }
-        .tab-content.active { display: block; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; flex: 1; min-height: 0; }
         #mermaid-output { background: #fff; padding: 20px; border-radius: 4px; height: 100%; box-sizing: border-box; overflow: auto; }
     </style>
 </head>
@@ -69,20 +69,20 @@
         <div class="panel right-panel">
             <div class="tabs" style="display: flex; justify-content: space-between; align-items: center;">
                 <div>
-                    <button class="tab-btn active" onclick="switchTab('mermaid-tab')">Flowchart (Mermaid)</button>
-                    <button class="tab-btn" onclick="switchTab('tree-tab')">AST Tree</button>
-                    <button class="tab-btn" onclick="switchTab('json-tab')">JSON</button>
-                    <button id="tab-btn-sql" class="tab-btn" onclick="switchTab('sql-tab')" style="display:none; color:#ce9178;">SQL</button>
+                    <button class="tab-btn active" onclick="switchTab('mermaid-tab', this)">Flowchart (Mermaid)</button>
+                    <button class="tab-btn" onclick="switchTab('tree-tab', this)">AST Tree</button>
+                    <button class="tab-btn" onclick="switchTab('json-tab', this)">JSON</button>
+                    <button id="tab-btn-sql" class="tab-btn" onclick="switchTab('sql-tab', this)" style="display:none; color:#ce9178;">SQL</button>
                 </div>
                 <div id="toolbar" style="display: none; gap: 5px;">
                     <button onclick="downloadSVG()" style="background: #555; padding: 5px 10px; font-size: 12px;">⬇️ SVG</button>
                 </div>
             </div>
 
-            <div id="mermaid-tab" class="tab-content active" style="position: relative; height: 100%; min-height: 400px; background: #fff; border-radius: 4px; overflow: hidden;">
+            <div id="mermaid-tab" class="tab-content active" style="position: relative; min-height: 400px; background: #fff; border-radius: 4px; overflow: hidden;">
                 <!-- 加入提示文字與繪圖區 -->
                 <div id="pan-zoom-hint" style="position: absolute; top: 10px; right: 10px; color: #888; font-size: 12px; z-index: 10; display: none;">Scroll to Zoom, Drag to Pan</div>
-                <div class="mermaid" id="mermaid-output" style="width: 100%; height: 100%; display: flex; justify-content: center; align-items: center;"></div>
+                <div class="mermaid" id="mermaid-output" style="width: 100%; height: 100%; min-height: 400px;"></div>
             </div>
             
             <div id="tree-tab" class="tab-content">
@@ -109,7 +109,7 @@
     </div>
 
     <!-- 載入 Mermaid.js 與 svg-pan-zoom -->
-    <script src="https://cdn.jsdelivr.net/npm/mermaid/dist/mermaid.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/mermaid@10.9.3/dist/mermaid.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.1/dist/svg-pan-zoom.min.js"></script>
     <script>
         // 初始化 Mermaid
@@ -153,12 +153,12 @@
             document.getElementById('toolbar').style.display = 'none';
         }
 
-        function switchTab(tabId) {
+        function switchTab(tabId, btn) {
             document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
             document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
             document.getElementById(tabId).classList.add('active');
-            event.target.classList.add('active');
-            
+            if (btn) btn.classList.add('active');
+
             // 只有在 Mermaid 標籤且有資料時才顯示工具列
             const toolbar = document.getElementById('toolbar');
             if (tabId === 'mermaid-tab' && document.querySelector('#mermaid-output svg')) {
@@ -240,37 +240,37 @@
                     
                     // 2. 重新渲染 Mermaid
                     const mermaidDiv = document.getElementById('mermaid-output');
-                    mermaidDiv.removeAttribute('data-processed');
+                    mermaidDiv.innerHTML = '';
                     mermaidDiv.textContent = data.result.mermaid;
-                    
+
                     // 清除舊的 panZoom 實例
                     if (panZoomInstance) {
                         panZoomInstance.destroy();
                         panZoomInstance = null;
                     }
 
-                    await mermaid.run({
-                        nodes: [mermaidDiv]
-                    });
-                    
+                    try {
+                        await mermaid.run({ nodes: [mermaidDiv] });
+                    } catch (mermaidErr) {
+                        mermaidDiv.innerHTML = `<pre style="color:#c00;padding:10px;">Mermaid render error:\n${mermaidErr}</pre>`;
+                    }
+
                     // 3. 綁定 svg-pan-zoom
                     const svgElement = mermaidDiv.querySelector('svg');
                     if (svgElement) {
-                        // 強制設定 SVG 長寬為 100% 以適應容器
                         svgElement.style.width = '100%';
                         svgElement.style.height = '100%';
                         svgElement.style.maxWidth = 'none';
-                        
+
                         panZoomInstance = svgPanZoom(svgElement, {
                             zoomEnabled: true,
-                            controlIconsEnabled: true, // 顯示放大縮小按鈕
+                            controlIconsEnabled: true,
                             fit: true,
                             center: true,
                             minZoom: 0.1,
                             maxZoom: 10
                         });
-                        
-                        // 顯示工具列與提示
+
                         document.getElementById('toolbar').style.display = 'flex';
                         document.getElementById('pan-zoom-hint').style.display = 'block';
                     }

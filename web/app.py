@@ -3,6 +3,8 @@ import io
 import json
 import functools
 import sys
+import threading
+import time
 from flask import Flask, request, jsonify, render_template
 
 
@@ -23,6 +25,7 @@ from birdeye.binder import SemanticError
 from birdeye.registry import MetadataRegistry
 from birdeye.reconstructor import ASTReconstructor
 from birdeye.intent_extractor import IntentExtractor
+from birdeye.row_filter import RowFilterInjector
 
 # ── 模組層級 singleton（無狀態，無需每次重建）──────────────────────────────
 _reconstructor   = ASTReconstructor()
@@ -70,6 +73,10 @@ PERMISSION_API_KEY = (
     or os.environ.get('PERMISSION_API_KEY', '')
 )
 PERMISSION_HTTP_TIMEOUT = int(os.environ.get('HTTP_TIMEOUT', '5'))
+BIRDEYE_CACHE_TTL = int(os.environ.get('BIRDEYE_CACHE_TTL', '300'))
+
+_intents_cache: dict = {}
+_intents_cache_lock = threading.Lock()
 
 
 def _fetch_schema_for_tables(db_id, tables):
@@ -292,6 +299,85 @@ def extract_intent():
         return jsonify({"status": "error", "error_type": "Semantic Error", "message": str(e)}), 400
     except Exception as e:
         return jsonify({"status": "error", "error_type": "System Error",   "message": str(e)}), 500
+
+
+@app.route('/intents', methods=['POST'])
+def intents_v2():
+    """birdeye-svc 相容端點：{sql, db_id, params} → {intents, ast_json}"""
+    body = request.get_json(silent=True) or {}
+    sql = body.get('sql', '')
+    db_id = body.get('db_id', 0)
+    params = body.get('params') or []
+
+    if not sql:
+        return jsonify({'error': 'sql is required'}), 400
+
+    cache_key = (sql, db_id)
+    with _intents_cache_lock:
+        if cache_key in _intents_cache:
+            intents, ast_json_str, ts = _intents_cache[cache_key]
+            if time.time() - ts < BIRDEYE_CACHE_TTL:
+                return jsonify({'intents': intents, 'ast_json': ast_json_str})
+
+    try:
+        raw = global_runner.parse_only_multi(sql, params)
+        raw_ast = json.loads(global_runner.serializer.to_json(raw['ast']))
+        tables = _intent_extractor.extract_tables(raw_ast)
+
+        runner = global_runner
+        if db_id:
+            metadata_csv = _fetch_schema_for_tables(db_id, tables)
+            if metadata_csv:
+                runner = _get_runner_for_schema(metadata_csv)
+
+        result = runner.run_multi(sql, params)
+        ast_json_str = result['json']
+        ast_dict = json.loads(ast_json_str)
+        intents = _intent_extractor.extract(ast_dict)
+        intents = _intent_extractor.expand_star_intents(intents, runner)
+
+        with _intents_cache_lock:
+            _intents_cache[cache_key] = (intents, ast_json_str, time.time())
+
+        return jsonify({'intents': intents, 'ast_json': ast_json_str})
+    except (SyntaxError, ValueError) as e:
+        return jsonify({'error': f'BirdEye parse error: {e}'}), 400
+    except SemanticError as e:
+        return jsonify({'error': f'BirdEye semantic error: {e}'}), 400
+    except Exception as e:
+        return jsonify({'error': f'BirdEye intent error: {e}'}), 500
+
+
+@app.route('/rewrite', methods=['POST'])
+def rewrite_v2():
+    """birdeye-svc 相容端點：{ast_json, row_filters} → {sql}"""
+    body = request.get_json(silent=True) or {}
+    ast_json_str = body.get('ast_json', '')
+    row_filters = body.get('row_filters') or []
+
+    if not ast_json_str:
+        return jsonify({'error': 'ast_json is required'}), 400
+
+    try:
+        ast_dict = json.loads(ast_json_str)
+        if not row_filters:
+            return jsonify({'sql': _reconstructor.to_sql(ast_dict)})
+
+        for rf in row_filters:
+            if rf.get('ValueType') == 'SUBQUERY' and isinstance(rf.get('Value'), str):
+                rf['Value'] = json.loads(global_runner.run(rf['Value'])['json'])
+
+        modified_ast = RowFilterInjector().inject(ast_dict, row_filters)
+        return jsonify({'sql': _reconstructor.to_sql(modified_ast)})
+    except (ValueError, KeyError) as e:
+        return jsonify({'error': str(e)}), 400
+    except Exception as e:
+        return jsonify({'error': f'rewrite error: {e}'}), 500
+
+
+@app.route('/health', methods=['GET'])
+def health():
+    return jsonify({'status': 'ok'})
 
 
 if __name__ == '__main__':

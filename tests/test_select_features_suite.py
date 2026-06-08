@@ -120,6 +120,30 @@ def test_top_missing_number():
     with pytest.raises(SyntaxError, match="Expected numeric literal after TOP"):
         run_parse(sql)
 
+
+def test_top_with_parentheses():
+    """TOP (n) 括號語法（SSMS 預設格式）應正確解析"""
+    ast = parse("SELECT TOP (1000) [AddressID] FROM [Address]")
+    assert ast.top_count == 1000
+    assert ast.top_percent is False
+
+
+def test_top_with_parentheses_percent():
+    """TOP (n) PERCENT 括號語法應正確解析"""
+    ast = parse("SELECT TOP (10) PERCENT [AddressID] FROM [Address]")
+    assert ast.top_count == 10
+    assert ast.top_percent is True
+
+
+def test_three_part_table_name(global_runner):
+    """3-part 名稱 catalog.schema.table 應忽略 catalog，用 schema.table 查 registry"""
+    sql = "SELECT TOP (1000) [AddressID], [City] FROM [AdventureWorksLT2022].[SalesLT].[Address]"
+    result = global_runner.run_multi(sql)
+    import json
+    stmt = json.loads(result['json'])['statements'][0]
+    assert stmt['top'] == 1000
+    assert any(c['name'] == 'City' for c in stmt['columns'])
+
 # --- 💡 TDD New: ORDER BY Alias Resolution ---
 
 def test_order_by_alias_resolution(bird_reg):

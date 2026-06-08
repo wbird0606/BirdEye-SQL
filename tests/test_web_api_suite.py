@@ -33,7 +33,7 @@ def test_api_parse_success(client):
     assert "tree" in data["result"]
     assert "mermaid" in data["result"]
     assert "SELECT_STATEMENT" in data["result"]["tree"]
-    assert "graph TD" in data["result"]["mermaid"]
+    assert "flowchart TD" in data["result"]["mermaid"]
 
 def test_api_parse_with_params(client):
     """驗證 /api/parse 能將 params 傳入語意分析流程。"""

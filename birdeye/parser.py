@@ -233,9 +233,13 @@ class Parser:
             stmt.is_distinct = True
 
         if self._match(TokenType.KEYWORD_TOP):
+            has_paren = bool(self._match(TokenType.SYMBOL_LPAREN))
             num_tok = self._match(TokenType.NUMERIC_LITERAL)
             if not num_tok: raise SyntaxError("Expected numeric literal after TOP")
             stmt.top_count = int(num_tok.value)
+            if has_paren:
+                if not self._match(TokenType.SYMBOL_RPAREN):
+                    raise SyntaxError("Expected ')' after TOP count")
             if self._match(TokenType.KEYWORD_PERCENT):
                 stmt.top_percent = True
 

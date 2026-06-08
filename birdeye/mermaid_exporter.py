@@ -9,15 +9,21 @@ class MermaidExporter:
 
     def export(self, ast_dict):
         """主入口：傳入序列化後的 AST 字典，回傳 Mermaid 代碼"""
-        self.lines = ["graph TD"]
+        self.lines = ["flowchart TD"]
         self.node_count = 0
         self._build_tree(ast_dict)
         return "\n".join(self.lines)
 
+    # SQL comparison operators → safe mermaid label text
+    _OP_MAP = {'<>': 'NEQ', '!=': 'NEQ', '>=': 'GTE', '<=': 'LTE', '>': 'GT', '<': 'LT', '&': 'AND', '=': 'EQ'}
+
     def _clean_text(self, text):
         """清理文字以符合 Mermaid 語法 (移除引號與特殊符號)"""
         if not text: return ""
-        return str(text).replace('"', '').replace("'", "").replace("[", "").replace("]", "").replace("(", "").replace(")", "")
+        s = str(text).replace('"', '').replace("'", "").replace("[", "").replace("]", "").replace("(", "").replace(")", "")
+        for ch, rep in self._OP_MAP.items():
+            s = s.replace(ch, rep)
+        return s
 
     def _get_node_id(self):
         self.node_count += 1
@@ -141,7 +147,7 @@ class MermaidExporter:
                         if child_id:
                             # ScriptNode 的 statements 用 STMT #N 標示，其餘維持原格式
                             if key == "statements":
-                                label_key = f"STMT #{i + 1}"
+                                label_key = f"STMT {i + 1}"
                             else:
                                 label_key = f"{key}_{i}"
                             self.lines.append(f"  {node_id} -- \"{self._clean_text(label_key)}\" --> {child_id};")

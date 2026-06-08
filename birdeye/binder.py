@@ -173,10 +173,11 @@ class Binder:
 
     @staticmethod
     def _table_key(table_node) -> str:
-        """Build registry lookup key: 'SCHEMA.TABLE' or 'TABLE'."""
+        """Build registry lookup key: 'SCHEMA.TABLE' or 'TABLE'.
+        Uses qualifiers[-1] so 3-part catalog.schema.table drops the catalog."""
         name_up = table_node.name.upper()
         if table_node.qualifiers:
-            return f"{table_node.qualifiers[0].upper()}.{name_up}"
+            return f"{table_node.qualifiers[-1].upper()}.{name_up}"
         return name_up
 
     @staticmethod
@@ -649,7 +650,10 @@ class Binder:
         if not self._is_type_compatible(lt, rt): raise SemanticError(f"Incompatible types for {ctx}: Cannot compare {lt} with {rt}")
 
     def _is_agg_raw(self, expr):
-        if isinstance(expr, FunctionCallNode): return self.registry.is_aggregate(expr.name) or any(self._is_agg_raw(a) for a in expr.args)
+        if isinstance(expr, FunctionCallNode):
+            if getattr(expr, "over_clause", None) is not None:
+                return False  # window function — not a plain aggregate
+            return self.registry.is_aggregate(expr.name) or any(self._is_agg_raw(a) for a in expr.args)
         if isinstance(expr, BinaryExpressionNode): return self._is_agg_raw(expr.left) or self._is_agg_raw(expr.right)
         if isinstance(expr, CaseExpressionNode):
             if expr.input_expr and self._is_agg_raw(expr.input_expr): return True
@@ -687,6 +691,8 @@ class Binder:
                 raise SemanticError(f"Column '{expr.name}' must appear in the GROUP BY clause or be used in an aggregate function")
         elif isinstance(expr, BinaryExpressionNode): self._check_agg_integrity(expr.left, groups); self._check_agg_integrity(expr.right, groups)
         elif isinstance(expr, FunctionCallNode):
+            if getattr(expr, "over_clause", None) is not None:
+                return  # window function is self-contained; args need not be in GROUP BY
             # 如果同名函數在 GROUP BY中，其參數被視為已分組
             if not any(isinstance(g, FunctionCallNode) and g.name == expr.name and len(g.args) == len(expr.args) for g in groups):
                 for a in expr.args: self._check_agg_integrity(a, groups)

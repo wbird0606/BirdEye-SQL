@@ -139,8 +139,64 @@ def test_window_function_syntax_errors(invalid_sql):
     with pytest.raises(SyntaxError):
         parser.parse()
 
-# --- 8. Advanced Window Function Tests (deferred) ---
-# Named window specifications will be implemented in future iteration
+# --- 8. Binder: window aggregate must not require GROUP BY ──────────────────
+
+def test_binder_window_agg_no_group_by_required(global_runner):
+    """SUM/AVG OVER() 不應要求其他欄位出現在 GROUP BY（修復前會拋 SemanticError）"""
+    sql = (
+        "SELECT SalesOrderID, CustomerID, "
+        "SUM(SubTotal) OVER (PARTITION BY CustomerID) AS CustTotal "
+        "FROM SalesLT.SalesOrderHeader"
+    )
+    result = global_runner.run_multi(sql)
+    assert result["status"] == "success"
+
+
+def test_binder_mixed_window_and_regular(global_runner):
+    """ROW_NUMBER + SUM OVER 混用，且 SELECT list 含普通欄位"""
+    sql = (
+        "SELECT SalesOrderID, CustomerID, "
+        "ROW_NUMBER() OVER (PARTITION BY CustomerID ORDER BY OrderDate) AS rn, "
+        "SUM(SubTotal) OVER (PARTITION BY CustomerID) AS CustTotal "
+        "FROM SalesLT.SalesOrderHeader"
+    )
+    result = global_runner.run_multi(sql)
+    assert result["status"] == "success"
+
+
+def test_binder_window_and_group_by_coexist(global_runner):
+    """window function 和 GROUP BY 同時存在（合法但少見）"""
+    sql = (
+        "SELECT CustomerID, COUNT(*) AS cnt, "
+        "SUM(SubTotal) OVER (PARTITION BY CustomerID) AS WinTotal "
+        "FROM SalesLT.SalesOrderHeader "
+        "GROUP BY CustomerID"
+    )
+    # CustomerID 在 GROUP BY，COUNT(*) 是 aggregate，SUM OVER 是 window → 合法
+    result = global_runner.run_multi(sql)
+    assert result["status"] == "success"
+
+
+def test_binder_plain_aggregate_still_requires_group_by(global_runner):
+    """回歸：普通 aggregate（無 OVER）仍需 GROUP BY，未出現的欄位仍應報錯"""
+    sql = (
+        "SELECT SalesOrderID, COUNT(*) AS cnt "
+        "FROM SalesLT.SalesOrderHeader"
+    )
+    with pytest.raises(SemanticError, match="GROUP BY"):
+        global_runner.run_multi(sql)
+
+
+def test_binder_where_window_not_allowed(global_runner):
+    """WHERE 子句裡放 window function 不會被當成 aggregate（過濾器語意不同，先確認不崩潰）"""
+    # 這個 SQL 本身語意不合法（window func 不能在 WHERE），
+    # 但至少不應拋出「must appear in GROUP BY」這個錯誤訊息
+    sql = (
+        "SELECT CustomerID FROM SalesLT.SalesOrderHeader "
+        "WHERE CustomerID > 0"
+    )
+    result = global_runner.run_multi(sql)
+    assert result["status"] == "success"
 
 def test_named_window_specifications_not_implemented():
     """Test that named window specifications are not yet implemented."""

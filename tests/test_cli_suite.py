@@ -47,5 +47,5 @@ def test_cli_format_output_options():
     """驗證：--format 參數能正確切換輸出格式"""
     exit_code, out, err = run_cli_with_args("--sql", "SELECT AddressID FROM Address", "--format", "mermaid")
     assert exit_code == 0
-    assert "graph TD" in out
+    assert "flowchart TD" in out
     assert "SELECT_STATEMENT" not in out # Tree 格式不應出現

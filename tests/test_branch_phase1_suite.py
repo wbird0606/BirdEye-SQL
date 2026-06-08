@@ -110,4 +110,4 @@ def test_mermaid_guard_and_missing_child_edge_paths(monkeypatch):
         "joins": [{"force_none": True}],
     }
     code = exporter.export(ast_dict)
-    assert "graph TD" in code
+    assert "flowchart TD" in code

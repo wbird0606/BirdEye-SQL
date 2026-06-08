@@ -1,7 +1,7 @@
 # 🦅 BirdEye-SQL: Semantic-Aware & Zero-Trust SQL Parser
 
 [![Testing: pytest](https://img.shields.io/badge/Testing-pytest-blue.svg)](https://docs.pytest.org/)
-[![Tests](https://img.shields.io/badge/Tests-1013%20passed-brightgreen.svg)]()
+[![Tests](https://img.shields.io/badge/Tests-1138%20passed-brightgreen.svg)]()
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 🌍 **Language Switch / 語言切換**: [English](#english-version) | [繁體中文](#繁體中文版本)
@@ -132,6 +132,9 @@ Open your browser and navigate to `http://127.0.0.1:5000`!
 | `POST` | `/api/reconstruct` | AST → SQL: accepts `{"ast": <dict or JSON string>}`, returns reconstructed SQL |
 | `POST` | `/api/upload_csv` | Upload a CSV metadata file to update the schema context |
 | `POST` | `/api/intent` | SQL → column-level intent list (`READ`/`WRITE`/`DELETE`) for ZTA permission evaluation |
+| `POST` | `/intents` | birdeye-svc compatible: `{sql, db_id, params}` → `{intents, ast_json}` (TTL cached) |
+| `POST` | `/rewrite` | birdeye-svc compatible: `{ast_json, row_filters}` → `{sql}` (row-filter injection) |
+| `GET`  | `/health` | Health check: `{"status": "ok"}` |
 
 **`/api/parse` parameter modes:**
 
@@ -291,7 +294,7 @@ PowerShell note:
 
 | Category | Features |
 |---|---|
-| **SELECT** | DISTINCT, TOP N / TOP N PERCENT, OFFSET/FETCH, INTO #temp |
+| **SELECT** | DISTINCT, TOP N / TOP (N) / TOP N PERCENT, OFFSET/FETCH, INTO #temp |
 | **JOIN** | INNER, LEFT, RIGHT, FULL OUTER, CROSS JOIN, JOIN subquery |
 | **APPLY** | CROSS APPLY, OUTER APPLY |
 | **Set Ops** | UNION, UNION ALL, INTERSECT, EXCEPT |
@@ -325,7 +328,7 @@ This animated preview is useful when you want to watch the parsing and reconstru
 - AST → SQL reconstruction (round-trip)
 - Zero Trust Architecture (ZTA) security enforcement
 
-## 🧪 Testing Strategy (1013 Tests Across 40+ Suite Files)
+## 🧪 Testing Strategy (1138 Tests Across 41+ Suite Files)
 
 Unified governance document: [UNIFIED_TEST_STRATEGY.md](UNIFIED_TEST_STRATEGY.md)
 
@@ -333,7 +336,7 @@ Clause coverage report: [clause_coverage_report.md](clause_coverage_report.md)
 Clause coverage notes: [clause_coverage_notes.md](clause_coverage_notes.md)
 Clause coverage CACC tests: [tests/test_clause_coverage_gaps.py](tests/test_clause_coverage_gaps.py)
 
-We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a **Red → Green → Zero Regression** cycle. The project currently contains **1013 comprehensive test cases** across **40+ test suite files** with **100% line coverage**. Representative core suites are listed below:
+We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a **Red → Green → Zero Regression** cycle. The project currently contains **1138 comprehensive test cases** across **41+ test suite files** with **100% line coverage**. Representative core suites are listed below:
 
 | Test Suite | Tests | Coverage |
 |---|---|---|
@@ -341,7 +344,7 @@ We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a
 | `test_parser_suite.py` | 23 | Statement routing, AST construction, syntax error boundaries |
 | `test_expressions_suite.py` | 31 | Arithmetic/bitwise/modulo, CASE WHEN, BETWEEN, CAST/CONVERT with length/style |
 | `test_functions_suite.py` | 27 | 60+ built-in functions, function sandbox, aggregate integrity, COUNT(DISTINCT) |
-| `test_select_features_suite.py` | 41 | DISTINCT, TOP/PERCENT, ORDER BY, GROUP BY/HAVING, OFFSET/FETCH, NULL literals |
+| `test_select_features_suite.py` | 44 | DISTINCT, TOP N/TOP (N)/PERCENT, 3-part table names, ORDER BY, GROUP BY/HAVING, OFFSET/FETCH |
 | `test_dml_suite.py` | 39 | INSERT (single/multi-row/SELECT), UPDATE, DELETE, TRUNCATE, mandatory WHERE |
 | `test_join_suite.py` | 33 | INNER/LEFT/RIGHT/FULL/CROSS JOIN, nullable propagation, multi-table chains |
 | `test_subquery_suite.py` | 32 | Scalar, correlated, derived tables, UNION/INTERSECT/EXCEPT derived, ANY/ALL |
@@ -350,13 +353,14 @@ We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a
 | `test_mssql_features_suite.py` | 49 | DECLARE, #temp tables, CROSS/OUTER APPLY, advanced types (Geography, XML…) |
 | `test_mssql_boundary_suite.py` | 42 | Edge cases: negative literals, global ##temp, operators, INTERSECT/EXCEPT, string functions |
 | `test_integration_suite.py` | 23 | End-to-end pipeline with real AdventureWorks metadata, cross-feature integration |
-| `test_window_functions_suite.py` | 35 | Window function parsing, binder validation, and full-pipeline coverage |
+| `test_window_functions_suite.py` | 27 | Window function parsing, binder validation (incl. `SUM OVER` no-GROUP-BY fix), full-pipeline |
 | `test_metadata_roundtrip_suite.py` | 35 | Metadata-driven SQL → JSON → SQL roundtrip coverage |
 | `test_visualizer_suite.py` | 39 | Tree rendering, Mermaid output, type annotation, all statement types |
 | `test_serializer_suite.py` | 29 | JSON serialization of all AST node types, round-trip accuracy |
 | `test_cli_suite.py` | 4 | CLI argument parsing, file I/O, output format validation |
-| `test_web_api_suite.py` | 3 | RESTful endpoints, JSON response format, HTTP error codes |
+| `test_web_api_suite.py` | 9 | RESTful endpoints, JSON response format, HTTP error codes |
 | `test_mermaid_suite.py` | 3 | Mermaid flowchart generation and node structure |
+| `test_perf_benchmark.py` | 10 | pytest-benchmark suite: pipeline latency (simple SELECT → CTE → multi-stmt), stage isolation, intent |
 | `test_reconstructor_suite.py` | 32 | AST JSON → SQL reconstruction, round-trip accuracy, all statement types |
 | `test_final_coverage_suite.py` | 54 | Targeted coverage for binder, parser, lexer, reconstructor, visualizer edge cases |
 | `test_intent_api.py` | 3 | Flask test client: `/api/intent` success, intent list, missing-sql 400 |
@@ -365,7 +369,7 @@ We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a
 | `test_security_adversarial_suite.py` | — | SQL injection adversarial suite: boolean-blind, stacked queries, comment injection, UNION, linked server |
 | `test_adversarial_appendix.py` | — | Supplementary adversarial edge cases |
 
-### Complete Test Suite Inventory (40 Files)
+### Complete Test Suite Inventory (41 Files)
 
 - test_74_star_intent_suite.py
 - test_adversarial_appendix.py
@@ -396,6 +400,7 @@ We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a
 - test_new_syntax_suite.py
 - test_parser_coverage_suite.py
 - test_parser_suite.py
+- test_perf_benchmark.py
 - test_reconstructor_coverage_suite.py
 - test_reconstructor_suite.py
 - test_schema_registry_suite.py
@@ -408,7 +413,7 @@ We strictly adhere to **Test-Driven Development (TDD)**. Every feature follows a
 - test_web_api_suite.py
 - test_window_functions_suite.py
 
-**Current Status**: ✅ **100% Tests Passed** (1013/1013) — **100% Line Coverage**
+**Current Status**: ✅ **100% Tests Passed** (1138/1138) — **100% Line Coverage**
 ```powershell
 pytest tests/
 ```
@@ -417,6 +422,46 @@ pytest tests/
 ```powershell
 python -m pytest --cov=birdeye --cov-report=term-missing tests
 ```
+
+### ⚡ Performance & Load Testing
+
+**Pipeline benchmark** (pytest-benchmark):
+```powershell
+# Run all benchmarks with mean/min/max/OPS output
+PYTHONPATH=. pytest tests/test_perf_benchmark.py -v "--benchmark-columns=mean,min,max,ops"
+
+# Save baseline for regression comparison
+PYTHONPATH=. pytest tests/test_perf_benchmark.py --benchmark-save=baseline
+
+# Fail if mean regresses more than 10%
+PYTHONPATH=. pytest tests/test_perf_benchmark.py --benchmark-compare=baseline "--benchmark-compare-fail=mean:10%"
+```
+
+Baseline numbers (single-threaded, Python 3.10):
+
+| Query type | Mean latency | OPS |
+|---|---|---|
+| Simple SELECT | ~310 µs | ~3,200 |
+| JOIN + WHERE + ORDER | ~955 µs | ~1,047 |
+| CTE complex | ~1.36 ms | ~734 |
+| 3 statements | ~2.0 ms | ~496 |
+
+**HTTP load test** (Locust — requires `web/app.py` running):
+```powershell
+pip install locust
+
+# Web UI mode (open http://localhost:8089)
+locust -f locustfile.py --host http://127.0.0.1:5000
+
+# Headless mode — 20 users, 60 s, HTML report
+locust -f locustfile.py --host http://127.0.0.1:5000 `
+       --headless -u 20 -r 5 --run-time 60s --html report_load.html
+```
+
+Three user profiles are defined in `locustfile.py`:
+- **`TypicalUser`** — developer browsing the web UI (0.5–2 s think time)
+- **`ProxyUser`** — zta-proxy calling `/intents` + `/rewrite` at maximum throughput
+- **`SpikeUser`** — no wait time, hammers `/health` to find the raw routing ceiling
 
 <br>
 <hr>
@@ -546,6 +591,9 @@ python web/app.py
 | `POST` | `/api/reconstruct` | AST → SQL：接受 `{"ast": <dict 或 JSON 字串>}`，回傳重建後的 SQL |
 | `POST` | `/api/upload_csv` | 上傳 CSV 元數據檔案以更新 schema 上下文 |
 | `POST` | `/api/intent` | SQL → 欄位層級操作意圖清單（`READ`/`WRITE`/`DELETE`），供 ZTA 權限驗證使用 |
+| `POST` | `/intents` | birdeye-svc 相容：`{sql, db_id, params}` → `{intents, ast_json}`（TTL 快取） |
+| `POST` | `/rewrite` | birdeye-svc 相容：`{ast_json, row_filters}` → `{sql}`（Row Filter 注入） |
+| `GET`  | `/health` | 健康檢查：`{"status": "ok"}` |
 
 **`/api/parse` 的 params 說明：**
 - `params` 為可選欄位。
@@ -649,7 +697,7 @@ python main.py --ast-file my_ast.json
 
 | 類別 | 功能 |
 |---|---|
-| **SELECT** | DISTINCT、TOP N / TOP N PERCENT、OFFSET/FETCH、INTO #temp |
+| **SELECT** | DISTINCT、TOP N / TOP (N) / TOP N PERCENT、OFFSET/FETCH、INTO #temp |
 | **JOIN** | INNER、LEFT、RIGHT、FULL OUTER、CROSS JOIN、子查詢 JOIN |
 | **APPLY** | CROSS APPLY、OUTER APPLY |
 | **集合運算** | UNION、UNION ALL、INTERSECT、EXCEPT |
@@ -685,14 +733,14 @@ python main.py --ast-file my_ast.json
 
 如果你想看動態版本，可以打開上面的 GIF 備用連結。
 
-## 🧪 測試策略（1013 個測試案例，涵蓋 40+ 個測試套件檔案）
+## 🧪 測試策略（1138 個測試案例，涵蓋 41+ 個測試套件檔案）
 
 統一治理主文件：[UNIFIED_TEST_STRATEGY.md](UNIFIED_TEST_STRATEGY.md)
 
 Clause coverage 報告：[clause_coverage_report.md](clause_coverage_report.md)
 Clause coverage 說明：[clause_coverage_notes.md](clause_coverage_notes.md)
 
-我們嚴格遵守**測試驅動開發 (TDD)**，每個功能均遵循 **Red → Green → 零回歸** 循環。專案目前包含 **40+ 個測試套件檔案**、**1013 個全面測試案例**，**行覆蓋率達 100%**。下表列出具代表性的核心測試套件：
+我們嚴格遵守**測試驅動開發 (TDD)**，每個功能均遵循 **Red → Green → 零回歸** 循環。專案目前包含 **41+ 個測試套件檔案**、**1138 個全面測試案例**，**行覆蓋率達 100%**。下表列出具代表性的核心測試套件：
 
 | 測試套件 | 測試數 | 涵蓋範圍 |
 |---|---|---|
@@ -700,7 +748,7 @@ Clause coverage 說明：[clause_coverage_notes.md](clause_coverage_notes.md)
 | `test_parser_suite.py` | 23 | 語句路由、AST 建構、語法錯誤邊界 |
 | `test_expressions_suite.py` | 31 | 算術/位元/模數、CASE WHEN、BETWEEN、CAST/CONVERT 含長度與 style |
 | `test_functions_suite.py` | 27 | 60+ 內建函數、函數沙箱、聚合完整性、COUNT(DISTINCT) |
-| `test_select_features_suite.py` | 41 | DISTINCT、TOP/PERCENT、ORDER BY、GROUP BY/HAVING、OFFSET/FETCH、NULL 字面值 |
+| `test_select_features_suite.py` | 44 | DISTINCT、TOP N/TOP (N)/PERCENT、3-part 表名、ORDER BY、GROUP BY/HAVING、OFFSET/FETCH |
 | `test_dml_suite.py` | 39 | INSERT（單列/多列/SELECT）、UPDATE、DELETE、TRUNCATE、強制 WHERE |
 | `test_join_suite.py` | 33 | INNER/LEFT/RIGHT/FULL/CROSS JOIN、可空性傳導、多表鏈接 |
 | `test_subquery_suite.py` | 32 | 純量、關聯、衍生資料表、UNION/INTERSECT/EXCEPT 衍生、ANY/ALL |
@@ -709,7 +757,7 @@ Clause coverage 說明：[clause_coverage_notes.md](clause_coverage_notes.md)
 | `test_mssql_features_suite.py` | 49 | DECLARE、#temp 暫存表、CROSS/OUTER APPLY、進階型別（Geography、XML…） |
 | `test_mssql_boundary_suite.py` | 42 | 邊界案例：負數字面值、##global temp、位元運算子、INTERSECT/EXCEPT、字串函數 |
 | `test_integration_suite.py` | 23 | 載入真實 AdventureWorks 元數據的端到端流水線、跨功能整合 |
-| `test_window_functions_suite.py` | 35 | 視窗函數解析、binder 驗證、完整流程覆蓋 |
+| `test_window_functions_suite.py` | 27 | 視窗函數解析、binder 驗證（含 `SUM OVER` 誤判 GROUP BY 修復）、完整流程 |
 | `test_metadata_roundtrip_suite.py` | 35 | 由 metadata 驅動的 SQL → JSON → SQL 往返覆蓋 |
 | `test_visualizer_suite.py` | 39 | 樹狀圖渲染、Mermaid 輸出、型別標註、全語句類型 |
 | `test_serializer_suite.py` | 29 | 所有 AST 節點的 JSON 序列化、往返準確性 |
@@ -724,7 +772,7 @@ Clause coverage 說明：[clause_coverage_notes.md](clause_coverage_notes.md)
 | `test_security_adversarial_suite.py` | — | SQL 注入對抗性測試：boolean-blind、stacked queries、comment injection、UNION、linked server |
 | `test_adversarial_appendix.py` | — | 補充對抗性邊界案例 |
 
-**目前狀態**: ✅ **100% 測試通過** (1013/1013) — **行覆蓋率 100%**
+**目前狀態**: ✅ **100% 測試通過** (1138/1138) — **行覆蓋率 100%**
 ```powershell
 pytest tests/
 ```

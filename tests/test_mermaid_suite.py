@@ -12,7 +12,7 @@ def test_mermaid_export_basic_nodes():
     exporter = MermaidExporter()
     code = exporter.export(ast_dict)
     
-    assert "graph TD" in code
+    assert "flowchart TD" in code
     assert "ID: Users" in code
     assert "ID: ID" in code
 

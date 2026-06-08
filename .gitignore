@@ -45,6 +45,17 @@ Thumbs.db
 .venv/
 data/*
 !data/output.csv
+
+# pytest-benchmark saved results (machine-specific)
+.benchmarks/
+
+# npm (used for mermaid dev validation only)
+node_modules/
+package.json
+package-lock.json
+
+# Temp office files
+~$*
 __pycache__/
 *.pyc
 .claude/

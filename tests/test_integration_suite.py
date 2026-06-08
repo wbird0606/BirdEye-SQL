@@ -22,7 +22,7 @@ def test_full_pipeline_with_real_metadata(runner):
 
     assert "SELECT_STATEMENT" in result["tree"]
     assert "IDENTIFIER: AddressID" in result["tree"]
-    assert "graph TD" in result["mermaid"]
+    assert "flowchart TD" in result["mermaid"]
 
     ast = result["ast"]
     assert ast.columns[0].inferred_type == "INT"
