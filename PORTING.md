@@ -45,7 +45,18 @@ birdeye-go 實作 proxy 的 `Analyser` 介面，取代 Python subprocess worker
 - 測試：`internal/birdeye/native_test.go`（7）+ `internal/handler/execute_native_test.go`（4，
   端到端經 JWT ticket → 意圖分析 → 權限檢查 → row filter 改寫 → 執行）。`go test ./...` 全綠（38）。
 
-CLI（`main.go`）與取代 `birdeye-svc` 的 Go HTTP 服務仍為 Phase 2 待辦。
+### Phase 2 CLI / web（已補）
+
+- **`cmd/birdeye`** —— 對照 `main.py`：`-sql`/`-file`/`-ast`/`-ast-file`、`-csv`、
+  `-format tree|mermaid|json|all`、`-params`（具名 or qmark 陣列）、`-params-file`。
+  退出碼 0/1/2。`main_test.go` 7 測試（對照 `test_cli_suite`）。
+- **`cmd/birdeye-web`** —— 對照 `web/app.py`：`GET /`（沿用 `index.html`）、
+  `POST /api/parse`、`POST /api/reconstruct`、`POST /api/upload_csv`（熱替換 registry）、
+  `GET /health`。輸出經比對與 Python web **byte 一致**。`main_test.go` 15 測試
+  （對照 `test_web_api_suite` + upload/health/index）。
+
+仍待辦：取代 `birdeye-svc` 的獨立 Go HTTP 服務（zta-proxy-go native 整合已讓它非必要）；
+移除 `zta-proxy-go/python/birdeye_worker.py`、`birdeye-svc/`。
 
 ## Suite 對照表
 
@@ -93,8 +104,8 @@ CLI（`main.go`）與取代 `birdeye-svc` 的 Go HTTP 服務仍為 Phase 2 待�
 | test_clause_coverage_gaps | 46 | mixed (CACC) | 13 | 🟢 | ✅ (web/app 端點 ⏭️ Phase 2) |
 | test_security_adversarial_suite | 52 | parser/binder | 14 | ⬜ | ⬜ |
 | test_adversarial_appendix | 18 | parser/binder | 14 | ⬜ | ⬜ |
-| test_cli_suite | 4 | — | — | ⏭️ Phase 2 | |
-| test_web_api_suite | 9 | — | — | ⏭️ Phase 2 | |
+| test_cli_suite | 4 | cmd/birdeye | P2 | 🟢 | ✅ |
+| test_web_api_suite | 9 | cmd/birdeye-web | P2 | 🟢 | ✅ |
 | test_intent_api | 3 | — | — | ⏭️ Phase 2 | |
 | test_intent_zta_flow | 2 | — | — | ⏭️ Phase 2 | |
 | test_denied_intent | 2 | — | — | ⏭️ Phase 2 | |
