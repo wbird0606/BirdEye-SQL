@@ -86,51 +86,56 @@ func fixtureParams(t *testing.T, r pipeRec) any {
 	return nil
 }
 
-// TestParseOnlyConformance：Go 對照 Python parse_only 的 parse 階段 ast_json（byte 一致）。
+type goPipe struct {
+	astJSON string
+	tree    string
+	mermaid string
+}
+
 func TestParseOnlyConformance(t *testing.T) {
-	runPipelineConformance(t, "parse_only", func(sql string, params any) (string, error) {
+	runPipelineConformance(t, "parse_only", func(sql string, params any) (goPipe, error) {
 		prepared, _, _, err := prepareSQL(sql, params)
 		if err != nil {
-			return "", err
+			return goPipe{}, err
 		}
 		toks, err := NewLexer(prepared).Tokenize()
 		if err != nil {
-			return "", err
+			return goPipe{}, err
 		}
 		n, err := NewParser(toks, prepared).Parse()
 		if err != nil {
-			return "", err
+			return goPipe{}, err
 		}
-		return NewSerializer().ToJSON(n), nil
+		aj := NewSerializer().ToJSON(n)
+		return goPipe{aj, NewVisualizer().Dump(n), NewMermaidExporter().ExportJSON(aj)}, nil
 	})
 }
 
-// TestRunConformance：Go Run 對照 Python run 的 parse 階段 ast_json（含 binder + param_input_mode）。
 func TestRunConformance(t *testing.T) {
 	reg := loadAdventureWorks(t)
-	runPipelineConformance(t, "run", func(sql string, params any) (string, error) {
+	runPipelineConformance(t, "run", func(sql string, params any) (goPipe, error) {
 		res, err := NewRunner(reg).Run(sql, params)
 		if err != nil {
-			return "", err
+			return goPipe{}, err
 		}
-		return res.JSON, nil
+		return goPipe{res.JSON, res.Tree, res.Mermaid}, nil
 	})
 }
 
-// TestRunMultiConformance：Go RunMulti 對照 Python run_multi 的 parse 階段 ast_json。
 func TestRunMultiConformance(t *testing.T) {
 	reg := loadAdventureWorks(t)
-	runPipelineConformance(t, "run_multi", func(sql string, params any) (string, error) {
+	runPipelineConformance(t, "run_multi", func(sql string, params any) (goPipe, error) {
 		res, err := NewRunner(reg).RunMulti(sql, params)
 		if err != nil {
-			return "", err
+			return goPipe{}, err
 		}
-		return res.JSON, nil
+		return goPipe{res.JSON, res.Tree, res.Mermaid}, nil
 	})
 }
 
-func runPipelineConformance(t *testing.T, mode string, fn func(sql string, params any) (string, error)) {
-	var total, pass, skip int
+func runPipelineConformance(t *testing.T, mode string, fn func(sql string, params any) (goPipe, error)) {
+	var total, skip int
+	pass := map[string]int{"ast_json": 0, "tree": 0, "mermaid": 0}
 	fails := map[string]int{}
 
 	for _, r := range allPipeFixtures(t) {
@@ -155,7 +160,7 @@ func runPipelineConformance(t *testing.T, mode string, fn func(sql string, param
 				t.Errorf("[%s] 錯誤分類 got %s want %s\nSQL: %q\nGo: %v\nPy: %s",
 					r.ID, be.Kind, r.Parse.Error.Category, r.SQL, gerr, r.Parse.Error.Message)
 			} else {
-				pass++
+				pass["ast_json"]++
 			}
 			continue
 		}
@@ -165,15 +170,35 @@ func runPipelineConformance(t *testing.T, mode string, fn func(sql string, param
 			t.Errorf("[%s] 非預期錯誤: %v\nSQL: %q", r.ID, gerr, r.SQL)
 			continue
 		}
-		if got != r.Parse.ASTJSON {
+		if got.astJSON != r.Parse.ASTJSON {
 			fails["ast_json 不符"]++
-			t.Errorf("[%s] ast_json 不一致\nSQL: %q\n%s", r.ID, r.SQL, firstDiff(got, r.Parse.ASTJSON))
-			continue
+			t.Errorf("[%s] ast_json 不一致\nSQL: %q\n%s", r.ID, r.SQL, firstDiff(got.astJSON, r.Parse.ASTJSON))
+		} else {
+			pass["ast_json"]++
 		}
-		pass++
+		if want, ok := r.Tree.Value.(string); ok && r.Tree.OK {
+			if strings.Contains(want, "<birdeye.ast.") {
+				// KNOWN_DEVIATIONS A3：Python 印物件 repr（含記憶體位址），本身不可重現
+				skip++
+			} else if got.tree != want {
+				fails["tree 不符"]++
+				t.Errorf("[%s] tree 不一致\nSQL: %q\n%s", r.ID, r.SQL, firstDiff(got.tree, want))
+			} else {
+				pass["tree"]++
+			}
+		}
+		if want, ok := r.Mermaid.Value.(string); ok && r.Mermaid.OK {
+			if got.mermaid != want {
+				fails["mermaid 不符"]++
+				t.Errorf("[%s] mermaid 不一致\nSQL: %q\n%s", r.ID, r.SQL, firstDiff(got.mermaid, want))
+			} else {
+				pass["mermaid"]++
+			}
+		}
 	}
 
-	t.Logf("%s conformance: %d/%d pass（skip %d：Python system/hang）", mode, pass, total, skip)
+	t.Logf("%s conformance: ast_json %d · tree %d · mermaid %d（total %d, skip %d）",
+		mode, pass["ast_json"], pass["tree"], pass["mermaid"], total, skip)
 	if len(fails) > 0 {
 		t.Errorf("失敗分類: %v", fails)
 	}

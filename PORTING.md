@@ -16,9 +16,9 @@ Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 121
 | 5 | Registry | `registry.go` | ✅ 14/14 unit |
 | 6 | Binder | `binder.go` | ✅ 18/18 unit + run 945/951 · run_multi 941/947 conformance |
 | 7 | Runner | `runner.go` `params.go` | ✅ Run/RunMulti/ParseOnly*（RunScript 待 M13）|
-| 8 | Feature suites 廣度鋪開 | parser + binder | ⬜ |
-| 9 | Reconstructor | `reconstructor.go` | ⬜ |
-| 10 | Visualizer + Mermaid | `visualizer.go` `mermaid.go` | ⬜ |
+| 8 | Feature suites（廣度） | parser + binder | 🟢 conformance 涵蓋 |
+| 9 | Reconstructor | `reconstructor.go` | ✅ 1796/1796 conformance |
+| 10 | Visualizer + Mermaid | `visualizer.go` `mermaid.go` `ordered_json.go` | ✅ tree/mermaid 全 conformance byte 一致 |
 | 11 | Intent Extractor | `intent.go` | ⬜ |
 | 12 | Row Filter Injector | `rowfilter.go` | ⬜ |
 | 13 | Integration + coverage 收尾 | — | ⬜ |
@@ -49,12 +49,12 @@ Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 121
 | test_new_syntax_suite | 46 | parser/binder | 8 | ⬜ | ⬜ |
 | test_mssql_features_suite | 49 | parser/binder | 8 | ⬜ | ⬜ |
 | test_mssql_boundary_suite | 54 | lexer/parser/binder | 8 | ⬜ | ⬜ |
-| test_reconstructor_suite | 36 | reconstructor | 9 | ⬜ | ⬜ |
-| test_reconstructor_coverage_suite | 31 | reconstructor | 9 | ⬜ | ⬜ |
-| test_reconstructor_subquery_right | 1 | reconstructor | 9 | ⬜ | ⬜ |
-| test_metadata_roundtrip_suite | 35 | serializer/reconstructor | 9 | ⬜ | ⬜ |
-| test_visualizer_suite | 39 | visualizer | 10 | ⬜ | ⬜ |
-| test_mermaid_suite | 3 | mermaid | 10 | ⬜ | ⬜ |
+| test_reconstructor_suite | 36 | reconstructor | 9 | 🟢 | ⬜ |
+| test_reconstructor_coverage_suite | 31 | reconstructor | 9 | 🟢 | ⬜ |
+| test_reconstructor_subquery_right | 1 | reconstructor | 9 | 🟢 | ⬜ |
+| test_metadata_roundtrip_suite | 35 | serializer/reconstructor | 9 | 🟢 | ⬜ |
+| test_visualizer_suite | 39 | visualizer | 10 | 🟢 | ⬜ |
+| test_mermaid_suite | 3 | mermaid | 10 | 🟢 | ⬜ |
 | test_74_star_intent_suite | 6 | intent | 11 | ⬜ | ⬜ |
 | test_all_cases_intent_suite | 35 | intent | 11 | ⬜ | ⬜ |
 | test_intent_extractor_suite | 16 | intent | 11 | ⬜ | ⬜ |
@@ -87,7 +87,7 @@ Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 121
 | baseline commit | `94498cb` |
 | fixture 檔數 | 46 pipeline + `_tokens`（846 SQL）|
 | fixture 筆數 | 2840 pipeline（parse_ok 1793 / parse_err 1047），逐階段記錄 |
-| Go 通過率 | lexer 846/846 · parse_only 936/942 · **run 945/951 · run_multi 941/947**（6 skip = Python system/hang，0 fail）|
+| Go 通過率 | ast_json: parse_only 936 · run 945 · run_multi 941 ／ tree+mermaid: 全 parse-OK fixture byte 一致 ／ reconstruct 1796/1796 |
 
 > 註：許多 `run` / `run_multi` fixture 是 semantic error —— 測試檔用虛構資料表
 > （`Users`、`Orders`）；這些 SQL 的 AST 只在 `parse_only` mode 有正輸出。

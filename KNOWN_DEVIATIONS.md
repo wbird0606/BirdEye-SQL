@@ -17,6 +17,9 @@ Go 版刻意與 Python [[baseline]] 不同之處。分兩類。
 
 > A1 例外處理：無限迴圈不是「行為」而是掛死，Go **不複製**。Go 版在此情況丟 parser error（syntax 分類）。對應 golden fixture 由產生器標記 `error.category = "hang"`，Go conformance 允許以 syntax error 對應。
 
+| A2 | `reconstructor.py` `_sql_ExecStatement` | 讀 `na['name']` / `na['value']`，但 serializer 對 `named_args`（AssignmentNode）存的是 `column` / `expr` → `KeyError`。忠實複製為 system 分類錯誤。 | 4（reconstructor）|
+| A3 | `visualizer.py` ExecStatement `RETURN_VAR` | `f"...RETURN_VAR: {node.return_var}"` 直接格式化 IdentifierNode 物件；無 `__str__` → 印 `<birdeye.ast.IdentifierNode object at 0x…>`（含記憶體位址，**每次執行都不同**）。Go 印變數名。對應 golden 由 conformance 略過。 | 10（visualizer）|
+
 ---
 
 ## B. 語言本質差異（非待修 bug）

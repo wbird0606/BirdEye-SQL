@@ -109,6 +109,12 @@ func (r *Runner) ParseOnlyMulti(sql string, params any) (Node, error) {
 }
 
 func (r *Runner) outputs(bound Node) *Result {
-	// TODO(里程碑 10): 補 Tree（visualizer）與 Mermaid。
-	return &Result{Status: "success", AST: bound, JSON: NewSerializer().ToJSON(bound)}
+	astJSON := NewSerializer().ToJSON(bound)
+	return &Result{
+		Status:  "success",
+		AST:     bound,
+		JSON:    astJSON,
+		Tree:    NewVisualizer().Dump(bound),
+		Mermaid: NewMermaidExporter().ExportJSON(astJSON),
+	}
 }
