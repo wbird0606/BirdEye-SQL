@@ -1,0 +1,14 @@
+# 手挑補漏：param 模式、多語句、結構性參數。gen_fixtures.py 會讀這個檔。
+# 欄位：sql（必填）、params（dict / list / null）、modes（預設 ["run","run_multi"]）
+{"sql": "SELECT @city AS c, @age AS a, @ok AS o", "params": {"@city": "Taipei", "@age": 30, "@ok": true}, "modes": ["run", "run_multi", "parse_only"]}
+{"sql": "SELECT ? AS city, ? AS age", "params": ["Taipei", 30], "modes": ["run", "run_multi", "parse_only"]}
+{"sql": "SELECT @c AS c", "params": {"@c": {"type": "NVARCHAR", "value": "Taipei"}}, "modes": ["run", "run_multi"]}
+{"sql": "SELECT AddressID FROM Address WHERE City = @city", "params": {"@city": "Taipei"}, "modes": ["run"]}
+{"sql": "SELECT TOP 10 * FROM @tbl", "params": {"@tbl": "Address"}, "modes": ["run"]}
+{"sql": "SELECT * FROM @tbl", "params": {"@tbl": "Address; DROP TABLE X"}, "modes": ["run"]}
+{"sql": "SELECT City FROM Address ORDER BY @col", "params": {"@col": "City"}, "modes": ["run"]}
+{"sql": "SELECT AddressID FROM Address WHERE City = ? AND PostalCode = ?", "params": ["Taipei", "100"], "modes": ["run"]}
+{"sql": "SELECT 1 AS a; SELECT 2 AS b", "params": null, "modes": ["run", "run_multi"]}
+{"sql": "DECLARE @x INT = 5; SELECT @x AS v", "params": null, "modes": ["run", "run_multi"]}
+{"sql": "DECLARE @city NVARCHAR(50); SELECT City INTO #F FROM Address WHERE City = @city", "params": null, "modes": ["run_multi"]}
+{"sql": "SELECT @P1 AS x", "params": {"@P1": "raw"}, "modes": ["run", "run_multi"]}

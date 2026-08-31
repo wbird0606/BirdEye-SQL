@@ -1,0 +1,18 @@
+# Go
+*.test
+*.exe
+/bin/
+/coverage.txt
+/coverage.html
+/coverage.out
+
+# Python fixture tool
+tools/__pycache__/
+tools/.venv/
+*.pyc
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
