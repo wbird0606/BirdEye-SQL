@@ -1326,6 +1326,20 @@ func (b *Binder) nullableScopes() map[string]bool {
 	return b.lastRootNullables
 }
 
+// NullableScopes / LastRootNullables 供白箱測試檢視外連接的可空傳導狀態
+// （對照 Python 測試存取 _binder.nullable_scopes / _last_root_nullables）。
+func (b *Binder) NullableScopes() map[string]bool    { return b.nullableScopes() }
+func (b *Binder) LastRootNullables() map[string]bool { return b.lastRootNullables }
+
+// TempSchemas 供白箱測試檢視 SELECT INTO / CREATE TABLE # 註冊的臨時表。
+func (b *Binder) TempSchemas() map[string]bool {
+	out := map[string]bool{}
+	for k := range b.tempSchemas {
+		out[k] = true
+	}
+	return out
+}
+
 // ── scope stack helpers ─────────────────────────────────────────────────────
 
 func (b *Binder) pushScope() {

@@ -9,13 +9,14 @@ type Runner struct {
 	registry *MetadataRegistry
 }
 
-// Result 對照 Python run() 回傳的 dict。
+// Result 對照 Python run() 回傳的 dict。Binder 供白箱測試檢視 scope / nullable 狀態。
 type Result struct {
 	Status  string
 	AST     Node
 	Tree    string
 	JSON    string
 	Mermaid string
+	Binder  *Binder
 }
 
 // NewRunner 建立 runner（可傳入既有 registry，否則新建）。
@@ -48,14 +49,17 @@ func (r *Runner) Run(sql string, params any) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	bound, err := NewBinder(r.registry).Bind(ast, pin)
+	bd := NewBinder(r.registry)
+	bound, err := bd.Bind(ast, pin)
 	if err != nil {
 		return nil, err
 	}
 	if m := metaOf(bound); m != nil {
 		m.ParamInputMode = string(mode)
 	}
-	return r.outputs(bound), nil
+	res := r.outputs(bound)
+	res.Binder = bd
+	return res, nil
 }
 
 // RunMulti 對照 run_multi()：ScriptNode 為根，貫穿整個 pipeline。
@@ -72,14 +76,17 @@ func (r *Runner) RunMulti(sql string, params any) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	bound, err := NewBinder(r.registry).Bind(script, pin)
+	bd := NewBinder(r.registry)
+	bound, err := bd.Bind(script, pin)
 	if err != nil {
 		return nil, err
 	}
 	if m := metaOf(bound); m != nil {
 		m.ParamInputMode = string(mode)
 	}
-	return r.outputs(bound), nil
+	res := r.outputs(bound)
+	res.Binder = bd
+	return res, nil
 }
 
 // ParseOnly 對照 parse_only()：Lexer + Parser，跳過 Binder。
