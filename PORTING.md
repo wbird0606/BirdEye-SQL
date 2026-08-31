@@ -25,9 +25,8 @@ Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 121
 | 14 | Adversarial | — | ✅ 70 案例 1:1（security_adversarial + appendix）|
 
 **Phase 1 核心 12 模組已全部移植**，所有 conformance 關卡 0 fail（見下）。
-1:1 測試套件 backfill 大致完成：47 個套件中除 web/CLI（Phase 2）外皆已 ✅ 或 🟡
-（🟡 = features_test.go 已涵蓋高價值斷言，未逐條 `contains` 斷言）。
-Go 覆蓋率 93.5% → **96.6%**（RunScript 為新增功能，非移植缺口）。
+**1:1 測試套件 backfill 完成**：47 個套件中除 web/CLI（Phase 2）外全部 ✅。
+Go 覆蓋率 93.5% → **96.7%**（RunScript 為新增功能，非移植缺口）。
 
 ## Phase 2 整合（`zta-proxy-go`）
 
@@ -62,16 +61,16 @@ CLI（`main.go`）與取代 `birdeye-svc` 的 Go HTTP 服務仍為 Phase 2 待�
 | test_binder_runner_coverage_suite | 17 | binder/runner | 6 | 🟢 | ✅ |
 | test_branch_phase1_suite | 7 | binder | 6 | 🟢 | ✅ |
 | test_branch_phase3_mixed_suite | 14 | mixed | 7 | 🟢 | ✅ |
-| test_select_features_suite | 44 | parser/binder | 8 | 🟢 | 🟡 (features_test.go 高價值) |
+| test_select_features_suite | 44 | parser/binder | 8 | 🟢 | ✅ |
 | test_dml_suite | 39 | parser/binder | 8 | 🟢 | ✅ |
-| test_join_suite | 33 | parser/binder | 8 | 🟢 | 🟡 (features_test.go 高價值) |
-| test_subquery_suite | 32 | parser/binder | 8 | 🟢 | 🟡 (features_test.go 高價值) |
-| test_cte_suite | 10 | parser/binder | 8 | 🟢 | 🟡 (features_test.go 高價值) |
+| test_join_suite | 33 | parser/binder | 8 | 🟢 | ✅ |
+| test_subquery_suite | 32 | parser/binder | 8 | 🟢 | ✅ |
+| test_cte_suite | 10 | parser/binder | 8 | 🟢 | ✅ |
 | test_expressions_suite | 31 | parser/binder | 8 | 🟢 | ✅ |
 | test_functions_suite | 27 | binder/registry | 8 | 🟢 | ✅ |
 | test_window_functions_suite | 27 | parser/binder | 8 | 🟢 | ✅ |
-| test_new_syntax_suite | 46 | parser/binder | 8 | 🟢 | 🟡 (features_test.go 高價值) |
-| test_mssql_features_suite | 49 | parser/binder | 8 | 🟢 | 🟡 (features_test.go 高價值) |
+| test_new_syntax_suite | 46 | parser/binder | 8 | 🟢 | ✅ |
+| test_mssql_features_suite | 49 | parser/binder | 8 | 🟢 | ✅ |
 | test_mssql_boundary_suite | 54 | lexer/parser/binder | 8 | 🟢 | ✅ |
 | test_reconstructor_suite | 36 | reconstructor | 9 | 🟢 | ✅ |
 | test_reconstructor_coverage_suite | 31 | reconstructor | 9 | 🟢 | ✅ |
@@ -135,10 +134,9 @@ baseline commit `94498cb`。逐階段記錄（parse / tree / mermaid / intents /
   dml · integration · branch_phase1/3 · binder_runner_coverage ·
   coverage_100 · gap_to_100 · final_coverage · clause_coverage_gaps ·
   expressions · functions · window · mssql_boundary（features_test.go）
-- 🟡 廣度套件（join · subquery · cte · new_syntax · mssql_features · select_features）：
-  features_test.go 已涵蓋 SemanticError 路徑 / AST 結構 / 型別推導高價值斷言；
-  逐條 `contains` roundtrip 斷言未全數複製（conformance 已 byte 驗全部 SQL）。
-- **覆蓋率 96.6%**（Python baseline: 100% line）
+- 廣度套件 join · subquery · cte · new_syntax · mssql_features · select_features 亦已完整 1:1
+  （另有 features_test.go 的高價值 SemanticError / AST 結構 / 型別推導斷言）。
+- **覆蓋率 96.7%**（Python baseline: 100% line）
 
 ### 剩餘覆蓋率缺口（~3.4%）
 
