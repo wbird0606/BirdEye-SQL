@@ -11,7 +11,7 @@ import (
 type Binder struct {
 	registry *MetadataRegistry
 
-	scopes            []map[string]string // scope stack：scopeKey(大寫) → registryKey(rt)
+	scopes            []*scopeFrame // scope stack（保留插入順序）
 	nullableStack     []map[string]bool
 	lastRootNullables map[string]bool
 	cteSchemas        map[string]*colSchema // CTE / 衍生資料表 alias(大寫) → schema
@@ -227,12 +227,12 @@ func (b *Binder) bindSelect(stmt *SelectStatement) {
 		case "LEFT":
 			b.topNullable()[al] = true
 		case "RIGHT":
-			for k := range b.topScope() {
+			for _, k := range b.topScope().order {
 				b.topNullable()[k] = true
 			}
 		case "FULL":
 			b.topNullable()[al] = true
-			for k := range b.topScope() {
+			for _, k := range b.topScope().order {
 				b.topNullable()[k] = true
 			}
 		}
@@ -390,7 +390,7 @@ func (b *Binder) registerDerived(cols []Node, alias string) {
 		key = strings.ToUpper(alias)
 	}
 	b.cteSchemas[key] = schema
-	b.topScope()[key] = key
+	b.topScope().set(key, key)
 }
 
 func tableKey(tn *IdentifierNode) string {
@@ -419,7 +419,7 @@ func (b *Binder) registerScope(tableNode Node, alias string) {
 	if alias != "" {
 		scopeKey = strings.ToUpper(alias)
 	}
-	b.topScope()[scopeKey] = rt
+	b.topScope().set(scopeKey, rt)
 }
 
 var datePartsSet = func() map[string]bool {
@@ -464,18 +464,19 @@ func (b *Binder) resolveIdentifier(node *IdentifierNode) {
 	for si := len(b.scopes) - 1; si >= 0; si-- {
 		scope := b.scopes[si]
 		if fQual != "" {
-			for al, rt := range scope {
+			for _, al := range scope.order {
+				rt := scope.m[al]
 				if fQual == rt && al != rt {
 					b.sem("Original table name '" + node.Qualifier() + "' cannot be used when alias '" +
 						strings.ToLower(al) + "' is defined")
 				}
 			}
 			mKey := fQual
-			if _, ok := scope[mKey]; !ok {
+			if _, ok := scope.get(mKey); !ok {
 				parts := strings.Split(fQual, ".")
 				mKey = parts[len(parts)-1]
 			}
-			if rt, ok := scope[mKey]; ok {
+			if rt, ok := scope.get(mKey); ok {
 				foundQual = true
 				if vs, isVirt := b.virtualSchema(rt); isVirt {
 					if t, ok := vs.get(colUp); ok {
@@ -495,7 +496,8 @@ func (b *Binder) resolveIdentifier(node *IdentifierNode) {
 			}
 		} else {
 			var matches [][2]string
-			for sn, rt := range scope {
+			for _, sn := range scope.order {
+				rt := scope.m[sn]
 				if vs, isVirt := b.virtualSchema(rt); isVirt {
 					if _, ok := vs.get(colUp); ok {
 						matches = append(matches, [2]string{sn, rt})
@@ -524,11 +526,8 @@ func (b *Binder) resolveIdentifier(node *IdentifierNode) {
 				node.ResolvedTable = parts[len(parts)-1]
 				return
 			}
-			if len(scope) == 1 {
-				var rt string
-				for _, v := range scope {
-					rt = v
-				}
+			if scope.len() == 1 {
+				rt := scope.m[scope.order[0]]
 				if vs, isVirt := b.virtualSchema(rt); isVirt {
 					if t, ok := vs.get(colUp); ok {
 						node.InferredType = t
@@ -1011,11 +1010,7 @@ func (b *Binder) bindCreateTable(stmt *CreateTableStatement) {
 
 func (b *Binder) bindMerge(stmt *MergeStatement) {
 	b.pushScope()
-	b.nullableStack = append(b.nullableStack, map[string]bool{})
-	defer func() {
-		b.popScope()
-		b.nullableStack = b.nullableStack[:len(b.nullableStack)-1]
-	}()
+	defer b.popScope()
 	if stmt.Target != nil {
 		b.registerScope(stmt.Target, stmt.TargetAlias)
 	}
@@ -1060,7 +1055,7 @@ func (b *Binder) bindApply(apply *ApplyNode) {
 	if apply.Alias != "" {
 		aliasUp := strings.ToUpper(apply.Alias)
 		b.cteSchemas[aliasUp] = schema
-		b.topScope()[aliasUp] = aliasUp
+		b.topScope().set(aliasUp, aliasUp)
 		if apply.Type == "OUTER" {
 			b.topNullable()[aliasUp] = true
 		}
@@ -1252,13 +1247,14 @@ func filterStripped(o jobj) map[string]any {
 // ── star 展開 ───────────────────────────────────────────────────────────────
 
 func (b *Binder) expandGlobalStar(stmt *SelectStatement) {
-	for al, rt := range b.topScope() {
-		b.appendStarCols(stmt, al, rt)
+	sc := b.topScope()
+	for _, al := range sc.order {
+		b.appendStarCols(stmt, al, sc.m[al])
 	}
 }
 
 func (b *Binder) expandQualifiedStar(stmt *SelectStatement, prefix string) {
-	rt, ok := b.topScope()[strings.ToUpper(prefix)]
+	rt, ok := b.topScope().get(strings.ToUpper(prefix))
 	if !ok {
 		b.sem("Unknown qualifier '" + prefix + "' in star expansion")
 	}
@@ -1333,7 +1329,7 @@ func (b *Binder) nullableScopes() map[string]bool {
 // ── scope stack helpers ─────────────────────────────────────────────────────
 
 func (b *Binder) pushScope() {
-	b.scopes = append(b.scopes, map[string]string{})
+	b.scopes = append(b.scopes, newScopeFrame())
 	b.nullableStack = append(b.nullableStack, map[string]bool{})
 }
 
@@ -1342,7 +1338,7 @@ func (b *Binder) popScope() {
 	b.nullableStack = b.nullableStack[:len(b.nullableStack)-1]
 }
 
-func (b *Binder) topScope() map[string]string { return b.scopes[len(b.scopes)-1] }
+func (b *Binder) topScope() *scopeFrame { return b.scopes[len(b.scopes)-1] }
 func (b *Binder) topNullable() map[string]bool {
 	return b.nullableStack[len(b.nullableStack)-1]
 }

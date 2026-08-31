@@ -52,6 +52,29 @@ func copyBoolSet(m map[string]bool) map[string]bool {
 	return out
 }
 
+// scopeFrame 是 binder scope stack 的一層，保留 scope key 插入順序
+// （對照 Python dict；star 展開的欄位順序依賴這個順序）。
+type scopeFrame struct {
+	order []string // scopeKey（大寫），依插入順序
+	m     map[string]string
+}
+
+func newScopeFrame() *scopeFrame { return &scopeFrame{m: map[string]string{}} }
+
+func (s *scopeFrame) set(k, v string) {
+	if _, ok := s.m[k]; !ok {
+		s.order = append(s.order, k)
+	}
+	s.m[k] = v
+}
+
+func (s *scopeFrame) get(k string) (string, bool) {
+	v, ok := s.m[k]
+	return v, ok
+}
+
+func (s *scopeFrame) len() int { return len(s.order) }
+
 // colSchema 是 CTE / 臨時表 / 衍生資料表的欄位 schema，保留欄位順序（byte-parity）。
 type colSchema struct {
 	names []string // 大寫，依插入順序
