@@ -82,7 +82,7 @@ Corpus 應隨 baseline 變動而重新產生並 commit。
 | | 內容 |
 |---|---|
 | ✅ 核心 | `token`/`lexer`、`parser`、`ast`、`registry`、`binder`、`serializer`、`reconstructor`、`intent`、`rowfilter`、`runner`（含 `RunScript` GO 批次）、`visualizer`、`mermaid` |
-| ✅ CLI / web | `cmd/birdeye`、`cmd/birdeye-web` |
-| ✅ 整合 | `zta-proxy-go` native analyser |
-| 待辦 | 取代 `birdeye-svc` 的獨立 Go HTTP service；移除 `zta-proxy-go/python/birdeye_worker.py`、`birdeye-svc/` |
+| ✅ CLI / web / svc | `cmd/birdeye`、`cmd/birdeye-web`、`cmd/birdeye-svc`（取代 Python `birdeye-svc/`）|
+| ✅ 整合 | `zta-proxy-go`：`native`（in-process）與 `http`（→ `cmd/birdeye-svc`）共用 `birdeye.Analyser` |
+| 待辦 | 移除 `zta-proxy-go/python/birdeye_worker.py`、Python `birdeye-svc/`（清理）|
 | 不移植 | pytest-benchmark、locust |

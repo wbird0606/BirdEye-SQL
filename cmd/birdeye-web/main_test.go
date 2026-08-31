@@ -202,6 +202,59 @@ func TestWeb_UploadCSVAndHotSwap(t *testing.T) {
 	}
 }
 
+// 對照 test_intent_api.py / test_intent_zta_flow.py / test_denied_intent.py
+// （ZTA proxy 整合部分為 skipif，此處只測 /api/intent 本身）。
+func TestWeb_IntentAPI(t *testing.T) {
+	h := testServer(t)
+
+	code, m := postJSON(t, h, "/api/intent",
+		`{"sql":"SELECT AddressID, City FROM SalesLT.Address WHERE City = 'Seattle'"}`)
+	if code != 200 || m["status"] != "success" {
+		t.Fatalf("code=%d m=%v", code, m)
+	}
+	intents, _ := m["intents"].([]any)
+	if len(intents) == 0 {
+		t.Fatalf("intents 空")
+	}
+	var hasAddr, hasRead bool
+	for _, ii := range intents {
+		x := ii.(map[string]any)
+		if x["table"] == "Address" {
+			hasAddr = true
+		}
+		if x["intent"] == "READ" {
+			hasRead = true
+		}
+	}
+	if !hasAddr || !hasRead {
+		t.Errorf("Address/READ 缺：%v", intents)
+	}
+	if _, ok := m["reconstructed_sql"].(string); !ok {
+		t.Errorf("缺 reconstructed_sql")
+	}
+
+	// missing sql → 400
+	if code, _ := postJSON(t, h, "/api/intent", `{}`); code != 400 {
+		t.Errorf("missing sql: %d", code)
+	}
+
+	// 禁止欄位仍會出現在意圖中（權限判斷由 proxy 做）
+	code2, m2 := postJSON(t, h, "/api/intent",
+		`{"sql":"SELECT CustomerID, EmailAddress, Phone FROM SalesLT.Customer WHERE CustomerID = 1"}`)
+	if code2 != 200 {
+		t.Fatalf("denied-sql code=%d", code2)
+	}
+	cols := map[string]bool{}
+	for _, ii := range m2["intents"].([]any) {
+		if c, ok := ii.(map[string]any)["column"].(string); ok {
+			cols[c] = true
+		}
+	}
+	if !cols["EmailAddress"] && !cols["Phone"] {
+		t.Errorf("EmailAddress/Phone 應在意圖中：%v", cols)
+	}
+}
+
 func TestWeb_Health(t *testing.T) {
 	h := testServer(t)
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)

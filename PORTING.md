@@ -55,8 +55,22 @@ birdeye-go 實作 proxy 的 `Analyser` 介面，取代 Python subprocess worker
   `GET /health`。輸出經比對與 Python web **byte 一致**。`main_test.go` 15 測試
   （對照 `test_web_api_suite` + upload/health/index）。
 
-仍待辦：取代 `birdeye-svc` 的獨立 Go HTTP 服務（zta-proxy-go native 整合已讓它非必要）；
-移除 `zta-proxy-go/python/birdeye_worker.py`、`birdeye-svc/`。
+### Phase 2 standalone HTTP 服務（已補）
+
+- **`birdeye.Analyser`**（`analyser.go`）—— 高階「意圖分析 + row filter 改寫」流程，
+  對照 Python `birdeye-svc/app.py` 的 `_get_intents` / `_rewrite_endpoint`。
+  `SchemaFetcher` 抽象「向 Permission API 查欄位」；SELECT * / COUNT(*) 的 star 展開
+  在有 fetch 到 schema 時用「原始大小寫」欄位名（birdeye-svc 行為），否則退回
+  `ExpandStarIntents`。`analyser_test.go` 6 測試。
+- **`cmd/birdeye-svc`** —— 純 Go HTTP 服務，取代 Python `birdeye-svc/`。端點
+  `POST /intents`、`POST /rewrite`、`GET /health`（與 proxy 的 `internal/birdeye/client.go`
+  契約一致）。`main_test.go` 5 測試。Dockerfile（純 Go 映像）。
+- **`zta-proxy-go/internal/birdeye/native.go`** 重構為 `bird.Analyser` 的薄轉接層
+  （223 → ~100 行，邏輯 DRY）。
+- 與 Python `birdeye-svc` 的 `/intents` + `/rewrite` 輸出經跨進程比對**逐位元組一致**
+  （含 COUNT(*)、SELECT *、GROUP BY、CROSS APPLY）。
+
+仍待辦：移除 `zta-proxy-go/python/birdeye_worker.py`、Python `birdeye-svc/` 目錄（清理）。
 
 ## Suite 對照表
 

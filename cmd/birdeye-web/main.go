@@ -57,6 +57,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("/api/parse", s.handleParse)
 	mux.HandleFunc("/api/reconstruct", s.handleReconstruct)
 	mux.HandleFunc("/api/upload_csv", s.handleUploadCSV)
+	mux.HandleFunc("/api/intent", s.handleIntent)
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, 200, map[string]any{"status": "ok"})
 	})
@@ -158,6 +159,45 @@ func (s *server) handleReconstruct(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, 200, map[string]any{"status": "success", "sql": sql})
+}
+
+// handleIntent 對照 web/app.py 的 /api/intent（不帶 db_id 的路徑）：
+// 以目前載入的 metadata 執行完整 pipeline，回傳欄位層級意圖 + 反向重建 SQL。
+func (s *server) handleIntent(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		w.WriteHeader(405)
+		return
+	}
+	var body struct {
+		SQL string `json:"sql"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.SQL) == "" {
+		writeErr(w, 400, "Request Error", "Missing 'sql' in payload")
+		return
+	}
+	reg := s.registry()
+	res, err := bird.NewRunner(reg).RunMulti(body.SQL, nil)
+	if err != nil {
+		be, _ := err.(*bird.Error)
+		status, kind := 400, "Syntax Error"
+		if be != nil && be.Kind == bird.ErrSemantic {
+			kind = "Semantic Error"
+		} else if be != nil && be.Kind == bird.ErrSystem {
+			status, kind = 500, "System Error"
+		}
+		writeErr(w, status, kind, err.Error())
+		return
+	}
+	var astDict any
+	json.Unmarshal([]byte(res.JSON), &astDict)
+	ie := bird.NewIntentExtractor()
+	intents := ie.ExpandStarIntents(ie.Extract(astDict), reg)
+	reconstructed, _ := bird.NewReconstructor().Reconstruct(res.JSON)
+	writeJSON(w, 200, map[string]any{
+		"status":            "success",
+		"intents":           intents,
+		"reconstructed_sql": reconstructed,
+	})
 }
 
 func (s *server) handleUploadCSV(w http.ResponseWriter, r *http.Request) {
