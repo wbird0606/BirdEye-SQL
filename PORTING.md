@@ -27,6 +27,25 @@ Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 121
 **Phase 1 核心 12 模組已全部移植**，所有 conformance 關卡 0 fail（見下）。
 剩餘工作為 1:1 測試套件 backfill（提升覆蓋率至 ≥ Python 100%、鎖定行為）。
 
+## Phase 2 整合（`zta-proxy-go`）
+
+`../zta-proxy-go` 新增 `internal/birdeye/native.go`：`NativeAnalyser` 以 in-process 的
+birdeye-go 實作 proxy 的 `Analyser` 介面，取代 Python subprocess worker
+（`python/birdeye_worker.py`），proxy 不再需要 Python runtime。
+
+- `GetIntents` 兩遍流程對照 `birdeye_worker.py._get_intents`：
+  `ParseOnlyMulti → ExtractTables → GET /api/zta/columns → LoadFromCSV → RunMulti →
+  Extract → ExpandStarIntents`（star 展開採 canonical 的 `birdeye-svc/app.py` 行為，
+  worker 少這步）。TTL 記憶體快取，鍵為 `sql\x00dbId`。
+- `RewriteWithAST` 對照 `_rewrite_with_ast`：無 filter → `Reconstruct`；有 filter →
+  `RowFilterInjector.Inject` + `ReconstructValue`，SUBQUERY 字串值先以無 schema runner 預先 parse。
+- `cmd/proxy/main.go` 新增 `BIRDEYE_MODE` switch：`native`（預設）/ `http` / `subprocess`。
+- Dockerfile 改為純 Go 映像（移除 Python 3.11 stage）。
+- 測試：`internal/birdeye/native_test.go`（7）+ `internal/handler/execute_native_test.go`（4，
+  端到端經 JWT ticket → 意圖分析 → 權限檢查 → row filter 改寫 → 執行）。`go test ./...` 全綠（38）。
+
+CLI（`main.go`）與取代 `birdeye-svc` 的 Go HTTP 服務仍為 Phase 2 待辦。
+
 ## Suite 對照表
 
 | Suite | test | 目標模組 | 里程碑 | golden | 1:1 |
