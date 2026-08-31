@@ -76,6 +76,36 @@ func (rc *Reconstructor) toSQL(n map[string]any) string {
 		return rc.sqlPrint(n)
 	case "IdentifierNode":
 		return rc.sqlIdentifier(n)
+	case "CTENode":
+		return rc.sqlCTE(n)
+	// Python to_sql 以 getattr(self, f"_sql_{nt}") 分派，表達式/結構節點亦可為頂層。
+	// 注意：此處不接別名（別名僅由 sqlExpr 補），對照 Python to_sql。
+	case "LiteralNode":
+		return rc.sqlLiteral(n)
+	case "BinaryExpressionNode":
+		return rc.sqlBinary(n)
+	case "FunctionCallNode":
+		return rc.sqlFunctionCall(n)
+	case "CaseExpressionNode":
+		return rc.sqlCase(n)
+	case "BetweenExpressionNode":
+		return rc.sqlBetween(n)
+	case "CastExpressionNode":
+		return rc.sqlCast(n)
+	case "JoinNode":
+		return rc.sqlJoin(n)
+	case "ApplyNode":
+		return rc.sqlApply(n)
+	case "AssignmentNode":
+		return rc.sqlAssignment(n)
+	case "OrderByNode":
+		return rc.sqlOrderBy(n)
+	case "OverClauseNode":
+		return rc.sqlOverClause(n)
+	case "ColumnDefinitionNode":
+		return rc.sqlColumnDef(n)
+	case "MergeClauseNode":
+		return rc.sqlMergeClause(n)
 	}
 	return ""
 }
@@ -135,8 +165,7 @@ func (rc *Reconstructor) sqlSelect(n map[string]any) string {
 	if ctes := dslice(n, "ctes"); len(ctes) > 0 {
 		var cp []string
 		for _, c := range ctes {
-			cm := node2map(c)
-			cp = append(cp, dstr(cm, "name")+" AS ("+rc.toSQL(dmap(cm, "query"))+")")
+			cp = append(cp, rc.sqlCTE(node2map(c)))
 		}
 		parts = append(parts, "WITH "+strings.Join(cp, ", "))
 	}
@@ -220,8 +249,7 @@ func (rc *Reconstructor) sqlUpdate(n map[string]any) string {
 	if ctes := dslice(n, "ctes"); len(ctes) > 0 {
 		var cp []string
 		for _, c := range ctes {
-			cm := node2map(c)
-			cp = append(cp, dstr(cm, "name")+" AS ("+rc.toSQL(dmap(cm, "query"))+")")
+			cp = append(cp, rc.sqlCTE(node2map(c)))
 		}
 		parts = append(parts, "WITH "+strings.Join(cp, ", "))
 	}
@@ -242,8 +270,7 @@ func (rc *Reconstructor) sqlDelete(n map[string]any) string {
 	if ctes := dslice(n, "ctes"); len(ctes) > 0 {
 		var cp []string
 		for _, c := range ctes {
-			cm := node2map(c)
-			cp = append(cp, dstr(cm, "name")+" AS ("+rc.toSQL(dmap(cm, "query"))+")")
+			cp = append(cp, rc.sqlCTE(node2map(c)))
 		}
 		parts = append(parts, "WITH "+strings.Join(cp, ", "))
 	}
@@ -599,8 +626,14 @@ func (rc *Reconstructor) sqlCase(n map[string]any) string {
 		parts = append(parts, rc.sqlExpr(inp))
 	}
 	for _, br := range dslice(n, "branches") {
-		bm := node2map(br)
-		parts = append(parts, "WHEN "+rc.sqlExpr(bm["when"])+" THEN "+rc.sqlExpr(bm["then"]))
+		// serializer 輸出 {"when":..., "then":...}；也容忍 [when, then] tuple 格式
+		var whenV, thenV any
+		if bm := node2map(br); bm != nil {
+			whenV, thenV = bm["when"], bm["then"]
+		} else if bl, ok := br.([]any); ok && len(bl) >= 2 {
+			whenV, thenV = bl[0], bl[1]
+		}
+		parts = append(parts, "WHEN "+rc.sqlExpr(whenV)+" THEN "+rc.sqlExpr(thenV))
 	}
 	if els := firstVal(n, "else", "else_expr"); truthy(els) {
 		parts = append(parts, "ELSE "+rc.sqlExpr(els))
@@ -670,6 +703,10 @@ func (rc *Reconstructor) sqlAssignment(n map[string]any) string {
 	col := rc.toSQL(dmap(n, "column"))
 	val := rc.sqlExpr(firstVal(n, "expr", "right", "expression"))
 	return col + " = " + val
+}
+
+func (rc *Reconstructor) sqlCTE(n map[string]any) string {
+	return dstr(n, "name") + " AS (" + rc.toSQL(dmap(n, "query")) + ")"
 }
 
 func (rc *Reconstructor) sqlOrderBy(n map[string]any) string {
