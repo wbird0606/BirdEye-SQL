@@ -602,5 +602,22 @@ class TestCACCExtended:
         # Verify parsing succeeded
 
 
+    def test_top_missing_closing_paren(self):
+        """parser.py:242 — TOP (n 後缺少 ) 觸發 SyntaxError；繞過 lexer 直接構造 tokens"""
+        tokens = [
+            Token(TokenType.KEYWORD_SELECT, "SELECT", 0, 6),
+            Token(TokenType.KEYWORD_TOP,    "TOP",    7, 10),
+            Token(TokenType.SYMBOL_LPAREN,  "(",      11, 12),
+            Token(TokenType.NUMERIC_LITERAL,"5",      12, 13),
+            Token(TokenType.IDENTIFIER,     "OrderID",14, 21),
+            Token(TokenType.KEYWORD_FROM,   "FROM",   22, 26),
+            Token(TokenType.IDENTIFIER,     "Orders", 27, 33),
+            Token(TokenType.EOF,            "",       33, 33),
+        ]
+        parser = Parser(tokens, "SELECT TOP (5 OrderID FROM Orders")
+        with pytest.raises(SyntaxError, match=r"Expected '\)'"):
+            parser.parse()
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
