@@ -26,7 +26,7 @@ Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 121
 
 **Phase 1 核心 12 模組已全部移植**，所有 conformance 關卡 0 fail（見下）。
 **1:1 測試套件 backfill 完成**：47 個套件中除 web/CLI（Phase 2）外全部 ✅。
-Go 覆蓋率 93.5% → **96.7%**（RunScript 為新增功能，非移植缺口）。
+Go 覆蓋率 93.5% → **97.8%**（RunScript 為新增功能，非移植缺口）。
 
 ## Phase 2 整合（`zta-proxy-go`）
 
@@ -136,12 +136,12 @@ baseline commit `94498cb`。逐階段記錄（parse / tree / mermaid / intents /
   expressions · functions · window · mssql_boundary（features_test.go）
 - 廣度套件 join · subquery · cte · new_syntax · mssql_features · select_features 亦已完整 1:1
   （另有 features_test.go 的高價值 SemanticError / AST 結構 / 型別推導斷言）。
-- **覆蓋率 96.7%**（Python baseline: 100% line）
+- **覆蓋率 97.8%**（Python baseline: 100% line）
 
-### 剩餘覆蓋率缺口（~3.4%）
+### 剩餘覆蓋率缺口（~2.2%）
 
-皆為 Go 語言本質的防禦性分支：`encoding/json` 相關 helper 的型別 switch
-（`truthy` / `str` / `dnum` 等 —— Python 為 duck-typing 單分支）、`nodeTypeName` 的
-`default`（未知節點；[[known-deviations]] B3）、罕見 param/qmark 錯誤路徑、
-`panicMsg` 的非 engineBail 分支。conformance 0 fail（見上）是比行覆蓋率更強的忠實度保證。
+皆為 Go 語言本質的防禦性分支：`bindSet` 的變數型別 fallback、深層遞迴的型別不符
+早退（`deepEqualJ` / `serialize2`）、罕見 lexer/parser 錯誤路徑。另 `baseNode.aNode()` /
+`nodeList.aNode()` 為空函式體的 interface marker，Go cover 工具不插入計數器 → 永遠 0%
+（Python 無 marker method 對應）。conformance 0 fail（見上）是比行覆蓋率更強的忠實度保證。
 

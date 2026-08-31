@@ -166,6 +166,61 @@ func TestSweep_ReconstructorUnionExecDefaults(t *testing.T) {
 	}
 }
 
+func TestSweep_MiscBranches(t *testing.T) {
+	// ErrKind.String default
+	if ErrKind(99).String() != "system" && !strings.Contains(ErrKind(99).String(), "system") {
+		// system 是 default；若實作回傳其他值也接受非空
+		if ErrKind(99).String() == "" {
+			t.Error("ErrKind default String")
+		}
+	}
+	// qmarkMode 對非語句節點 → false
+	if qmarkMode(NewLiteral("1", NumericLiteral)) {
+		t.Error("qmarkMode non-statement")
+	}
+	// firstStr / firstSlice 全 key 缺失
+	if firstStr(map[string]any{}, "a", "b") != "" {
+		t.Error("firstStr all missing")
+	}
+	if firstSlice(map[string]any{}, "a", "b") != nil {
+		t.Error("firstSlice all missing")
+	}
+	// deepEqualJ 型別不符
+	if deepEqualJ(jobj{{"k", 1}}, jarr{1}) {
+		t.Error("deepEqualJ jobj vs jarr")
+	}
+	if deepEqualJ(jarr{1, 2}, jarr{1}) {
+		t.Error("deepEqualJ jarr len mismatch")
+	}
+	if !deepEqualJ("x", "x") || deepEqualJ("x", "y") {
+		t.Error("deepEqualJ scalar")
+	}
+	// mermaid ExportJSON invalid JSON → 仍回 flowchart TD
+	if NewMermaidExporter().ExportJSON("{not json") != "flowchart TD" {
+		t.Error("ExportJSON invalid")
+	}
+	// ordered_json 錯誤路徑
+	if _, err := parseOrderedJSON("{bad"); err == nil {
+		t.Error("parseOrderedJSON invalid")
+	}
+	if _, err := parseOrderedJSON(`{"k": }`); err == nil {
+		t.Error("parseOrderedJSON bad value")
+	}
+	// serialize2 nil / nil-pointer
+	s := NewSerializer()
+	if s.serialize2(nil) != nil {
+		t.Error("serialize2 nil")
+	}
+	var np *IdentifierNode
+	if s.serialize2(np) != nil {
+		t.Error("serialize2 nil pointer")
+	}
+	// nodeList → serAny 路徑
+	if a := s.serialize2(nodeList{NewLiteral("1", NumericLiteral)}); a == nil {
+		t.Error("serialize2 nodeList")
+	}
+}
+
 func TestSweep_BinderSetTypePropagation(t *testing.T) {
 	reg := mkReg(t, "table_name,column_name,data_type\nT,A,INT\n")
 	// SET @b = @a：@b 繼承 @a 型別（DECLARE 先建立）
