@@ -10,9 +10,9 @@ Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 121
 |---|---|---|---|
 | 0 | skeleton + fixture 產生器 + corpus | `tools/`, `testdata/` | ✅ |
 | 1 | Lexer | `token.go` `lexer.go` `errors.go` | ✅ 16/16 unit + 846/846 conformance |
-| 2 | AST 結構 | `ast.go` | ⬜ |
-| 3 | Parser | `parser.go` | ⬜ |
-| 4 | Serializer + JSON conformance 關卡 | `serializer.go` | ⬜ |
+| 2 | AST 結構 | `ast.go` | ✅（型別定義，由 parser/serializer 驗證）|
+| 3 | Parser | `parser.go` `params.go` | ✅ 23/23 unit（+ conformance 見里程碑 4）|
+| 4 | Serializer + parse_only conformance 關卡 | `serializer.go` | ✅ 29/29 unit + **936/942** parse_only byte 一致（6 skip = Python system/hang）|
 | 5 | Registry | `registry.go` | ⬜ |
 | 6 | Binder | `binder.go` | ⬜ |
 | 7 | Runner（Run / RunMulti / RunScript / ParseOnly*） | `runner.go` | ⬜ |
@@ -29,10 +29,10 @@ Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 121
 | Suite | test | 目標模組 | 里程碑 | golden | 1:1 |
 |---|---:|---|---|---|---|
 | test_lexer_suite | 16 | lexer | 1 | 🟢 | ✅ |
-| test_parser_suite | 23 | parser | 3 | ⬜ | ⬜ |
-| test_parser_coverage_suite | 33 | parser | 3 | ⬜ | ⬜ |
-| test_branch_phase2_parser_suite | 22 | parser | 3 | ⬜ | ⬜ |
-| test_serializer_suite | 29 | serializer | 4 | ⬜ | ⬜ |
+| test_parser_suite | 23 | parser | 3 | 🟢 | ✅ |
+| test_parser_coverage_suite | 33 | parser | 3 | 🟢 | ⬜ |
+| test_branch_phase2_parser_suite | 22 | parser | 3 | 🟢 | ⬜ |
+| test_serializer_suite | 29 | serializer | 4 | 🟢 | ✅ |
 | test_schema_registry_suite | 22 | registry | 5 | ⬜ | ⬜ |
 | test_semantic_suite | 32 | binder | 6 | ⬜ | ⬜ |
 | test_binder_runner_coverage_suite | 17 | binder/runner | 6 | ⬜ | ⬜ |
@@ -86,8 +86,8 @@ Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 121
 |---|---|
 | baseline commit | `94498cb` |
 | fixture 檔數 | 46 pipeline + `_tokens`（846 SQL）|
-| fixture 筆數 | 2840 pipeline（ok 1793 / err 1047）|
-| Go 通過率 | lexer: 846/846 tokens；pipeline: 尚未（parser 進行中）|
+| fixture 筆數 | 2840 pipeline（parse_ok 1793 / parse_err 1047），逐階段記錄 |
+| Go 通過率 | lexer 846/846 · parse_only ast_json 936/942（6 skip = Python system/hang，0 fail）|
 
 > 註：許多 `run` / `run_multi` fixture 是 semantic error —— 測試檔用虛構資料表
 > （`Users`、`Orders`）；這些 SQL 的 AST 只在 `parse_only` mode 有正輸出。

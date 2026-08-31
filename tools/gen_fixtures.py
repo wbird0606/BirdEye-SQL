@@ -122,35 +122,55 @@ def _categorize(exc, SemanticError) -> str:
     return "system"
 
 
+def _stage(fn):
+    """跑一個 pipeline 階段，回傳 {"ok":..., "value":..., "error":...}。"""
+    _, SemanticError, *_ = _engine()
+    try:
+        return {"ok": True, "value": fn(), "error": None}
+    except Exception as exc:  # noqa: BLE001
+        return {"ok": False, "value": None,
+                "error": {"category": _categorize(exc, SemanticError),
+                          "type": type(exc).__name__, "message": str(exc)}}
+
+
 def run_case(suite: str, sql: str, params, mode: str) -> dict:
+    """逐階段記錄：parse(+serialize) / tree / mermaid / intents / reconstructed。
+    下游階段只在 parse 成功時才嘗試。"""
     BirdEyeRunner, SemanticError, IntentExtractor, ASTReconstructor, csv_text = _engine()
     r = BirdEyeRunner()
     r.load_metadata_from_csv(io.StringIO(csv_text))
     rec: dict = {"id": fixture_id(suite, sql, params, mode), "suite": suite,
                  "mode": mode, "sql": sql, "params": params,
                  "binder_ran": mode != "parse_only"}
-    try:
+
+    state: dict = {}
+
+    def do_parse():
         if mode == "run":
             out = r.run(sql, params=params)
-            ast_json, tree, mermaid = out["json"], out["tree"], out["mermaid"]
-        elif mode == "run_multi":
+            return out["json"], out["tree"], out["mermaid"]
+        if mode == "run_multi":
             out = r.run_multi(sql, params=params)
-            ast_json, tree, mermaid = out["json"], out["tree"], out["mermaid"]
-        else:
-            node = r.parse_only(sql, params=params)["ast"]
-            ast_json = r.serializer.to_json(node)
-            tree = r.visualizer.dump(node)
-            mermaid = r.exporter.export(json.loads(ast_json))
-        ie = IntentExtractor()
-        intents = ie.expand_star_intents(ie.extract(json.loads(ast_json)), r)
-        reconstructed = ASTReconstructor().from_json_str(ast_json)
-        rec.update(ok=True, error=None, ast_json=ast_json, tree=tree,
-                   mermaid=mermaid, intents=intents, reconstructed=reconstructed)
-    except Exception as exc:  # noqa: BLE001 — 所有錯誤都要分類記下
-        rec.update(ok=False, ast_json=None, tree=None, mermaid=None,
-                   intents=None, reconstructed=None,
-                   error={"category": _categorize(exc, SemanticError),
-                          "type": type(exc).__name__, "message": str(exc)})
+            return out["json"], out["tree"], out["mermaid"]
+        node = r.parse_only(sql, params=params)["ast"]
+        aj = r.serializer.to_json(node)
+        return aj, r.visualizer.dump(node), r.exporter.export(json.loads(aj))
+
+    parse = _stage(do_parse)
+    if parse["ok"]:
+        aj, tree, mermaid = parse["value"]
+        state["ast_json"] = aj
+        rec["parse"] = {"ok": True, "ast_json": aj, "error": None}
+        rec["tree"] = {"ok": True, "value": tree, "error": None}
+        rec["mermaid"] = {"ok": True, "value": mermaid, "error": None}
+        rec["intents"] = _stage(lambda: IntentExtractor().expand_star_intents(
+            IntentExtractor().extract(json.loads(aj)), r))
+        rec["reconstructed"] = _stage(lambda: ASTReconstructor().from_json_str(aj))
+    else:
+        rec["parse"] = {"ok": False, "ast_json": None, "error": parse["error"]}
+        for k in ("tree", "mermaid", "intents", "reconstructed"):
+            rec[k] = {"ok": False, "value": None, "error": None}
+
     return rec
 
 
@@ -182,12 +202,14 @@ def worker(kind: str, out_path: str) -> None:
 # ── parent ───────────────────────────────────────────────────────────────────
 
 def _hang_record(suite: str, sql: str, params, mode: str) -> dict:
-    return {"id": fixture_id(suite, sql, params, mode), "suite": suite, "mode": mode,
-            "sql": sql, "params": params, "binder_ran": mode != "parse_only",
-            "ok": False, "ast_json": None, "tree": None, "mermaid": None,
-            "intents": None, "reconstructed": None,
-            "error": {"category": "hang", "type": "NonTermination",
-                      "message": f"Python pipeline did not terminate within {SUITE_TIMEOUT}s"}}
+    hang_err = {"category": "hang", "type": "NonTermination",
+                "message": f"Python pipeline did not terminate within {SUITE_TIMEOUT}s"}
+    rec = {"id": fixture_id(suite, sql, params, mode), "suite": suite, "mode": mode,
+           "sql": sql, "params": params, "binder_ran": mode != "parse_only",
+           "parse": {"ok": False, "ast_json": None, "error": hang_err}}
+    for k in ("tree", "mermaid", "intents", "reconstructed"):
+        rec[k] = {"ok": False, "value": None, "error": None}
+    return rec
 
 
 def gen_file(kind: str, manifest: dict) -> None:
@@ -222,10 +244,13 @@ def gen_file(kind: str, manifest: dict) -> None:
     with open(out, "w", encoding="utf-8", newline="\n") as f:
         for rec in records:
             f.write(json.dumps(rec, ensure_ascii=False, sort_keys=True) + "\n")
-    ok = sum(1 for r in records if r["ok"])
+    def cat(r):
+        return (r.get("parse", {}).get("error") or {}).get("category")
+
+    ok = sum(1 for r in records if r["parse"]["ok"])
     manifest["files"][name] = {
-        "cases": len(records), "ok": ok, "err": len(records) - ok,
-        "hang": sum(1 for r in records if r.get("error") and r["error"].get("category") == "hang"),
+        "cases": len(records), "parse_ok": ok, "parse_err": len(records) - ok,
+        "hang": sum(1 for r in records if cat(r) == "hang"),
     }
     print(f"  {kind}: {len(records)}")
 
@@ -258,8 +283,8 @@ def gen_tokens(suites: list[str], manifest: dict) -> None:
             f.write(json.dumps(rec, ensure_ascii=False, sort_keys=True) + "\n")
     manifest["files"]["_tokens.jsonl"] = {
         "cases": len(records),
-        "ok": sum(1 for r in records if r.get("tokens") is not None),
-        "err": sum(1 for r in records if r.get("tokens") is None), "hang": 0}
+        "parse_ok": sum(1 for r in records if r.get("tokens") is not None),
+        "parse_err": sum(1 for r in records if r.get("tokens") is None), "hang": 0}
     print(f"  _tokens: {len(records)}")
 
 
@@ -278,7 +303,7 @@ def main() -> None:
         stale.unlink(missing_ok=True)
 
     manifest: dict = {"baseline_commit": baseline_commit(), "files": {},
-                      "totals": {"cases": 0, "ok": 0, "err": 0, "hang": 0}}
+                      "totals": {"cases": 0, "parse_ok": 0, "parse_err": 0, "hang": 0}}
 
     suites = sorted(p.stem for p in (BASELINE / "tests").glob("test_*.py")
                     if p.stem != "test_perf_benchmark")
@@ -288,14 +313,14 @@ def main() -> None:
     gen_tokens(suites, manifest)
 
     for info in manifest["files"].values():
-        for k in ("cases", "ok", "err", "hang"):
+        for k in ("cases", "parse_ok", "parse_err", "hang"):
             manifest["totals"][k] += info[k]
     with open(OUT_DIR / "_manifest.json", "w", encoding="utf-8", newline="\n") as f:
         json.dump(manifest, f, ensure_ascii=False, indent=2, sort_keys=True)
         f.write("\n")
     t = manifest["totals"]
     print(f"baseline {manifest['baseline_commit']}  files={len(manifest['files'])}  "
-          f"cases={t['cases']}  ok={t['ok']}  err={t['err']}  hang={t['hang']}")
+          f"cases={t['cases']}  parse_ok={t['parse_ok']}  parse_err={t['parse_err']}  hang={t['hang']}")
 
 
 if __name__ == "__main__":
