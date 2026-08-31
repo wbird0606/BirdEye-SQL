@@ -105,3 +105,19 @@ baseline commit `94498cb`。逐階段記錄（parse / tree / mermaid / intents /
 > 註：許多 `run` / `run_multi` fixture 是 semantic error —— 測試檔用虛構資料表
 > （`Users`、`Orders`）；這些 SQL 的 AST 只在 `parse_only` mode 有正輸出。
 
+## Go 測試
+
+- ~130 個 top-level 測試函式，數百個 table-driven 子測試
+- 已 1:1 移植：lexer · parser · serializer · registry · semantic · reconstructor(roundtrip)
+  · rowfilter · **security_adversarial + appendix（70）** · expressions · functions · window
+  · join · subquery · cte · mssql_boundary · select_features
+- 覆蓋率 **93.5%**（Python baseline: 100% line）
+
+### 剩餘覆蓋率缺口（達 100% parity）
+
+Python 的 100% 由專門的覆蓋率套件達成（`test_final_coverage` 54 · `test_gap_to_100` 10 ·
+`test_coverage_100` 18 · `test_clause_coverage_gaps` 46 · `test_branch_phase1/2/3` 43）——
+為衝 100% 而寫的人工案例，SQL 皆已在 conformance corpus（byte 驗）。Go 端對應缺口為
+防禦性分支（`nil` 守衛、`default:` case、罕見錯誤路徑）。conformance 0 fail 是更強的
+忠實度保證。
+
