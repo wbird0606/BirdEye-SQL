@@ -21,8 +21,11 @@ Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 121
 | 10 | Visualizer + Mermaid | `visualizer.go` `mermaid.go` `ordered_json.go` | ✅ tree/mermaid 全 conformance byte 一致 |
 | 11 | Intent Extractor | `intent.go` `ordered_json.go` | ✅ 1796/1796 conformance |
 | 12 | Row Filter Injector | `rowfilter.go` | ✅ 77 unit + 10/10 端到端 conformance |
-| 13 | Integration + coverage 收尾 | — | ⬜ |
-| 14 | Adversarial | — | ⬜ |
+| 13 | Integration + coverage 收尾 | — | 🟡 Go 覆蓋率 92.5%；1:1 backfill 進行中 |
+| 14 | Adversarial | — | ⬜（SQL 已在 corpus，error 分類已驗；1:1 assert 待補）|
+
+**Phase 1 核心 12 模組已全部移植**，所有 conformance 關卡 0 fail（見下）。
+剩餘工作為 1:1 測試套件 backfill（提升覆蓋率至 ≥ Python 100%、鎖定行為）。
 
 ## Suite 對照表
 
@@ -82,12 +85,22 @@ Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 121
 `tools/gen_fixtures.py` 由 baseline 產生，存於 `testdata/conformance/*.jsonl`。
 每個 harvested SQL × 3 mode（`parse_only` / `run` / `run_multi`）+ `_extra` 的 param 案例。
 
-| 指標 | 值 |
+baseline commit `94498cb`。逐階段記錄（parse / tree / mermaid / intents / reconstructed）。
+
+| 關卡 | Go vs Python baseline |
 |---|---|
-| baseline commit | `94498cb` |
-| fixture 檔數 | 46 pipeline + `_tokens`（846 SQL）|
-| fixture 筆數 | 2840 pipeline（parse_ok 1793 / parse_err 1047），逐階段記錄 |
-| Go 通過率 | ast_json: parse_only 936 · run 945 · run_multi 941 ／ tree+mermaid: 全 parse-OK fixture byte 一致 ／ reconstruct 1796/1796 |
+| lexer tokens | **846 / 846** |
+| parse_only `ast_json` | **936 / 942**（6 = Python system/hang）|
+| run `ast_json` | **945 / 951** |
+| run_multi `ast_json` | **941 / 947** |
+| tree（visualizer） | 全 parse-OK fixture byte 一致 |
+| mermaid | 全 parse-OK fixture byte 一致 |
+| reconstruct（AST JSON → SQL） | **1796 / 1796** |
+| intents | **1796 / 1796** |
+| row filter（inject + reconstruct） | **10 / 10** |
+
+**0 fail。** skip 僅限 Python 端 system 例外 / 無限迴圈 / 不可重現的物件 repr
+（見 `KNOWN_DEVIATIONS.md` A1–A3）。
 
 > 註：許多 `run` / `run_multi` fixture 是 semantic error —— 測試檔用虛構資料表
 > （`Users`、`Orders`）；這些 SQL 的 AST 只在 `parse_only` mode 有正輸出。
