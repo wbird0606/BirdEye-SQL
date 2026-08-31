@@ -149,6 +149,12 @@ func TestBetweenCaseCast(t *testing.T) {
 		!strings.Contains(err.Error(), "CASE branches have incompatible types") {
 		t.Errorf("case incompat: %v", err)
 	}
+	// CASE 內嵌子查詢：branches[0].when 的 right 為 SelectStatement
+	ncs, _ := rb("SELECT CASE WHEN AddressID > (SELECT 100) THEN 'A' ELSE 'B' END FROM Address")
+	when := ncs.(*SelectStatement).Columns[0].(*CaseExpressionNode).Branches[0].When.(*BinaryExpressionNode)
+	if _, ok := when.Right.(*SelectStatement); !ok {
+		t.Errorf("case nested subquery: %T", when.Right)
+	}
 
 	// CAST / CONVERT
 	nca, _ := rb("SELECT CAST(ListPrice AS NVARCHAR) FROM Product")

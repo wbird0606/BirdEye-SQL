@@ -48,6 +48,9 @@ func (r *MetadataRegistry) RegisterFunction(name, funcType string, minArgs, maxA
 	if expectedTypes == nil {
 		expectedTypes = []string{}
 	}
+	if returnType == "" { // 對照 Python register_function 的 return_type="UNKNOWN" 預設
+		returnType = "UNKNOWN"
+	}
 	r.functions[up] = &FunctionMetadata{
 		Name: up, FuncType: strings.ToUpper(funcType),
 		MinArgs: minArgs, MaxArgs: maxArgs,

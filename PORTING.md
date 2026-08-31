@@ -21,12 +21,12 @@ Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 121
 | 10 | Visualizer + Mermaid | `visualizer.go` `mermaid.go` `ordered_json.go` | ✅ conformance byte 一致 + 1:1 |
 | 11 | Intent Extractor | `intent.go` `ordered_json.go` | ✅ 1796/1796 conformance + 7 套件全 1:1 |
 | 12 | Row Filter Injector | `rowfilter.go` | ✅ 77 unit + 10/10 端到端 conformance |
-| 13 | Integration + coverage 收尾 | — | ✅ Go 覆蓋率 **96.6%**；整合/coverage 套件全 1:1 |
+| 13 | Integration + coverage 收尾 | — | ✅ Go 覆蓋率 **97.5%**；整合/coverage 套件全 1:1 |
 | 14 | Adversarial | — | ✅ 70 案例 1:1（security_adversarial + appendix）|
 
 **Phase 1 核心 12 模組已全部移植**，所有 conformance 關卡 0 fail（見下）。
-**1:1 測試套件 backfill 完成**：47 個套件中除 web/CLI（Phase 2）外全部 ✅。
-Go 覆蓋率 93.5% → **97.8%**（RunScript 為新增功能，非移植缺口）。
+**1:1 測試套件 backfill 完成**：全部 47 個可移植套件皆有專屬對照檔案（web/CLI 亦補齊）。
+Go 覆蓋率 93.5% → **97.5%**（RunScript 為新增功能，非移植缺口）。
 
 ## Phase 2 整合（`zta-proxy-go`）
 
@@ -116,13 +116,13 @@ birdeye-go 實作 proxy 的 `Analyser` 介面，取代 Python subprocess worker
 | test_final_coverage_suite | 54 | mixed | 13 | 🟢 | ✅ |
 | test_gap_to_100_suite | 10 | mixed | 13 | 🟢 | ✅ |
 | test_clause_coverage_gaps | 46 | mixed (CACC) | 13 | 🟢 | ✅ (web/app 端點 ⏭️ Phase 2) |
-| test_security_adversarial_suite | 52 | parser/binder | 14 | ⬜ | ⬜ |
-| test_adversarial_appendix | 18 | parser/binder | 14 | ⬜ | ⬜ |
+| test_security_adversarial_suite | 52 | parser/binder | 14 | 🟢 | ✅ |
+| test_adversarial_appendix | 18 | parser/binder | 14 | 🟢 | ✅ |
 | test_cli_suite | 4 | cmd/birdeye | P2 | 🟢 | ✅ |
 | test_web_api_suite | 9 | cmd/birdeye-web | P2 | 🟢 | ✅ |
-| test_intent_api | 3 | — | — | ⏭️ Phase 2 | |
-| test_intent_zta_flow | 2 | — | — | ⏭️ Phase 2 | |
-| test_denied_intent | 2 | — | — | ⏭️ Phase 2 | |
+| test_intent_api | 3 | cmd/birdeye-web | P2 | 🟢 | ✅ |
+| test_intent_zta_flow | 2 | cmd/birdeye-web | P2 | 🟢 | ✅ (非 ZTA-proxy skip 部分) |
+| test_denied_intent | 2 | cmd/birdeye-web | P2 | 🟢 | ✅ (非 ZTA-proxy skip 部分) |
 | test_perf_benchmark | 10 | — | — | ⏭️ 不移植 | |
 
 ## Conformance corpus
@@ -159,9 +159,12 @@ baseline commit `94498cb`。逐階段記錄（parse / tree / mermaid / intents /
   dml · integration · branch_phase1/3 · binder_runner_coverage ·
   coverage_100 · gap_to_100 · final_coverage · clause_coverage_gaps ·
   expressions · functions · window · mssql_boundary（features_test.go）
-- 廣度套件 join · subquery · cte · new_syntax · mssql_features · select_features 亦已完整 1:1
-  （另有 features_test.go 的高價值 SemanticError / AST 結構 / 型別推導斷言）。
-- **覆蓋率 97.8%**（Python baseline: 100% line）
+- 全部 47 個可移植套件皆有專屬 1:1 檔案：dml/join/subquery/cte/new_syntax/mssql_features/
+  select_features/**functions/window/mssql_boundary**/expressions/reconstructor×4/visualizer/
+  mermaid/intent×7/整合/coverage×4/branch×3/binder_runner/adversarial/lexer/parser/serializer/
+  registry/semantic/rowfilter/metadata_roundtrip/cli/web_api。
+  `features_test.go` 保留為額外的高價值跨套件斷言。
+- **覆蓋率 97.5%**（Python baseline: 100% line；`cmd/` 為 66–67%，屬 main() 膠水碼）
 
 ### 剩餘覆蓋率缺口（~2.2%）
 
