@@ -142,6 +142,9 @@ def run_case(suite: str, sql: str, params, mode: str) -> dict:
     rec: dict = {"id": fixture_id(suite, sql, params, mode), "suite": suite,
                  "mode": mode, "sql": sql, "params": params,
                  "binder_ran": mode != "parse_only"}
+    # fixture 以 sort_keys=True 寫出，會打亂具名參數順序；另存原始順序供 byte-parity 比對
+    if isinstance(params, dict):
+        rec["param_order"] = list(params.keys())
 
     state: dict = {}
 

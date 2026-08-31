@@ -1,9 +1,6 @@
 package birdeye
 
-import (
-	"fmt"
-	"strings"
-)
+import "fmt"
 
 // 對照 Python birdeye/runner.py 的 _rewrite_qmark_sql / _prepare_sql_and_params。
 
@@ -80,10 +77,16 @@ func rewriteQmarkSQL(sql string) (string, int) {
 	return string(out), pIdx
 }
 
+// OrderedParams 是保留 key 順序的具名參數（byte-parity 需要）。
+type OrderedParams struct {
+	Keys []string
+	Vals map[string]any
+}
+
 // prepareSQL 對照 _prepare_sql_and_params：依 params 型別決定 mode 並在必要時
-// 改寫 ? 佔位符。params 為 nil / []any / map[string]any。
-// 回傳最終要送進 lexer 的 SQL、mode、以及依序的參數名清單（qmark 模式為 @P1..@Pn）。
-func prepareSQL(sql string, params any) (outSQL string, mode ParamMode, orderedNames []string, err error) {
+// 改寫 ? 佔位符。params 為 nil / []any / map[string]any / *OrderedParams。
+// 回傳最終要送進 lexer 的 SQL、mode、以及給 binder 的依序參數。
+func prepareSQL(sql string, params any) (outSQL string, mode ParamMode, in *ParamInput, err error) {
 	rewritten, qmarkCount := rewriteQmarkSQL(sql)
 
 	switch p := params.(type) {
@@ -100,25 +103,31 @@ func prepareSQL(sql string, params any) (outSQL string, mode ParamMode, orderedN
 				"PARAM_COUNT_MISMATCH: SQL has %d '?' placeholders, but params has %d values",
 				qmarkCount, len(p)))
 		}
-		names := make([]string, len(p))
-		for i := range p {
-			names[i] = fmt.Sprintf("@P%d", i+1)
+		pi := &ParamInput{}
+		for i, v := range p {
+			pi.Ordered = append(pi.Ordered, ParamKV{Name: fmt.Sprintf("@P%d", i+1), Raw: v})
 		}
-		return rewritten, ModeQmark, names, nil
+		return rewritten, ModeQmark, pi, nil
+
+	case *OrderedParams:
+		if qmarkCount > 0 {
+			return "", "", nil, valueErr("PARAM_MODE_MIXED: SQL uses '?' placeholders but params is an object")
+		}
+		pi := &ParamInput{}
+		for _, k := range p.Keys {
+			pi.Ordered = append(pi.Ordered, ParamKV{Name: k, Raw: p.Vals[k]})
+		}
+		return sql, ModeNamed, pi, nil
 
 	case map[string]any:
 		if qmarkCount > 0 {
 			return "", "", nil, valueErr("PARAM_MODE_MIXED: SQL uses '?' placeholders but params is an object")
 		}
-		names := make([]string, 0, len(p))
-		for k := range p {
-			key := k
-			if !strings.HasPrefix(key, "@") {
-				key = "@" + key
-			}
-			names = append(names, strings.ToUpper(key))
+		pi := &ParamInput{}
+		for k, v := range p {
+			pi.Ordered = append(pi.Ordered, ParamKV{Name: k, Raw: v})
 		}
-		return sql, ModeNamed, names, nil
+		return sql, ModeNamed, pi, nil
 	}
 
 	return "", "", nil, valueErr("PARAM_FORMAT_INVALID: params must be object, array, or null")

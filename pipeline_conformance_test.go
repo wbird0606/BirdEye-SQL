@@ -1,6 +1,8 @@
 package birdeye
 
 import (
+	"bytes"
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -15,19 +17,20 @@ type stageRec struct {
 	Error   *errRec `json:"error"`
 }
 
-// pipeRec 對照 pipeline fixture（parse / tree / mermaid / intents / reconstructed 各一階段）。
+// pipeRec 對照 pipeline fixture。
 type pipeRec struct {
-	ID            string   `json:"id"`
-	Suite         string   `json:"suite"`
-	Mode          string   `json:"mode"`
-	SQL           string   `json:"sql"`
-	Params        any      `json:"params"`
-	BinderRan     bool     `json:"binder_ran"`
-	Parse         stageRec `json:"parse"`
-	Tree          stageRec `json:"tree"`
-	Mermaid       stageRec `json:"mermaid"`
-	Intents       stageRec `json:"intents"`
-	Reconstructed stageRec `json:"reconstructed"`
+	ID            string          `json:"id"`
+	Suite         string          `json:"suite"`
+	Mode          string          `json:"mode"`
+	SQL           string          `json:"sql"`
+	Params        json.RawMessage `json:"params"`
+	ParamOrder    []string        `json:"param_order"`
+	BinderRan     bool            `json:"binder_ran"`
+	Parse         stageRec        `json:"parse"`
+	Tree          stageRec        `json:"tree"`
+	Mermaid       stageRec        `json:"mermaid"`
+	Intents       stageRec        `json:"intents"`
+	Reconstructed stageRec        `json:"reconstructed"`
 }
 
 func allPipeFixtures(t *testing.T) []pipeRec {
@@ -47,18 +50,95 @@ func allPipeFixtures(t *testing.T) []pipeRec {
 	return out
 }
 
-// TestParseOnlyConformance：Go lex+prepare+parse+serialize 對照 Python parse_only
-// 的 parse 階段輸出，逐位元組比對 ast_json（ADR 0002）。
+// fixtureParams 把 fixture 的 params 欄位解成 Runner 可用的形式。
+// 具名物件用 param_order（原始 key 順序，fixture 本身被 sort_keys 打亂）還原順序。
+func fixtureParams(t *testing.T, r pipeRec) any {
+	t.Helper()
+	s := strings.TrimSpace(string(r.Params))
+	if s == "" || s == "null" {
+		return nil
+	}
+	switch s[0] {
+	case '[':
+		var arr []any
+		if err := json.Unmarshal(r.Params, &arr); err != nil {
+			t.Fatalf("params array: %v", err)
+		}
+		return arr
+	case '{':
+		var vals map[string]any
+		if err := json.Unmarshal(r.Params, &vals); err != nil {
+			t.Fatalf("params object: %v", err)
+		}
+		keys := r.ParamOrder
+		if keys == nil {
+			dec := json.NewDecoder(bytes.NewReader(r.Params))
+			dec.Token()
+			for dec.More() {
+				ktok, _ := dec.Token()
+				keys = append(keys, ktok.(string))
+				var v any
+				dec.Decode(&v)
+			}
+		}
+		return &OrderedParams{Keys: keys, Vals: vals}
+	}
+	return nil
+}
+
+// TestParseOnlyConformance：Go 對照 Python parse_only 的 parse 階段 ast_json（byte 一致）。
 func TestParseOnlyConformance(t *testing.T) {
+	runPipelineConformance(t, "parse_only", func(sql string, params any) (string, error) {
+		prepared, _, _, err := prepareSQL(sql, params)
+		if err != nil {
+			return "", err
+		}
+		toks, err := NewLexer(prepared).Tokenize()
+		if err != nil {
+			return "", err
+		}
+		n, err := NewParser(toks, prepared).Parse()
+		if err != nil {
+			return "", err
+		}
+		return NewSerializer().ToJSON(n), nil
+	})
+}
+
+// TestRunConformance：Go Run 對照 Python run 的 parse 階段 ast_json（含 binder + param_input_mode）。
+func TestRunConformance(t *testing.T) {
+	reg := loadAdventureWorks(t)
+	runPipelineConformance(t, "run", func(sql string, params any) (string, error) {
+		res, err := NewRunner(reg).Run(sql, params)
+		if err != nil {
+			return "", err
+		}
+		return res.JSON, nil
+	})
+}
+
+// TestRunMultiConformance：Go RunMulti 對照 Python run_multi 的 parse 階段 ast_json。
+func TestRunMultiConformance(t *testing.T) {
+	reg := loadAdventureWorks(t)
+	runPipelineConformance(t, "run_multi", func(sql string, params any) (string, error) {
+		res, err := NewRunner(reg).RunMulti(sql, params)
+		if err != nil {
+			return "", err
+		}
+		return res.JSON, nil
+	})
+}
+
+func runPipelineConformance(t *testing.T, mode string, fn func(sql string, params any) (string, error)) {
 	var total, pass, skip int
 	fails := map[string]int{}
 
 	for _, r := range allPipeFixtures(t) {
-		if r.Mode != "parse_only" {
+		if r.Mode != mode {
 			continue
 		}
 		total++
-		got, gerr := goParseSerialize(r.SQL, r.Params)
+		got, gerr := fn(r.SQL, fixtureParams(t, r))
 
 		if !r.Parse.OK {
 			if gerr == nil {
@@ -93,26 +173,24 @@ func TestParseOnlyConformance(t *testing.T) {
 		pass++
 	}
 
-	t.Logf("parse_only conformance: %d/%d pass（skip %d：Python system/hang）", pass, total, skip)
+	t.Logf("%s conformance: %d/%d pass（skip %d：Python system/hang）", mode, pass, total, skip)
 	if len(fails) > 0 {
 		t.Errorf("失敗分類: %v", fails)
 	}
 }
 
-func goParseSerialize(sql string, params any) (string, error) {
-	prepared, _, _, err := prepareSQL(sql, params)
+// loadAdventureWorks 載入 testdata/output.csv（與 Python conftest 相同的 schema）。
+func loadAdventureWorks(t *testing.T) *MetadataRegistry {
+	t.Helper()
+	data, err := os.ReadFile(filepath.Join("testdata", "output.csv"))
 	if err != nil {
-		return "", err
+		t.Skipf("缺少 testdata/output.csv: %v", err)
 	}
-	toks, err := NewLexer(prepared).Tokenize()
-	if err != nil {
-		return "", err
+	reg := NewMetadataRegistry()
+	if err := reg.LoadFromCSV(string(data)); err != nil {
+		t.Fatalf("LoadFromCSV: %v", err)
 	}
-	n, err := NewParser(toks, prepared).Parse()
-	if err != nil {
-		return "", err
-	}
-	return NewSerializer().ToJSON(n), nil
+	return reg
 }
 
 // firstDiff 回傳兩字串第一個相異處附近的片段。
@@ -123,8 +201,8 @@ func firstDiff(got, want string) string {
 		i++
 	}
 	lo := max(i-60, 0)
-	ghi := min(i+80, len(got))
-	whi := min(i+80, len(want))
+	ghi := min(i+120, len(got))
+	whi := min(i+120, len(want))
 	var b strings.Builder
 	b.WriteString("首個差異 @")
 	b.WriteString(itoa(i))
@@ -137,23 +215,4 @@ func firstDiff(got, want string) string {
 	b.WriteString("\n--- want ---\n")
 	b.WriteString(want[lo:whi])
 	return b.String()
-}
-
-func itoa(i int) string {
-	if i == 0 {
-		return "0"
-	}
-	neg := i < 0
-	if neg {
-		i = -i
-	}
-	var d []byte
-	for i > 0 {
-		d = append([]byte{byte('0' + i%10)}, d...)
-		i /= 10
-	}
-	if neg {
-		d = append([]byte{'-'}, d...)
-	}
-	return string(d)
 }

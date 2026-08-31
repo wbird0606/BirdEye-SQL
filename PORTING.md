@@ -14,8 +14,8 @@ Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 121
 | 3 | Parser | `parser.go` `params.go` | ✅ 23/23 unit（+ conformance 見里程碑 4）|
 | 4 | Serializer + parse_only conformance 關卡 | `serializer.go` | ✅ 29/29 unit + **936/942** parse_only byte 一致（6 skip = Python system/hang）|
 | 5 | Registry | `registry.go` | ✅ 14/14 unit |
-| 6 | Binder | `binder.go` | ⬜ |
-| 7 | Runner（Run / RunMulti / RunScript / ParseOnly*） | `runner.go` | ⬜ |
+| 6 | Binder | `binder.go` | ✅ 18/18 unit + run 945/951 · run_multi 941/947 conformance |
+| 7 | Runner | `runner.go` `params.go` | ✅ Run/RunMulti/ParseOnly*（RunScript 待 M13）|
 | 8 | Feature suites 廣度鋪開 | parser + binder | ⬜ |
 | 9 | Reconstructor | `reconstructor.go` | ⬜ |
 | 10 | Visualizer + Mermaid | `visualizer.go` `mermaid.go` | ⬜ |
@@ -34,7 +34,7 @@ Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 121
 | test_branch_phase2_parser_suite | 22 | parser | 3 | 🟢 | ⬜ |
 | test_serializer_suite | 29 | serializer | 4 | 🟢 | ✅ |
 | test_schema_registry_suite | 22 | registry | 5 | 🟢 | 🟡 (binder 部分待 M6) |
-| test_semantic_suite | 32 | binder | 6 | ⬜ | ⬜ |
+| test_semantic_suite | 32 | binder | 6 | 🟢 | ✅ (28/32；4 需 visualizer) |
 | test_binder_runner_coverage_suite | 17 | binder/runner | 6 | ⬜ | ⬜ |
 | test_branch_phase1_suite | 7 | binder | 6 | ⬜ | ⬜ |
 | test_branch_phase3_mixed_suite | 14 | mixed | 7 | ⬜ | ⬜ |
@@ -87,7 +87,7 @@ Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 121
 | baseline commit | `94498cb` |
 | fixture 檔數 | 46 pipeline + `_tokens`（846 SQL）|
 | fixture 筆數 | 2840 pipeline（parse_ok 1793 / parse_err 1047），逐階段記錄 |
-| Go 通過率 | lexer 846/846 · parse_only ast_json 936/942（6 skip = Python system/hang，0 fail）|
+| Go 通過率 | lexer 846/846 · parse_only 936/942 · **run 945/951 · run_multi 941/947**（6 skip = Python system/hang，0 fail）|
 
 > 註：許多 `run` / `run_multi` fixture 是 semantic error —— 測試檔用虛構資料表
 > （`Users`、`Orders`）；這些 SQL 的 AST 只在 `parse_only` mode 有正輸出。

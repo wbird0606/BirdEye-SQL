@@ -14,7 +14,7 @@ func panicMsg(r any) string {
 }
 
 // Parser 對照 Python birdeye/parser.py 的遞迴下降 parser。
-// 內部方法遇錯以 panic(parseBail) 中止（對照 Python raise SyntaxError），
+// 內部方法遇錯以 panic(engineBail) 中止（對照 Python raise SyntaxError），
 // 由 Parse / ParseScript 的 recover 轉回 error。
 type Parser struct {
 	toks       []Token
@@ -23,15 +23,16 @@ type Parser struct {
 	isQualStar bool
 }
 
-type parseBail struct{ err *Error }
+// engineBail 是 parser / binder 共用的錯誤中止機制（對照 Python raise）。
+type engineBail struct{ err *Error }
 
 // NewParser 建立 parser。source 供 _get_text 的 fallback 切片（罕用）。
 func NewParser(tokens []Token, source string) *Parser {
 	return &Parser{toks: tokens, src: []rune(source)}
 }
 
-func (p *Parser) fail(msg string)      { panic(parseBail{syntaxErr(msg)}) }
-func (p *Parser) failValue(msg string) { panic(parseBail{valueErr(msg)}) }
+func (p *Parser) fail(msg string)      { panic(engineBail{syntaxErr(msg)}) }
+func (p *Parser) failValue(msg string) { panic(engineBail{valueErr(msg)}) }
 
 // ── 基礎工具 ────────────────────────────────────────────────────────────────
 
@@ -121,7 +122,7 @@ func (p *Parser) matchAlias() (Token, bool) {
 func (p *Parser) Parse() (n Node, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			if b, ok := r.(parseBail); ok {
+			if b, ok := r.(engineBail); ok {
 				n, err = nil, b.err
 				return
 			}
@@ -157,7 +158,7 @@ func (p *Parser) Parse() (n Node, err error) {
 func (p *Parser) ParseScript() (n Node, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			if b, ok := r.(parseBail); ok {
+			if b, ok := r.(engineBail); ok {
 				n, err = nil, b.err
 				return
 			}
