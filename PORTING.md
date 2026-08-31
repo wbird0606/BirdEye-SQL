@@ -19,8 +19,8 @@ Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 121
 | 8 | Feature suites（廣度） | parser + binder | 🟢 conformance 涵蓋 |
 | 9 | Reconstructor | `reconstructor.go` | ✅ 1796/1796 conformance |
 | 10 | Visualizer + Mermaid | `visualizer.go` `mermaid.go` `ordered_json.go` | ✅ tree/mermaid 全 conformance byte 一致 |
-| 11 | Intent Extractor | `intent.go` | ⬜ |
-| 12 | Row Filter Injector | `rowfilter.go` | ⬜ |
+| 11 | Intent Extractor | `intent.go` `ordered_json.go` | ✅ 1796/1796 conformance |
+| 12 | Row Filter Injector | `rowfilter.go` | ✅ 77 unit + 10/10 端到端 conformance |
 | 13 | Integration + coverage 收尾 | — | ⬜ |
 | 14 | Adversarial | — | ⬜ |
 
@@ -55,14 +55,14 @@ Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 121
 | test_metadata_roundtrip_suite | 35 | serializer/reconstructor | 9 | 🟢 | ⬜ |
 | test_visualizer_suite | 39 | visualizer | 10 | 🟢 | ⬜ |
 | test_mermaid_suite | 3 | mermaid | 10 | 🟢 | ⬜ |
-| test_74_star_intent_suite | 6 | intent | 11 | ⬜ | ⬜ |
-| test_all_cases_intent_suite | 35 | intent | 11 | ⬜ | ⬜ |
-| test_intent_extractor_suite | 16 | intent | 11 | ⬜ | ⬜ |
-| test_intent_coverage_suite | 42 | intent | 11 | ⬜ | ⬜ |
-| test_intent_coverage_extra | 20 | intent | 11 | ⬜ | ⬜ |
-| test_intent_edge_cases_suite | 8 | intent | 11 | ⬜ | ⬜ |
-| test_intent_edge_cases_2_suite | 9 | intent | 11 | ⬜ | ⬜ |
-| test_row_filter_suite | 77 | rowfilter | 12 | ⬜ | ⬜ |
+| test_74_star_intent_suite | 6 | intent | 11 | 🟢 | ⬜ |
+| test_all_cases_intent_suite | 35 | intent | 11 | 🟢 | ⬜ |
+| test_intent_extractor_suite | 16 | intent | 11 | 🟢 | ⬜ |
+| test_intent_coverage_suite | 42 | intent | 11 | 🟢 | ⬜ |
+| test_intent_coverage_extra | 20 | intent | 11 | 🟢 | ⬜ |
+| test_intent_edge_cases_suite | 8 | intent | 11 | 🟢 | ⬜ |
+| test_intent_edge_cases_2_suite | 9 | intent | 11 | 🟢 | ⬜ |
+| test_row_filter_suite | 77 | rowfilter | 12 | 🟢 | ✅ |
 | test_integration_suite | 23 | runner | 13 | ⬜ | ⬜ |
 | test_coverage_100_suite | 18 | mixed | 13 | ⬜ | ⬜ |
 | test_final_coverage_suite | 54 | mixed | 13 | ⬜ | ⬜ |

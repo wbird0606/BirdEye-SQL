@@ -258,6 +258,47 @@ def gen_file(kind: str, manifest: dict) -> None:
     print(f"  {kind}: {len(records)}")
 
 
+def gen_rowfilter(manifest: dict) -> None:
+    """_rowfilter.jsonl：{sql, row_filters} → Python inject + reconstruct → golden SQL。"""
+    cases_path = REPO / "tools" / "rowfilter_cases.jsonl"
+    if not cases_path.exists():
+        return
+    sys.path.insert(0, str(BASELINE))
+    from birdeye.runner import BirdEyeRunner
+    from birdeye.row_filter import RowFilterInjector
+    from birdeye.reconstructor import ASTReconstructor
+
+    csv_text = CSV_PATH.read_text(encoding="utf-8")
+    records = []
+    for line in cases_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line or line.startswith("#"):
+            continue
+        item = json.loads(line)
+        r = BirdEyeRunner()
+        r.load_metadata_from_csv(io.StringIO(csv_text))
+        rec = {"sql": item["sql"], "row_filters": item["row_filters"]}
+        try:
+            ast_json = r.run(item["sql"])["json"]
+            modified = RowFilterInjector().inject(json.loads(ast_json), item["row_filters"])
+            rec["ast_json"] = ast_json
+            rec["sql_out"] = ASTReconstructor().to_sql(modified)
+            rec["error"] = None
+        except Exception as exc:  # noqa: BLE001
+            rec["ast_json"] = None
+            rec["sql_out"] = None
+            rec["error"] = {"category": _categorize(exc, _engine()[1]), "type": type(exc).__name__, "message": str(exc)}
+        records.append(rec)
+
+    with open(OUT_DIR / "_rowfilter.jsonl", "w", encoding="utf-8", newline="\n") as f:
+        for rec in records:
+            f.write(json.dumps(rec, ensure_ascii=False, sort_keys=True) + "\n")
+    manifest["files"]["_rowfilter.jsonl"] = {
+        "cases": len(records), "parse_ok": sum(1 for r in records if r["sql_out"] is not None),
+        "parse_err": sum(1 for r in records if r["sql_out"] is None), "hang": 0}
+    print(f"  _rowfilter: {len(records)}")
+
+
 def gen_tokens(suites: list[str], manifest: dict) -> None:
     """_tokens.jsonl：每個 harvested SQL 的 Python token 序列，供 Go lexer conformance。"""
     sys.path.insert(0, str(BASELINE))
@@ -314,6 +355,7 @@ def main() -> None:
         gen_file(suite, manifest)
     gen_file("_extra", manifest)
     gen_tokens(suites, manifest)
+    gen_rowfilter(manifest)
 
     for info in manifest["files"].values():
         for k in ("cases", "parse_ok", "parse_err", "hang"):

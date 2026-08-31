@@ -7,6 +7,12 @@
       "parse_err": 3,
       "parse_ok": 17
     },
+    "_rowfilter.jsonl": {
+      "cases": 10,
+      "hang": 0,
+      "parse_err": 0,
+      "parse_ok": 10
+    },
     "_tokens.jsonl": {
       "cases": 846,
       "hang": 0,
@@ -285,9 +291,9 @@
     }
   },
   "totals": {
-    "cases": 3686,
+    "cases": 3696,
     "hang": 0,
     "parse_err": 1052,
-    "parse_ok": 2634
+    "parse_ok": 2644
   }
 }

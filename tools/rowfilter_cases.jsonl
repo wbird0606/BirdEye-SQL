@@ -1,0 +1,11 @@
+# row filter 端到端案例：{sql, row_filters} → Python inject + reconstruct → golden SQL
+{"sql": "SELECT AddressID FROM SalesLT.Address", "row_filters": [{"Schema": "SalesLT", "Table": "Address", "Column": "City", "Operator": "=", "Value": "Seattle", "ValueType": "LITERAL"}]}
+{"sql": "SELECT AddressID FROM SalesLT.Address WHERE AddressID > 0", "row_filters": [{"Schema": "SalesLT", "Table": "Address", "Column": "StateProvince", "Operator": "=", "Value": "WA", "ValueType": "LITERAL"}]}
+{"sql": "SELECT a.City FROM SalesLT.Address a JOIN SalesLT.CustomerAddress ca ON a.AddressID = ca.AddressID", "row_filters": [{"Schema": "SalesLT", "Table": "Address", "Column": "City", "Operator": "IN", "Value": "Seattle,Portland", "ValueType": "LITERAL"}]}
+{"sql": "UPDATE SalesLT.Address SET City = 'X' WHERE AddressID = 1", "row_filters": [{"Schema": "SalesLT", "Table": "Address", "Column": "ModifiedDate", "Operator": ">", "Value": "2020", "ValueType": "LITERAL"}]}
+{"sql": "DELETE FROM SalesLT.Address WHERE AddressID = 1", "row_filters": [{"Schema": "SalesLT", "Table": "Address", "Column": "City", "Operator": "<>", "Value": "Locked", "ValueType": "LITERAL"}]}
+{"sql": "SELECT AddressID FROM SalesLT.Address", "row_filters": [{"Schema": "SalesLT", "Table": "Address", "Column": "City", "Operator": "LIKE", "Value": "S%", "ValueType": "LITERAL"}]}
+{"sql": "SELECT AddressID FROM SalesLT.Address WHERE City = 'Seattle' UNION SELECT AddressID FROM SalesLT.Address WHERE City = 'Portland'", "row_filters": [{"Schema": "SalesLT", "Table": "Address", "Column": "StateProvince", "Operator": "=", "Value": "WA", "ValueType": "LITERAL"}]}
+{"sql": "SELECT AddressID FROM SalesLT.Address", "row_filters": [{"Schema": "", "Table": "Address", "Column": "PostalCode", "Operator": "=", "Value": "98101", "ValueType": "LITERAL"}]}
+{"sql": "SELECT AddressID FROM SalesLT.Address a WHERE a.AddressID IN (SELECT AddressID FROM SalesLT.CustomerAddress)", "row_filters": [{"Schema": "SalesLT", "Table": "Address", "Column": "City", "Operator": "=", "Value": "Seattle", "ValueType": "LITERAL"}]}
+{"sql": "SELECT AddressID FROM SalesLT.Address", "row_filters": [{"Schema": "SalesLT", "Table": "Address", "Column": "City", "Operator": "=", "Value": "台北", "ValueType": "LITERAL"}]}
