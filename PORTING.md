@@ -15,17 +15,19 @@ Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 121
 | 4 | Serializer + parse_only conformance 關卡 | `serializer.go` | ✅ 29/29 unit + **936/942** parse_only byte 一致（6 skip = Python system/hang）|
 | 5 | Registry | `registry.go` | ✅ 14/14 unit |
 | 6 | Binder | `binder.go` | ✅ 18/18 unit + run 945/951 · run_multi 941/947 conformance |
-| 7 | Runner | `runner.go` `params.go` | ✅ Run/RunMulti/ParseOnly*（RunScript 待 M13）|
-| 8 | Feature suites（廣度） | parser + binder | 🟢 conformance 涵蓋 |
-| 9 | Reconstructor | `reconstructor.go` | ✅ 1796/1796 conformance |
-| 10 | Visualizer + Mermaid | `visualizer.go` `mermaid.go` `ordered_json.go` | ✅ tree/mermaid 全 conformance byte 一致 |
-| 11 | Intent Extractor | `intent.go` `ordered_json.go` | ✅ 1796/1796 conformance |
+| 7 | Runner | `runner.go` `params.go` | ✅ Run/RunMulti/RunScript/ParseOnly* |
+| 8 | Feature suites（廣度） | parser + binder | ✅ conformance 涵蓋 + features_test.go 高價值斷言 |
+| 9 | Reconstructor | `reconstructor.go` | ✅ 1796/1796 conformance + 1:1 |
+| 10 | Visualizer + Mermaid | `visualizer.go` `mermaid.go` `ordered_json.go` | ✅ conformance byte 一致 + 1:1 |
+| 11 | Intent Extractor | `intent.go` `ordered_json.go` | ✅ 1796/1796 conformance + 7 套件全 1:1 |
 | 12 | Row Filter Injector | `rowfilter.go` | ✅ 77 unit + 10/10 端到端 conformance |
-| 13 | Integration + coverage 收尾 | — | 🟡 Go 覆蓋率 92.5%；1:1 backfill 進行中 |
-| 14 | Adversarial | — | ⬜（SQL 已在 corpus，error 分類已驗；1:1 assert 待補）|
+| 13 | Integration + coverage 收尾 | — | ✅ Go 覆蓋率 **96.6%**；整合/coverage 套件全 1:1 |
+| 14 | Adversarial | — | ✅ 70 案例 1:1（security_adversarial + appendix）|
 
 **Phase 1 核心 12 模組已全部移植**，所有 conformance 關卡 0 fail（見下）。
-剩餘工作為 1:1 測試套件 backfill（提升覆蓋率至 ≥ Python 100%、鎖定行為）。
+1:1 測試套件 backfill 大致完成：47 個套件中除 web/CLI（Phase 2）外皆已 ✅ 或 🟡
+（🟡 = features_test.go 已涵蓋高價值斷言，未逐條 `contains` 斷言）。
+Go 覆蓋率 93.5% → **96.6%**（RunScript 為新增功能，非移植缺口）。
 
 ## Phase 2 整合（`zta-proxy-go`）
 
@@ -52,44 +54,44 @@ CLI（`main.go`）與取代 `birdeye-svc` 的 Go HTTP 服務仍為 Phase 2 待�
 |---|---:|---|---|---|---|
 | test_lexer_suite | 16 | lexer | 1 | 🟢 | ✅ |
 | test_parser_suite | 23 | parser | 3 | 🟢 | ✅ |
-| test_parser_coverage_suite | 33 | parser | 3 | 🟢 | ⬜ |
-| test_branch_phase2_parser_suite | 22 | parser | 3 | 🟢 | ⬜ |
+| test_parser_coverage_suite | 33 | parser | 3 | 🟢 | ✅ |
+| test_branch_phase2_parser_suite | 22 | parser | 3 | 🟢 | ✅ |
 | test_serializer_suite | 29 | serializer | 4 | 🟢 | ✅ |
 | test_schema_registry_suite | 22 | registry | 5 | 🟢 | 🟡 (binder 部分待 M6) |
 | test_semantic_suite | 32 | binder | 6 | 🟢 | ✅ (28/32；4 需 visualizer) |
-| test_binder_runner_coverage_suite | 17 | binder/runner | 6 | ⬜ | ⬜ |
-| test_branch_phase1_suite | 7 | binder | 6 | ⬜ | ⬜ |
-| test_branch_phase3_mixed_suite | 14 | mixed | 7 | ⬜ | ⬜ |
-| test_select_features_suite | 44 | parser/binder | 8 | ⬜ | ⬜ |
-| test_dml_suite | 39 | parser/binder | 8 | ⬜ | ⬜ |
-| test_join_suite | 33 | parser/binder | 8 | ⬜ | ⬜ |
-| test_subquery_suite | 32 | parser/binder | 8 | ⬜ | ⬜ |
-| test_cte_suite | 10 | parser/binder | 8 | ⬜ | ⬜ |
-| test_expressions_suite | 31 | parser/binder | 8 | ⬜ | ⬜ |
-| test_functions_suite | 27 | binder/registry | 8 | ⬜ | ⬜ |
-| test_window_functions_suite | 27 | parser/binder | 8 | ⬜ | ⬜ |
-| test_new_syntax_suite | 46 | parser/binder | 8 | ⬜ | ⬜ |
-| test_mssql_features_suite | 49 | parser/binder | 8 | ⬜ | ⬜ |
-| test_mssql_boundary_suite | 54 | lexer/parser/binder | 8 | ⬜ | ⬜ |
-| test_reconstructor_suite | 36 | reconstructor | 9 | 🟢 | ⬜ |
-| test_reconstructor_coverage_suite | 31 | reconstructor | 9 | 🟢 | ⬜ |
-| test_reconstructor_subquery_right | 1 | reconstructor | 9 | 🟢 | ⬜ |
-| test_metadata_roundtrip_suite | 35 | serializer/reconstructor | 9 | 🟢 | ⬜ |
-| test_visualizer_suite | 39 | visualizer | 10 | 🟢 | ⬜ |
-| test_mermaid_suite | 3 | mermaid | 10 | 🟢 | ⬜ |
-| test_74_star_intent_suite | 6 | intent | 11 | 🟢 | ⬜ |
-| test_all_cases_intent_suite | 35 | intent | 11 | 🟢 | ⬜ |
-| test_intent_extractor_suite | 16 | intent | 11 | 🟢 | ⬜ |
-| test_intent_coverage_suite | 42 | intent | 11 | 🟢 | ⬜ |
-| test_intent_coverage_extra | 20 | intent | 11 | 🟢 | ⬜ |
-| test_intent_edge_cases_suite | 8 | intent | 11 | 🟢 | ⬜ |
-| test_intent_edge_cases_2_suite | 9 | intent | 11 | 🟢 | ⬜ |
+| test_binder_runner_coverage_suite | 17 | binder/runner | 6 | 🟢 | ✅ |
+| test_branch_phase1_suite | 7 | binder | 6 | 🟢 | ✅ |
+| test_branch_phase3_mixed_suite | 14 | mixed | 7 | 🟢 | ✅ |
+| test_select_features_suite | 44 | parser/binder | 8 | 🟢 | 🟡 (features_test.go 高價值) |
+| test_dml_suite | 39 | parser/binder | 8 | 🟢 | ✅ |
+| test_join_suite | 33 | parser/binder | 8 | 🟢 | 🟡 (features_test.go 高價值) |
+| test_subquery_suite | 32 | parser/binder | 8 | 🟢 | 🟡 (features_test.go 高價值) |
+| test_cte_suite | 10 | parser/binder | 8 | 🟢 | 🟡 (features_test.go 高價值) |
+| test_expressions_suite | 31 | parser/binder | 8 | 🟢 | ✅ |
+| test_functions_suite | 27 | binder/registry | 8 | 🟢 | ✅ |
+| test_window_functions_suite | 27 | parser/binder | 8 | 🟢 | ✅ |
+| test_new_syntax_suite | 46 | parser/binder | 8 | 🟢 | 🟡 (features_test.go 高價值) |
+| test_mssql_features_suite | 49 | parser/binder | 8 | 🟢 | 🟡 (features_test.go 高價值) |
+| test_mssql_boundary_suite | 54 | lexer/parser/binder | 8 | 🟢 | ✅ |
+| test_reconstructor_suite | 36 | reconstructor | 9 | 🟢 | ✅ |
+| test_reconstructor_coverage_suite | 31 | reconstructor | 9 | 🟢 | ✅ |
+| test_reconstructor_subquery_right | 1 | reconstructor | 9 | 🟢 | ✅ |
+| test_metadata_roundtrip_suite | 35 | serializer/reconstructor | 9 | 🟢 | ✅ |
+| test_visualizer_suite | 39 | visualizer | 10 | 🟢 | ✅ |
+| test_mermaid_suite | 3 | mermaid | 10 | 🟢 | ✅ |
+| test_74_star_intent_suite | 6 | intent | 11 | 🟢 | ✅ |
+| test_all_cases_intent_suite | 35 | intent | 11 | 🟢 | ✅ |
+| test_intent_extractor_suite | 16 | intent | 11 | 🟢 | ✅ |
+| test_intent_coverage_suite | 42 | intent | 11 | 🟢 | ✅ |
+| test_intent_coverage_extra | 20 | intent | 11 | 🟢 | ✅ |
+| test_intent_edge_cases_suite | 8 | intent | 11 | 🟢 | ✅ |
+| test_intent_edge_cases_2_suite | 9 | intent | 11 | 🟢 | ✅ |
 | test_row_filter_suite | 77 | rowfilter | 12 | 🟢 | ✅ |
-| test_integration_suite | 23 | runner | 13 | ⬜ | ⬜ |
-| test_coverage_100_suite | 18 | mixed | 13 | ⬜ | ⬜ |
-| test_final_coverage_suite | 54 | mixed | 13 | ⬜ | ⬜ |
-| test_gap_to_100_suite | 10 | mixed | 13 | ⬜ | ⬜ |
-| test_clause_coverage_gaps | 46 | mixed (CACC) | 13 | ⬜ | ⬜ |
+| test_integration_suite | 23 | runner | 13 | 🟢 | ✅ |
+| test_coverage_100_suite | 18 | mixed | 13 | 🟢 | ✅ |
+| test_final_coverage_suite | 54 | mixed | 13 | 🟢 | ✅ |
+| test_gap_to_100_suite | 10 | mixed | 13 | 🟢 | ✅ |
+| test_clause_coverage_gaps | 46 | mixed (CACC) | 13 | 🟢 | ✅ (web/app 端點 ⏭️ Phase 2) |
 | test_security_adversarial_suite | 52 | parser/binder | 14 | ⬜ | ⬜ |
 | test_adversarial_appendix | 18 | parser/binder | 14 | ⬜ | ⬜ |
 | test_cli_suite | 4 | — | — | ⏭️ Phase 2 | |
@@ -126,17 +128,22 @@ baseline commit `94498cb`。逐階段記錄（parse / tree / mermaid / intents /
 
 ## Go 測試
 
-- ~130 個 top-level 測試函式，數百個 table-driven 子測試
-- 已 1:1 移植：lexer · parser · serializer · registry · semantic · reconstructor(roundtrip)
-  · rowfilter · **security_adversarial + appendix（70）** · expressions · functions · window
-  · join · subquery · cte · mssql_boundary · select_features
-- 覆蓋率 **93.5%**（Python baseline: 100% line）
+- ~180 個 top-level 測試函式，數百個 table-driven / 子測試；`go test ./...` 全綠（含 `-shuffle=on`）
+- 已 1:1 移植（36 個測試檔）：lexer · parser（+ coverage + branch_phase2）· serializer ·
+  registry · semantic · reconstructor（suite + coverage + subquery_right + metadata_roundtrip）·
+  visualizer · mermaid · intent（全 7 套件）· rowfilter · **security_adversarial + appendix（70）** ·
+  dml · integration · branch_phase1/3 · binder_runner_coverage ·
+  coverage_100 · gap_to_100 · final_coverage · clause_coverage_gaps ·
+  expressions · functions · window · mssql_boundary（features_test.go）
+- 🟡 廣度套件（join · subquery · cte · new_syntax · mssql_features · select_features）：
+  features_test.go 已涵蓋 SemanticError 路徑 / AST 結構 / 型別推導高價值斷言；
+  逐條 `contains` roundtrip 斷言未全數複製（conformance 已 byte 驗全部 SQL）。
+- **覆蓋率 96.6%**（Python baseline: 100% line）
 
-### 剩餘覆蓋率缺口（達 100% parity）
+### 剩餘覆蓋率缺口（~3.4%）
 
-Python 的 100% 由專門的覆蓋率套件達成（`test_final_coverage` 54 · `test_gap_to_100` 10 ·
-`test_coverage_100` 18 · `test_clause_coverage_gaps` 46 · `test_branch_phase1/2/3` 43）——
-為衝 100% 而寫的人工案例，SQL 皆已在 conformance corpus（byte 驗）。Go 端對應缺口為
-防禦性分支（`nil` 守衛、`default:` case、罕見錯誤路徑）。conformance 0 fail 是更強的
-忠實度保證。
+皆為 Go 語言本質的防禦性分支：`encoding/json` 相關 helper 的型別 switch
+（`truthy` / `str` / `dnum` 等 —— Python 為 duck-typing 單分支）、`nodeTypeName` 的
+`default`（未知節點；[[known-deviations]] B3）、罕見 param/qmark 錯誤路徑、
+`panicMsg` 的非 engineBail 分支。conformance 0 fail（見上）是比行覆蓋率更強的忠實度保證。
 
