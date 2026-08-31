@@ -77,10 +77,16 @@ func (ie *IntentExtractor) ExtractFromStr(jsonStr string) ([]Intent, error) {
 	return ie.Extract(v), nil
 }
 
-// Extract 對照 extract。
+// Extract 對照 extract。頂層可為單一 dict 或 list（多語句 JSON）。
 func (ie *IntentExtractor) Extract(astDict any) []Intent {
 	ie.seen = map[[4]string]bool{}
 	var intents []Intent
+	if list, ok := astDict.([]any); ok { // 對照 Python _walk 的 isinstance(node, list) 分支
+		for _, item := range list {
+			ie.walk(node2map(item), &intents, strSetT{})
+		}
+		return intents
+	}
 	ie.walk(node2map(astDict), &intents, strSetT{})
 	return intents
 }
