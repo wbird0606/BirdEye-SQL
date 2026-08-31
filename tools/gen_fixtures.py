@@ -230,6 +230,39 @@ def gen_file(kind: str, manifest: dict) -> None:
     print(f"  {kind}: {len(records)}")
 
 
+def gen_tokens(suites: list[str], manifest: dict) -> None:
+    """_tokens.jsonl：每個 harvested SQL 的 Python token 序列，供 Go lexer conformance。"""
+    sys.path.insert(0, str(BASELINE))
+    from birdeye.lexer import Lexer
+
+    seen: dict[str, None] = {}
+    for suite in suites:
+        for sql in harvest_suite(suite):
+            seen.setdefault(sql, None)
+    for sql, _p, _m in extra_cases():
+        seen.setdefault(sql, None)
+
+    records = []
+    for sql in sorted(seen):
+        rec: dict = {"sql": sql}
+        try:
+            rec["tokens"] = [[t.type.name, t.value] for t in Lexer(sql).tokenize()]
+        except Exception as exc:  # noqa: BLE001
+            rec["tokens"] = None
+            rec["error"] = {"category": "value" if isinstance(exc, ValueError) else "system",
+                            "type": type(exc).__name__, "message": str(exc)}
+        records.append(rec)
+
+    with open(OUT_DIR / "_tokens.jsonl", "w", encoding="utf-8", newline="\n") as f:
+        for rec in records:
+            f.write(json.dumps(rec, ensure_ascii=False, sort_keys=True) + "\n")
+    manifest["files"]["_tokens.jsonl"] = {
+        "cases": len(records),
+        "ok": sum(1 for r in records if r.get("tokens") is not None),
+        "err": sum(1 for r in records if r.get("tokens") is None), "hang": 0}
+    print(f"  _tokens: {len(records)}")
+
+
 def baseline_commit() -> str:
     head = (BASELINE / ".git" / "HEAD").read_text(encoding="utf-8").strip()
     if head.startswith("ref: "):
@@ -252,6 +285,7 @@ def main() -> None:
     for suite in suites:
         gen_file(suite, manifest)
     gen_file("_extra", manifest)
+    gen_tokens(suites, manifest)
 
     for info in manifest["files"].values():
         for k in ("cases", "ok", "err", "hang"):

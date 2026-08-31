@@ -7,6 +7,12 @@
       "hang": 0,
       "ok": 17
     },
+    "_tokens.jsonl": {
+      "cases": 846,
+      "err": 8,
+      "hang": 0,
+      "ok": 838
+    },
     "test_74_star_intent_suite.jsonl": {
       "cases": 12,
       "err": 0,
@@ -279,9 +285,9 @@
     }
   },
   "totals": {
-    "cases": 2840,
-    "err": 1047,
+    "cases": 3686,
+    "err": 1055,
     "hang": 0,
-    "ok": 1793
+    "ok": 2631
   }
 }

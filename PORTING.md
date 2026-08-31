@@ -9,7 +9,7 @@ Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 121
 | # | 里程碑 | 模組 | 狀態 |
 |---|---|---|---|
 | 0 | skeleton + fixture 產生器 + corpus | `tools/`, `testdata/` | ✅ |
-| 1 | Lexer | `token.go` `lexer.go` | ⬜ |
+| 1 | Lexer | `token.go` `lexer.go` `errors.go` | ✅ 16/16 unit + 846/846 conformance |
 | 2 | AST 結構 | `ast.go` | ⬜ |
 | 3 | Parser | `parser.go` | ⬜ |
 | 4 | Serializer + JSON conformance 關卡 | `serializer.go` | ⬜ |
@@ -28,7 +28,7 @@ Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 121
 
 | Suite | test | 目標模組 | 里程碑 | golden | 1:1 |
 |---|---:|---|---|---|---|
-| test_lexer_suite | 16 | lexer | 1 | ⬜ | ⬜ |
+| test_lexer_suite | 16 | lexer | 1 | 🟢 | ✅ |
 | test_parser_suite | 23 | parser | 3 | ⬜ | ⬜ |
 | test_parser_coverage_suite | 33 | parser | 3 | ⬜ | ⬜ |
 | test_branch_phase2_parser_suite | 22 | parser | 3 | ⬜ | ⬜ |
@@ -85,9 +85,9 @@ Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 121
 | 指標 | 值 |
 |---|---|
 | baseline commit | `94498cb` |
-| fixture 檔數 | 46 |
-| fixture 筆數 | 2840（ok 1793 / err 1047 / hang 0）|
-| Go 通過率 | 0（引擎尚未開始）|
+| fixture 檔數 | 46 pipeline + `_tokens`（846 SQL）|
+| fixture 筆數 | 2840 pipeline（ok 1793 / err 1047）|
+| Go 通過率 | lexer: 846/846 tokens；pipeline: 尚未（parser 進行中）|
 
 > 註：許多 `run` / `run_multi` fixture 是 semantic error —— 測試檔用虛構資料表
 > （`Users`、`Orders`）；這些 SQL 的 AST 只在 `parse_only` mode 有正輸出。
