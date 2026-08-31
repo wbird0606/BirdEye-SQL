@@ -13,7 +13,7 @@ Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 121
 | 2 | AST 結構 | `ast.go` | ✅（型別定義，由 parser/serializer 驗證）|
 | 3 | Parser | `parser.go` `params.go` | ✅ 23/23 unit（+ conformance 見里程碑 4）|
 | 4 | Serializer + parse_only conformance 關卡 | `serializer.go` | ✅ 29/29 unit + **936/942** parse_only byte 一致（6 skip = Python system/hang）|
-| 5 | Registry | `registry.go` | ⬜ |
+| 5 | Registry | `registry.go` | ✅ 14/14 unit |
 | 6 | Binder | `binder.go` | ⬜ |
 | 7 | Runner（Run / RunMulti / RunScript / ParseOnly*） | `runner.go` | ⬜ |
 | 8 | Feature suites 廣度鋪開 | parser + binder | ⬜ |
@@ -33,7 +33,7 @@ Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 121
 | test_parser_coverage_suite | 33 | parser | 3 | 🟢 | ⬜ |
 | test_branch_phase2_parser_suite | 22 | parser | 3 | 🟢 | ⬜ |
 | test_serializer_suite | 29 | serializer | 4 | 🟢 | ✅ |
-| test_schema_registry_suite | 22 | registry | 5 | ⬜ | ⬜ |
+| test_schema_registry_suite | 22 | registry | 5 | 🟢 | 🟡 (binder 部分待 M6) |
 | test_semantic_suite | 32 | binder | 6 | ⬜ | ⬜ |
 | test_binder_runner_coverage_suite | 17 | binder/runner | 6 | ⬜ | ⬜ |
 | test_branch_phase1_suite | 7 | binder | 6 | ⬜ | ⬜ |
