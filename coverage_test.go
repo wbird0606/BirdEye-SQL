@@ -1,9 +1,12 @@
 package birdeye
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 )
+
+func jsonUnmarshal(s string, v any) error { return json.Unmarshal([]byte(s), v) }
 
 // coverage_test.go：針對 conformance 語料未觸及的 Go 分支補測
 // （Python 端由 test_final_coverage / test_gap_to_100 / test_branch_phase* 覆蓋）。
@@ -115,6 +118,82 @@ func TestBulkInsertAndTypeCompat(t *testing.T) {
 	}
 	if _, err := NewRunner(aw).Run("SELECT ModifiedDate FROM Address WHERE ModifiedDate = '2020-01-01'", nil); err != nil {
 		t.Errorf("date vs string 應相容: %v", err)
+	}
+}
+
+func TestIntentAuxAPI(t *testing.T) {
+	aw := loadAdventureWorks(t)
+	res, _ := NewRunner(aw).Run("SELECT a.City FROM SalesLT.Address a JOIN SalesLT.CustomerAddress ca ON a.AddressID = ca.AddressID", nil)
+
+	is, err := NewIntentExtractor().ExtractFromStr(res.JSON)
+	if err != nil || len(is) == 0 {
+		t.Fatalf("ExtractFromStr: %v", err)
+	}
+	var m any
+	if err := jsonUnmarshal(res.JSON, &m); err != nil {
+		t.Fatal(err)
+	}
+	tables := NewIntentExtractor().ExtractTables(m)
+	got := map[string]bool{}
+	for _, tb := range tables {
+		got[tb[0]+"."+tb[1]] = true
+	}
+	if !got["SalesLT.Address"] || !got["SalesLT.CustomerAddress"] {
+		t.Errorf("ExtractTables: %v", tables)
+	}
+
+	// parse_only 版 ExtractTables（proxy 第一遍掃描）
+	sn, _ := NewRunner(aw).ParseOnlyMulti("SELECT City FROM SalesLT.Address; SELECT Name FROM SalesLT.Product", nil)
+	var sm any
+	jsonUnmarshal(NewSerializer().ToJSON(sn), &sm)
+	tt := NewIntentExtractor().ExtractTables(sm)
+	if len(tt) != 2 {
+		t.Errorf("ExtractTables multi: %v", tt)
+	}
+}
+
+func TestOrderedJSONGet(t *testing.T) {
+	v, err := parseOrderedJSON(`{"a":1,"b":[true,null,"x"],"c":{}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	o := v.(*omap)
+	if x, ok := o.get("a"); !ok || x.(float64) != 1 {
+		t.Error("get a")
+	}
+	if _, ok := o.get("missing"); ok {
+		t.Error("get missing")
+	}
+	if arr := o.m["b"].([]any); len(arr) != 3 {
+		t.Error("array")
+	}
+}
+
+func TestReconstructEdgePaths(t *testing.T) {
+	// where_condition / expression key 變體（來自 binder 序列化 vs 直接建構）
+	rc := NewReconstructor()
+	upd := rc.ReconstructValue(map[string]any{
+		"node_type": "UpdateStatement",
+		"table":     map[string]any{"node_type": "IdentifierNode", "name": "T", "qualifiers": []any{}},
+		"set_clauses": []any{map[string]any{"node_type": "AssignmentNode",
+			"column":     map[string]any{"node_type": "IdentifierNode", "name": "A", "qualifiers": []any{}},
+			"expression": map[string]any{"node_type": "LiteralNode", "value": "1", "type": "NUMERIC_LITERAL"}}},
+		"where_condition": map[string]any{"node_type": "BinaryExpressionNode", "op": "=",
+			"left":  map[string]any{"node_type": "IdentifierNode", "name": "B", "qualifiers": []any{}},
+			"right": map[string]any{"node_type": "LiteralNode", "value": "2", "type": "NUMERIC_LITERAL"}},
+	})
+	if upd != "UPDATE T SET A = 1 WHERE B = 2" {
+		t.Errorf("update alt keys: %q", upd)
+	}
+	del := rc.ReconstructValue(map[string]any{
+		"node_type": "DeleteStatement",
+		"table":     map[string]any{"node_type": "IdentifierNode", "name": "T", "qualifiers": []any{}},
+		"where": map[string]any{"node_type": "BinaryExpressionNode", "op": "IS NULL",
+			"left":  map[string]any{"node_type": "IdentifierNode", "name": "C", "qualifiers": []any{}},
+			"right": nil},
+	})
+	if del != "DELETE FROM T WHERE C IS NULL" {
+		t.Errorf("delete: %q", del)
 	}
 }
 
