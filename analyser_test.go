@@ -122,6 +122,35 @@ func TestAnalyser_GetIntents_BadSQL(t *testing.T) {
 	}
 }
 
+func TestAnalyser_GetIntents_RejectsDDL(t *testing.T) {
+	a := NewAnalyser(fakeFetch(SchemaColumn{"AddressID", "int"}), time.Minute)
+	reject := []string{
+		"DROP TABLE SalesLT.Address",
+		"SELECT AddressID FROM SalesLT.Address; DROP TABLE SalesLT.Address",
+		"CREATE TABLE SalesLT.Evil (a int)",
+		"SELECT AddressID FROM SalesLT.Address; ALTER TABLE SalesLT.Address ADD c int",
+	}
+	for _, sql := range reject {
+		_, err := a.GetIntents(context.Background(), sql, 1, nil)
+		if err == nil {
+			t.Errorf("應拒絕 DDL：%q", sql)
+			continue
+		}
+		if be, ok := err.(*Error); !ok || be.Kind != ErrSemantic {
+			t.Errorf("%q：預期 ErrSemantic，得 %v", sql, err)
+		}
+	}
+	// 暫存資料表之 DDL 不在此限（session 範疇，非 schema 變更）
+	okCases := []string{
+		"SELECT AddressID FROM SalesLT.Address; CREATE TABLE #tmp (a int); DROP TABLE #tmp",
+	}
+	for _, sql := range okCases {
+		if _, err := a.GetIntents(context.Background(), sql, 1, nil); err != nil {
+			t.Errorf("暫存表 DDL 應放行：%q → %v", sql, err)
+		}
+	}
+}
+
 func TestAnalyser_Rewrite(t *testing.T) {
 	a := NewAnalyser(fakeFetch(SchemaColumn{"AddressID", "int"}, SchemaColumn{"City", "nvarchar"}), time.Minute)
 	res, _ := a.GetIntents(context.Background(), "SELECT AddressID FROM SalesLT.Address", 1, nil)

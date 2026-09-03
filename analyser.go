@@ -140,6 +140,15 @@ func (a *Analyser) GetIntents(ctx context.Context, sql string, dbID int, params 
 	if err := json.Unmarshal([]byte(res.JSON), &astDict); err != nil {
 		return AnalyserResult{}, fmt.Errorf("birdeye: ast json: %w", err)
 	}
+
+	// DDL 政策：本閘道管理之角色於資料庫層一律不獲授 DDL 權限，故任何針對持久
+	// 資料表之 schema 變更（DROP／CREATE／ALTER TABLE）一經辨識即以 Fail-Closed
+	// 拒絕於意圖分析階段，不進入權限查核、亦不轉發至資料庫——避免其於多語句批次
+	// 中夾帶而僅由第二層攔截。暫存資料表（#／##）非 schema 變更，不在此限。
+	if k := findRealTableDDL(astDict); k != "" {
+		return AnalyserResult{}, semanticErr(k + " on a persistent table is not permitted by ZTA policy")
+	}
+
 	ie := NewIntentExtractor()
 	raw := ie.Extract(astDict)
 
@@ -226,4 +235,43 @@ func listAny(p []any) any {
 	out := make([]any, len(p))
 	copy(out, p)
 	return out
+}
+
+var ddlNodeKind = map[string]string{
+	"DropTableStatement":   "DROP TABLE",
+	"CreateTableStatement": "CREATE TABLE",
+	"AlterTableStatement":  "ALTER TABLE",
+}
+
+// findRealTableDDL 遞迴尋找序列化 AST 中針對「持久資料表」之 DDL 語句節點，
+// 回傳其種類（如 "DROP TABLE"）；找不到則回空字串。
+// 暫存資料表（#local／##global）為 session 範疇、非 schema 變更，不計入。
+func findRealTableDDL(node any) string {
+	switch n := node.(type) {
+	case map[string]any:
+		if kind, ok := ddlNodeKind[dstr(n, "node_type")]; ok && !ddlTargetIsTemp(n["table"]) {
+			return kind
+		}
+		for _, v := range n {
+			if k := findRealTableDDL(v); k != "" {
+				return k
+			}
+		}
+	case []any:
+		for _, v := range n {
+			if k := findRealTableDDL(v); k != "" {
+				return k
+			}
+		}
+	}
+	return ""
+}
+
+func ddlTargetIsTemp(tbl any) bool {
+	m, ok := tbl.(map[string]any)
+	if !ok {
+		return false
+	}
+	name, _ := m["name"].(string)
+	return strings.HasPrefix(name, "#")
 }
