@@ -131,6 +131,8 @@ func TestAnalyser_GetIntents_RejectsDDL(t *testing.T) {
 		"SELECT AddressID FROM SalesLT.Address; ALTER TABLE SalesLT.Address ADD c int",
 		"TRUNCATE TABLE SalesLT.Address",
 		"SELECT AddressID FROM SalesLT.Address; TRUNCATE TABLE SalesLT.Address",
+		"SELECT AddressID INTO SalesLT.Copy FROM SalesLT.Address",
+		"SELECT AddressID FROM SalesLT.Address; SELECT AddressID INTO SalesLT.Copy FROM SalesLT.Address",
 	}
 	for _, sql := range reject {
 		_, err := a.GetIntents(context.Background(), sql, 1, nil)

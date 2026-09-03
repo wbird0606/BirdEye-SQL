@@ -148,7 +148,7 @@ func (a *Analyser) GetIntents(ctx context.Context, sql string, dbID int, params 
 	//   - TRUNCATE TABLE：語意上等同無條件刪除全表，且需 ALTER 權限
 	// 暫存資料表（#／##）非 schema 變更、亦無列過濾需求，不在此限。
 	if k := findForbiddenTableStmt(astDict); k != "" {
-		return AnalyserResult{}, semanticErr(k + " on a persistent table is not permitted by ZTA policy")
+		return AnalyserResult{}, semanticErr(k + " is not permitted by ZTA policy")
 	}
 
 	ie := NewIntentExtractor()
@@ -246,14 +246,30 @@ var forbiddenTableStmtKind = map[string]string{
 	"TruncateStatement":    "TRUNCATE TABLE",
 }
 
-// findForbiddenTableStmt 遞迴尋找序列化 AST 中針對「持久資料表」之整表操作語句
-// （DROP／CREATE／ALTER TABLE、TRUNCATE TABLE），回傳其種類（如 "DROP TABLE"）；
-// 找不到則回空字串。暫存資料表（#local／##global）不計入。
+// findForbiddenTableStmt 遞迴尋找序列化 AST 中，針對「持久資料表」且本閘道政策
+// 不允許之整表／結構操作，回傳其種類（如 "DROP TABLE"）；找不到則回空字串。
+// 涵蓋：
+//   - DROP／CREATE／ALTER TABLE、TRUNCATE TABLE
+//   - SELECT ... INTO <persistent>（以查詢結果建立新資料表，屬 DDL）
+//   - BULK INSERT（伺服器端檔案存取原語，與 OPENROWSET 同類）
+//
+// 暫存資料表（#local／##global）為 session 範疇，不計入。BirdEye 之 parser 僅
+// 辨識上述少數 DDL 形式以維持文法完整性；其餘 DDL／DCL（CREATE VIEW、GRANT、
+// BACKUP…）於 parser 階段即無法辨識而 Fail-Closed。
 func findForbiddenTableStmt(node any) string {
 	switch n := node.(type) {
 	case map[string]any:
-		if kind, ok := forbiddenTableStmtKind[dstr(n, "node_type")]; ok && !ddlTargetIsTemp(n["table"]) {
+		nt := dstr(n, "node_type")
+		if kind, ok := forbiddenTableStmtKind[nt]; ok && !ddlTargetIsTemp(n["table"]) {
 			return kind
+		}
+		if nt == "SqlBulkCopyStatement" {
+			return "BULK INSERT"
+		}
+		if nt == "SelectStatement" {
+			if into, ok := n["into_table"].(map[string]any); ok && !ddlTargetIsTemp(into) {
+				return "SELECT ... INTO"
+			}
 		}
 		for _, v := range n {
 			if k := findForbiddenTableStmt(v); k != "" {
