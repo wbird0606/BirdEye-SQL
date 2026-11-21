@@ -83,8 +83,9 @@ func NewSelectStatement() *SelectStatement {
 
 type CTENode struct {
 	baseNode
-	Name  string
-	Query Node // *SelectStatement 或 *UnionStatement
+	Name    string
+	Columns []string // 選用之欄位清單：WITH r(a, b) AS (...)
+	Query   Node     // *SelectStatement 或 *UnionStatement
 }
 
 type UpdateStatement struct {

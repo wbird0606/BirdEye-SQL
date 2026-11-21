@@ -307,17 +307,86 @@ func (b *Binder) bindSelect(stmt *SelectStatement) {
 
 // bindCTE 綁定一個 CTE query 並把它的投影欄位登記為 virtual schema。
 func (b *Binder) bindCTE(cte *CTENode) {
-	b.bindNode(cte.Query)
-	sc := newColSchema()
-	for _, c := range queryColumns(cte.Query) {
-		sc.set(columnOutputName(c), inferredTypeOf(c))
+	name := strings.ToUpper(cte.Name)
+	// 遞迴 CTE（T-SQL 規則）：query 必須為 UNION [ALL] 且某一側引用自身。
+	// 非 UNION 之自我引用仍視為非法（綁定時回報 Table not found，Fail-Closed）。
+	if u, ok := cte.Query.(*UnionStatement); ok && unionReferencesName(u, name) {
+		registered := false
+		b.bindRecursiveUnion(u, cte, name, &registered)
+	} else {
+		b.bindNode(cte.Query)
 	}
-	b.cteSchemas[strings.ToUpper(cte.Name)] = sc
+	b.cteSchemas[name] = b.cteSchemaOf(cte, queryColumns(cte.Query))
+}
+
+// cteSchemaOf 依 CTE 投影欄位建立 virtual schema；有欄位清單時以清單名稱取代輸出名稱。
+func (b *Binder) cteSchemaOf(cte *CTENode, cols []Node) *colSchema {
+	if len(cte.Columns) > 0 && len(cte.Columns) != len(cols) {
+		b.sem("CTE '" + cte.Name + "' has " + itoa(len(cols)) + " columns but " +
+			itoa(len(cte.Columns)) + " column names were specified")
+	}
+	sc := newColSchema()
+	for i, c := range cols {
+		colName := columnOutputName(c)
+		if i < len(cte.Columns) {
+			colName = cte.Columns[i]
+		}
+		sc.set(colName, inferredTypeOf(c))
+	}
+	return sc
+}
+
+// bindRecursiveUnion 先綁定錨點（最左側，不含自我引用）並登記 CTE schema，
+// 再綁定遞迴成員，使其中對 CTE 自身之引用可被解析。
+func (b *Binder) bindRecursiveUnion(u *UnionStatement, cte *CTENode, name string, registered *bool) {
+	if l, ok := u.Left.(*UnionStatement); ok {
+		b.bindRecursiveUnion(l, cte, name, registered)
+	} else {
+		b.bindNode(u.Left)
+		if !*registered {
+			b.cteSchemas[name] = b.cteSchemaOf(cte, unionSideColumns(u.Left))
+			*registered = true
+		}
+	}
+	b.bindNode(u.Right)
+	b.finishUnion(u)
+}
+
+// unionReferencesName 判斷集合運算任一成員之 FROM／JOIN 是否直接引用 name。
+func unionReferencesName(u *UnionStatement, name string) bool {
+	for _, side := range []Node{u.Left, u.Right} {
+		switch s := side.(type) {
+		case *UnionStatement:
+			if unionReferencesName(s, name) {
+				return true
+			}
+		case *SelectStatement:
+			if tableNodeIs(s.Table, name) {
+				return true
+			}
+			for _, j := range s.Joins {
+				if tableNodeIs(j.Table, name) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func tableNodeIs(n Node, name string) bool {
+	id, _ := n.(*IdentifierNode)
+	return id != nil && len(id.Qualifiers) == 0 && strings.ToUpper(id.Name) == name
 }
 
 func (b *Binder) bindUnion(stmt *UnionStatement) {
 	b.bindNode(stmt.Left)
 	b.bindNode(stmt.Right)
+	b.finishUnion(stmt)
+}
+
+// finishUnion 於兩側皆已綁定後檢查欄位數量／型別相容性並產生 union 之輸出欄位。
+func (b *Binder) finishUnion(stmt *UnionStatement) {
 	leftCols := unionSideColumns(stmt.Left)
 	rightCols := unionSideColumns(stmt.Right)
 	if len(leftCols) != len(rightCols) {
@@ -466,7 +535,7 @@ func (b *Binder) resolveIdentifier(node *IdentifierNode) {
 		if fQual != "" {
 			for _, al := range scope.order {
 				rt := scope.m[al]
-				if fQual == rt && al != rt {
+				if fQual == rt && al != rt && al != rt[strings.LastIndex(rt, ".")+1:] {
 					b.sem("Original table name '" + node.Qualifier() + "' cannot be used when alias '" +
 						strings.ToLower(al) + "' is defined")
 				}

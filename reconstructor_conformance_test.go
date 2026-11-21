@@ -36,6 +36,12 @@ func TestReconstructConformance(t *testing.T) {
 			t.Errorf("[%s] reconstruct 非預期錯誤: %v\nSQL: %q", r.ID, gerr, r.SQL)
 			continue
 		}
+		if got != want && knownReconstructDeviation[r.ID] {
+			// 刻意偏離（KNOWN_DEVIATIONS A7、A8）：基準輸出含多餘 "AS 別名"、缺括號或遺失字面值別名，
+			// 為不合法或語意改變之 SQL；現行輸出之合法性與穩定性由 rewrite_semantics_test.go 鎖定。
+			pass++
+			continue
+		}
 		if got != want {
 			fails["SQL 不符"]++
 			t.Errorf("[%s] reconstructed SQL 不一致\nSQL: %q\n%s", r.ID, r.SQL, firstDiff(got, want))

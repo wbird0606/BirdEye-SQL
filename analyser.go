@@ -59,6 +59,11 @@ type analyserEntry struct {
 
 // NewAnalyser 建立 Analyser。cacheTTL <= 0 表示不快取。
 func NewAnalyser(fetch SchemaFetcher, cacheTTL time.Duration) *Analyser {
+	// schema 查詢另以 (db_id, schema, table) 為鍵快取並合併併發請求（見 schemacache.go），
+	// 使變更 SQL 字面值不致使每次未命中都重複查詢 Permission API。
+	if fetch != nil {
+		fetch = newSchemaCache(fetch, cacheTTL).get
+	}
 	return &Analyser{fetch: fetch, cacheTTL: cacheTTL, cache: map[string]analyserEntry{}}
 }
 

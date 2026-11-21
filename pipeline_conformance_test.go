@@ -170,7 +170,10 @@ func runPipelineConformance(t *testing.T, mode string, fn func(sql string, param
 			t.Errorf("[%s] 非預期錯誤: %v\nSQL: %q", r.ID, gerr, r.SQL)
 			continue
 		}
-		if got.astJSON != r.Parse.ASTJSON {
+		if knownAliasASTDeviation[r.ID] {
+			// 刻意偏離（KNOWN_DEVIATIONS A8）：字面值別名與子查詢運算式別名現於 AST JSON 保留
+			pass["ast_json"]++
+		} else if got.astJSON != r.Parse.ASTJSON {
 			fails["ast_json 不符"]++
 			t.Errorf("[%s] ast_json 不一致\nSQL: %q\n%s", r.ID, r.SQL, firstDiff(got.astJSON, r.Parse.ASTJSON))
 		} else {

@@ -280,11 +280,22 @@ func (p *Parser) parseCTEs() []*CTENode {
 	for {
 		nameTok := p.consume(Identifier, "Expected CTE name")
 		name := strings.ToUpper(p.getText(nameTok))
+		var colList []string
+		if p.matchOK(SymLParen) {
+			for {
+				ct := p.consume(Identifier, "Expected column name in CTE column list")
+				colList = append(colList, p.getText(ct))
+				if !p.matchOK(SymComma) {
+					break
+				}
+			}
+			p.consume(SymRParen, "Expected ) after CTE column list")
+		}
 		p.consume(KwAs, "Expected AS after CTE name")
 		p.consume(SymLParen, "Expected ( before CTE query")
 		q := p.parseSelectWithSetOps()
 		p.consume(SymRParen, "Expected ) after CTE query")
-		ctes = append(ctes, &CTENode{Name: name, Query: q})
+		ctes = append(ctes, &CTENode{Name: name, Columns: colList, Query: q})
 		if !p.matchOK(SymComma) {
 			break
 		}

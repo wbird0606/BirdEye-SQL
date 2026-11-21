@@ -286,6 +286,10 @@ func (s *Serializer) serialize(n Node) any {
 			jkv{"offset_count", derefInt(x.OffsetCount)},
 			jkv{"fetch_count", derefInt(x.FetchCount)},
 		)
+		if x.Alias != "" {
+			// 子查詢作為 SELECT 清單運算式時之別名；"alias" 鍵保留給內層 FROM 資料表別名
+			obj = append(obj, jkv{"expr_alias", x.Alias})
+		}
 
 	case *UnionStatement:
 		obj = append(obj,
@@ -296,7 +300,11 @@ func (s *Serializer) serialize(n Node) any {
 		)
 
 	case *CTENode:
-		obj = append(obj, jkv{"name", x.Name}, jkv{"query", s.serialize2(x.Query)})
+		obj = append(obj, jkv{"name", x.Name})
+		if len(x.Columns) > 0 {
+			obj = append(obj, jkv{"columns", s.serAny(x.Columns)})
+		}
+		obj = append(obj, jkv{"query", s.serialize2(x.Query)})
 
 	case *BetweenExpressionNode:
 		obj = append(obj,
@@ -371,6 +379,10 @@ func (s *Serializer) serialize(n Node) any {
 
 	case *LiteralNode:
 		obj = append(obj, jkv{"value", x.Value}, jkv{"type", x.Type.String()})
+		if x.Alias != "" {
+			// 字面值欄位別名（SELECT 0 AS lvl）：原先在序列化時遺失，重建後欄位名消失
+			obj = append(obj, jkv{"alias", x.Alias})
+		}
 
 	case *BinaryExpressionNode:
 		obj = append(obj,

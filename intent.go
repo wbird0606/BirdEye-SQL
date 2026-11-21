@@ -306,8 +306,10 @@ func (ie *IntentExtractor) walkInsert(node map[string]any, intents *[]Intent, ct
 
 func (ie *IntentExtractor) walkMerge(node map[string]any, intents *[]Intent, cteNames strSetT) {
 	sourceAlias := strings.ToUpper(dstr(node, "source_alias"))
-	if src := node["source"]; src != nil {
-		ie.walk(node2map(src), intents, cteNames)
+	srcMap := dmap(node, "source")
+	srcIsTable := srcMap != nil && dstr(srcMap, "node_type") == "IdentifierNode"
+	if srcMap != nil && !srcIsTable {
+		ie.walk(srcMap, intents, cteNames)
 	}
 	target := dmap(node, "target")
 	targetAlias := dstr(node, "target_alias")
@@ -320,7 +322,18 @@ func (ie *IntentExtractor) walkMerge(node map[string]any, intents *[]Intent, cte
 		}
 	}
 	derived := strSetT{}
-	if sourceAlias != "" {
+	if srcIsTable {
+		// 來源為真實資料表：其欄位引用必須解析回該表並產生意圖（否則來源表之讀取會漏檢）。
+		ss, st := tableInfo(srcMap)
+		if st != "" && !cteNames[strings.ToUpper(st)] {
+			am.set(st, schemaTable{ss, st})
+			if sourceAlias != "" {
+				am.set(dstr(node, "source_alias"), schemaTable{ss, st})
+			}
+		} else if sourceAlias != "" {
+			derived[sourceAlias] = true
+		}
+	} else if sourceAlias != "" {
 		derived[sourceAlias] = true
 	}
 	ie.walkExpr(node["on_condition"], am, IntentFilter, intents, cteNames, derived)
@@ -386,7 +399,7 @@ func (ie *IntentExtractor) walkExpr(exprRaw any, am *aliasMap, intentType string
 			return
 		}
 		s, tbl, col := resolveCol(expr, am)
-		if tbl != "" {
+		if tbl != "" && !(s == "" && cteNames[strings.ToUpper(tbl)]) {
 			ie.add(intents, s, tbl, sp(col), intentType)
 		}
 	case "BinaryExpressionNode":
@@ -618,6 +631,29 @@ func (ie *IntentExtractor) collectTables(node map[string]any, tables map[[2]stri
 		if src := node["source"]; src != nil {
 			ie.collectTables(node2map(src), tables, cteNames)
 		}
+	case "IfStatement":
+		ie.collectTables(dmap(node, "condition"), tables, cteNames)
+		for _, k := range []string{"then_block", "else_block"} {
+			for _, st := range dslice(node, k) {
+				ie.collectTables(node2map(st), tables, cteNames)
+			}
+		}
+	case "MergeStatement":
+		for _, k := range []string{"target", "source"} {
+			m := dmap(node, k)
+			if m == nil {
+				continue
+			}
+			if dstr(m, "node_type") == "IdentifierNode" {
+				s, tbl := tableInfo(m)
+				if tbl != "" && !cteNames[strings.ToUpper(tbl)] {
+					tables[[2]string{s, tbl}] = true
+				}
+			} else {
+				ie.collectTables(m, tables, cteNames)
+			}
+		}
+		ie.collectTables(dmap(node, "on_condition"), tables, cteNames)
 	case "BinaryExpressionNode":
 		ie.collectTables(dmap(node, "left"), tables, cteNames)
 		ie.collectTables(dmap(node, "right"), tables, cteNames)

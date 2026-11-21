@@ -187,6 +187,16 @@ func (rc *Reconstructor) sqlSelect(n map[string]any) string {
 	} else {
 		var cs []string
 		for _, c := range dslice(n, "columns") {
+			cm := node2map(c)
+			if nt := dstr(cm, "node_type"); nt == "SelectStatement" || nt == "UnionStatement" {
+				// 純量子查詢：必須加括號，並還原其運算式別名
+				s := "(" + rc.sqlExpr(c) + ")"
+				if a := dstr(cm, "expr_alias"); a != "" {
+					s += " AS " + a
+				}
+				cs = append(cs, s)
+				continue
+			}
 			cs = append(cs, rc.sqlExpr(c))
 		}
 		parts = append(parts, strings.Join(cs, ", "))
@@ -537,6 +547,10 @@ func (rc *Reconstructor) sqlExpr(node any) string {
 		sql = rc.sqlBetween(n)
 	case "CastExpressionNode":
 		sql = rc.sqlCast(n)
+	case "SelectStatement", "UnionStatement":
+		// 子查詢作為運算式：其 JSON "alias" 為內層 FROM 之資料表別名（已由 sqlSelect 輸出），
+		// 不是運算式別名；運算式別名另存於 "expr_alias"，由 SELECT 清單處理。
+		return rc.toSQL(n)
 	default:
 		sql = rc.toSQL(n)
 	}
@@ -571,7 +585,7 @@ func (rc *Reconstructor) sqlBinary(n map[string]any) string {
 	if op == "" {
 		op = dstr(n, "operator")
 	}
-	left := rc.sqlExpr(n["left"])
+	left := rc.sqlOperand(n["left"])
 	rightRaw := n["right"]
 
 	if op == "IS NULL" || op == "IS NOT NULL" {
@@ -701,12 +715,27 @@ func (rc *Reconstructor) sqlApply(n map[string]any) string {
 
 func (rc *Reconstructor) sqlAssignment(n map[string]any) string {
 	col := rc.toSQL(dmap(n, "column"))
-	val := rc.sqlExpr(firstVal(n, "expr", "right", "expression"))
+	val := rc.sqlOperand(firstVal(n, "expr", "right", "expression"))
 	return col + " = " + val
 }
 
+// sqlOperand 同 sqlExpr，但子查詢（SELECT／UNION）作為運算元時加括號。
+func (rc *Reconstructor) sqlOperand(node any) string {
+	s := rc.sqlExpr(node)
+	if m := node2map(node); m != nil {
+		if nt := dstr(m, "node_type"); nt == "SelectStatement" || nt == "UnionStatement" {
+			return "(" + s + ")"
+		}
+	}
+	return s
+}
+
 func (rc *Reconstructor) sqlCTE(n map[string]any) string {
-	return dstr(n, "name") + " AS (" + rc.toSQL(dmap(n, "query")) + ")"
+	name := dstr(n, "name")
+	if cols := dslice(n, "columns"); len(cols) > 0 {
+		name += "(" + strings.Join(strSlice(cols), ", ") + ")"
+	}
+	return name + " AS (" + rc.toSQL(dmap(n, "query")) + ")"
 }
 
 func (rc *Reconstructor) sqlOrderBy(n map[string]any) string {
