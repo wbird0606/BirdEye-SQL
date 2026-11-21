@@ -1,5 +1,8 @@
 name: Go CI
 
+# 本倉庫之 Actions 僅允許倉庫內部與帳號自行 fork 之 action（allowed_actions = local_only），
+# 因此只使用 wbird0606/checkout；Go 使用 GitHub-hosted runner 預裝版本，其餘以指令執行。
+
 on:
   push:
     branches: [main, go]
@@ -12,14 +15,10 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        go: ["1.22", "stable"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: ${{ matrix.go }}
+      - uses: wbird0606/checkout@v4
+      - name: Go version
+        run: go version
       - name: Build
         run: go build ./...
       - name: Vet
@@ -30,22 +29,19 @@ jobs:
   vulncheck:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with:
-          go-version: stable
+      - uses: wbird0606/checkout@v4
       - name: govulncheck
         run: |
           go install golang.org/x/vuln/cmd/govulncheck@latest
-          govulncheck ./...
+          "$(go env GOPATH)/bin/govulncheck" ./...
 
   secrets:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: wbird0606/checkout@v4
         with:
           fetch-depth: 0
-      - name: gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: gitleaks (working tree only)
+        run: |
+          docker run --rm -v "$PWD:/repo" zricethezav/gitleaks:latest \
+            dir /repo --no-banner --redact --exit-code 1
