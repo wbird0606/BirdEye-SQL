@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_visualizer_suite.py
+// 對照 python-final:tests/test_visualizer_suite.py
 // conformance 已 byte 驗 tree 輸出；此處 1:1 鎖定關鍵標籤與 ZTA 安全標記。
 
 func vizParse(t *testing.T, sql string) string {

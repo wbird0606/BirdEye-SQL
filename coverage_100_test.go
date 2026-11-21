@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_coverage_100_suite.py
+// 對照 python-final:tests/test_coverage_100_suite.py
 // —— 針對每個剩餘未覆蓋的 false 分支。
 
 func c100Reg(t *testing.T) *MetadataRegistry {

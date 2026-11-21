@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_functions_suite.py（+ builtin_functions）
+// 對照 python-final:tests/test_functions_suite.py（+ builtin_functions）
 
 func funcReg(t *testing.T) *MetadataRegistry {
 	reg := mkReg(t, "table_name,column_name,data_type\nUsers,UserName,NVARCHAR\nUsers,Password,NVARCHAR\n")

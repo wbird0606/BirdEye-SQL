@@ -2,7 +2,7 @@ package birdeye
 
 import "testing"
 
-// 對照 birdeye_1150831/tests/test_cte_suite.py（+ test_cte_dml_suite.py）
+// 對照 python-final:tests/test_cte_suite.py（+ test_cte_dml_suite.py）
 
 func TestCTE_Suite(t *testing.T) {
 	aw := loadAdventureWorks(t)

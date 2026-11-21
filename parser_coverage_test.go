@@ -2,7 +2,7 @@ package birdeye
 
 import "testing"
 
-// 對照 birdeye_1150831/tests/test_parser_coverage_suite.py
+// 對照 python-final:tests/test_parser_coverage_suite.py
 // —— 新 MSSQL 語法特性的 parser 分支（SyntaxError 路徑、IF BEGIN...END 內各語句
 //    的 _parse_single_stmt 分派、EXEC return var/named args、CREATE TABLE 欄位修飾、
 //    MERGE 子查詢 source / NOT MATCHED BY SOURCE / AND condition）。

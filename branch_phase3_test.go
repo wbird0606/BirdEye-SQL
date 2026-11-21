@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_branch_phase3_mixed_suite.py
+// 對照 python-final:tests/test_branch_phase3_mixed_suite.py
 // —— parser / binder / intent / visualizer 混合的剩餘分支（多以直接建構節點 + 呼叫內部方法）。
 
 func bp3Reg(t *testing.T) *MetadataRegistry {

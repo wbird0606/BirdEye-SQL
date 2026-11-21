@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_expressions_suite.py（31）
+// 對照 python-final:tests/test_expressions_suite.py（31）
 // 完整 pipeline 輸出已由 conformance byte 驗；此處鎖定 AST 結構與型別推導。
 
 func exprRoot(t *testing.T, sql string) Node {

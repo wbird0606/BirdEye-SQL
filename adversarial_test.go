@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_security_adversarial_suite.py（52）
+// 對照 python-final:tests/test_security_adversarial_suite.py（52）
 //                     + test_adversarial_appendix.py（18）
 
 func advReg(t *testing.T) *MetadataRegistry {

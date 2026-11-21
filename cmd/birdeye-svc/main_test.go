@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	bird "github.com/1150513/birdeye-go"
+	bird "github.com/wbird0606/BirdEye-SQL"
 )
 
 // birdeye-svc 對照 Python birdeye-svc/app.py 的端點契約。

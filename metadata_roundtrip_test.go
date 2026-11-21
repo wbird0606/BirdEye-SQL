@@ -9,7 +9,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_metadata_roundtrip_suite.py
+// 對照 python-final:tests/test_metadata_roundtrip_suite.py
 // —— 由 metadata（testdata/output.csv）產生代表性查詢，驗證 SQL → JSON → SQL
 //    往返後仍可再被解析成 AST/JSON。
 

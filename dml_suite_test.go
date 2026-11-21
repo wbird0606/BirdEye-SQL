@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_dml_suite.py
+// 對照 python-final:tests/test_dml_suite.py
 
 func awRunErr(t *testing.T, aw *MetadataRegistry, sql string) error {
 	t.Helper()

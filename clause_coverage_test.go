@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_clause_coverage_gaps.py（web/app 端點測試屬 Phase 2，略）。
+// 對照 python-final:tests/test_clause_coverage_gaps.py（web/app 端點測試屬 Phase 2，略）。
 
 func TestClauseCov_LexerNString(t *testing.T) {
 	cases := []string{"SELECT N'Hello World'", "SELECT n'Test String'", "SELECT N'中文字符'", "SELECT N''", "SELECT N'It''s a test'"}

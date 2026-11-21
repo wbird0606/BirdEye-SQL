@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_branch_phase1_suite.py
+// 對照 python-final:tests/test_branch_phase1_suite.py
 // —— lexer / serializer / reconstructor / mermaid 的罕見分支。
 
 // dummyNode：Python 用 type(node).__name__ 取名，Go 用編譯期 switch。

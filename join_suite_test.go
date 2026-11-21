@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_join_suite.py（+ multi_table / nullable / not_pagination）
+// 對照 python-final:tests/test_join_suite.py（+ multi_table / nullable / not_pagination）
 
 func TestJoin_BasicSyntax(t *testing.T) {
 	aw := loadAdventureWorks(t)

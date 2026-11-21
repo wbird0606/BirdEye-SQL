@@ -1,6 +1,6 @@
 # Porting Progress
 
-Baseline: `birdeye_1150831` @ `py-baseline-for-go-port` — **47 suite 檔 / 1216 test**。
+Baseline: Python 版（標籤 `python-final`） — **47 suite 檔 / 1216 test**。
 
 狀態：⬜ 未開始 · 🟡 移植中 · 🟢 golden 綠 · ✅ 1:1 綠 · ⏭️ Phase 2 / 不移植
 

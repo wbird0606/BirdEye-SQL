@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_mssql_features_suite.py
+// 對照 python-final:tests/test_mssql_features_suite.py
 // （declare_go / temp_table / apply / advanced_types）
 
 func TestMSSQLFeat_LexerAndDeclare(t *testing.T) {

@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_subquery_suite.py（any_all / union / derived_table）
+// 對照 python-final:tests/test_subquery_suite.py（any_all / union / derived_table）
 
 func TestSubquery_AnyAllParsing(t *testing.T) {
 	cases := []struct{ sql, op string }{

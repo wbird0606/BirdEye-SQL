@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_row_filter_suite.py
+// 對照 python-final:tests/test_row_filter_suite.py
 
 func rfIdent(name string, quals ...string) map[string]any {
 	q := []any{}

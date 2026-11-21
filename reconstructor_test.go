@@ -2,7 +2,7 @@ package birdeye
 
 import "testing"
 
-// 對照 birdeye_1150831/tests/test_reconstructor_suite.py 的 roundtrip 概念。
+// 對照 python-final:tests/test_reconstructor_suite.py 的 roundtrip 概念。
 // conformance（1796/1796）已涵蓋 byte 一致性；此處針對代表案例做精確斷言。
 
 func roundtrip(t *testing.T, sql string) string {

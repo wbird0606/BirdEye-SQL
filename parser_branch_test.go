@@ -2,7 +2,7 @@ package birdeye
 
 import "testing"
 
-// 對照 birdeye_1150831/tests/test_branch_phase2_parser_suite.py
+// 對照 python-final:tests/test_branch_phase2_parser_suite.py
 // —— parser 的罕見分支。monkeypatch 型測試改以等價的可觀察行為 / 直接呼叫驗證。
 
 func TestParserBranch_PeekOutOfRange(t *testing.T) {

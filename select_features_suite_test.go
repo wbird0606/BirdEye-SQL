@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_select_features_suite.py
+// 對照 python-final:tests/test_select_features_suite.py
 // （order_by_top / top_percent / group_by_having / distinct_null）
 
 func sfReg(t *testing.T) *MetadataRegistry {

@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_cli_suite.py
+// 對照 python-final:tests/test_cli_suite.py
 
 const testCSV = "../../data/output.csv"
 

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_mssql_boundary_suite.py
+// 對照 python-final:tests/test_mssql_boundary_suite.py
 // —— 負數字面值 / ##全域臨時表 / APPLY 無別名 / 位元 & 模 / UNION derived table /
 //    字串函數 / CAST-CONVERT 增強 / COUNT(DISTINCT) / INTERSECT-EXCEPT /
 //    純量子查詢 / TRY_CAST-TRY_CONVERT / 巢狀 derived table / bracket 別名。

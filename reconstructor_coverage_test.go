@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_reconstructor_coverage_suite.py
+// 對照 python-final:tests/test_reconstructor_coverage_suite.py
 // —— reconstructor.go 中 conformance 語料未觸及的分支（直接建構 dict 呼叫內部方法）。
 
 func rcLit(val, typ string) map[string]any {

@@ -1,3 +1,3 @@
-module github.com/1150513/birdeye-go
+module github.com/wbird0606/BirdEye-SQL
 
 go 1.22

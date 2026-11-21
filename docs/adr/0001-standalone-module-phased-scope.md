@@ -2,7 +2,7 @@
 
 ## 決策
 
-BirdEye-SQL 的 Go 版是一個**獨立 module**（`github.com/1150513/birdeye-go`，單獨的本地 git repo，位於 `D:\1150513\birdeye-go\`），而非 `birdeye_1150831` 的子目錄，也不是塞進 `zta-proxy-go/internal/`。範圍分兩階段：
+BirdEye-SQL 的 Go 版是一個**獨立 module**（`github.com/wbird0606/BirdEye-SQL`，單獨的本地 git repo，位於 `D:\1150513\birdeye-go\`），而非 `birdeye_1150831` 的子目錄，也不是塞進 `zta-proxy-go/internal/`。範圍分兩階段：
 
 - **Phase 1（現行）**：移植 12 個核心模組成 library —— `token`/`lexer`、`parser`、`ast`、`registry`、`binder`、`serializer`、`reconstructor`、`intent_extractor`、`row_filter`、`runner`、`visualizer`、`mermaid_exporter`。
 - **Phase 2（延後）**：Go CLI、取代 `birdeye-svc` 的 Go HTTP service、把 `zta-proxy-go` 的 `Analyser` 換成純 Go 實作並移除 Python subprocess worker。

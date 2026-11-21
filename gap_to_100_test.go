@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_gap_to_100_suite.py
+// 對照 python-final:tests/test_gap_to_100_suite.py
 
 const gapCSV = `table_name,column_name,data_type
 Address,AddressID,INT

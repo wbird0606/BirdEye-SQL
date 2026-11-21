@@ -16,7 +16,7 @@ import (
 	"os"
 	"strings"
 
-	bird "github.com/1150513/birdeye-go"
+	bird "github.com/wbird0606/BirdEye-SQL"
 )
 
 func main() { os.Exit(run(os.Args[1:], os.Stdout, os.Stderr)) }

@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_semantic_suite.py
+// 對照 python-final:tests/test_semantic_suite.py
 // 註：檢查 result["tree"] 的斷言改為直接檢查 AST（visualizer 為里程碑 10）。
 
 func bindWith(t *testing.T, sql string, reg *MetadataRegistry) (Node, error) {

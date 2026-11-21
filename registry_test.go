@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_schema_registry_suite.py（binder 整合部分見 binder_test.go）
+// 對照 python-final:tests/test_schema_registry_suite.py（binder 整合部分見 binder_test.go）
 
 func mkReg(t *testing.T, csv string) *MetadataRegistry {
 	t.Helper()

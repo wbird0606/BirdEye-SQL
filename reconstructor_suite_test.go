@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_reconstructor_suite.py（roundtrip 子字串斷言）。
+// 對照 python-final:tests/test_reconstructor_suite.py（roundtrip 子字串斷言）。
 // conformance 已驗 byte 一致；此處 1:1 鎖定行為。
 
 func TestReconstructorSuite_Roundtrip(t *testing.T) {

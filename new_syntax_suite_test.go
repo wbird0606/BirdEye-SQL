@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_new_syntax_suite.py
+// 對照 python-final:tests/test_new_syntax_suite.py
 // —— 9 種 MSSQL 新 AST 節點：解析 + 序列化 + 重建。
 
 func nsSerialize(t *testing.T, sql string) map[string]any {

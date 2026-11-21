@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// 對照 birdeye_1150831/tests/test_mermaid_suite.py
+// 對照 python-final:tests/test_mermaid_suite.py
 // Python 傳入手建 dict 給 exporter.export()；Go 的 Export 吃 *omap，故以等價 JSON 串走 ExportJSON。
 
 func TestMermaid_BasicNodes(t *testing.T) {

@@ -10,10 +10,10 @@ import (
 	"strings"
 	"testing"
 
-	bird "github.com/1150513/birdeye-go"
+	bird "github.com/wbird0606/BirdEye-SQL"
 )
 
-// 對照 birdeye_1150831/tests/test_web_api_suite.py
+// 對照 python-final:tests/test_web_api_suite.py
 
 func testServer(t *testing.T) http.Handler {
 	t.Helper()

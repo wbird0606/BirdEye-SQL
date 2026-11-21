@@ -12,8 +12,8 @@ harvest 只從測試檔字串常數收割「看起來像 SQL」的字串，並�
 （去掉引號後仍含非 SQL 字元 / CJK / "..." 者視為 prose）。
 
 用法：
-    BIRDEYE_BASELINE=../birdeye_1150831 \\
-      ../birdeye_1150831/.venv/Scripts/python tools/gen_fixtures.py
+    BIRDEYE_BASELINE=/path/to/BirdEye-SQL@python-final \\
+      /path/to/BirdEye-SQL@python-final/.venv/bin/python tools/gen_fixtures.py
 """
 from __future__ import annotations
 
@@ -29,7 +29,7 @@ import tempfile
 from pathlib import Path
 
 REPO = Path(__file__).resolve().parent.parent
-BASELINE = Path(os.environ.get("BIRDEYE_BASELINE", REPO.parent / "birdeye_1150831")).resolve()
+BASELINE = Path(os.environ.get("BIRDEYE_BASELINE", REPO.parent / "BirdEye-SQL@python-final")).resolve()
 CSV_PATH = REPO / "testdata" / "output.csv"
 OUT_DIR = REPO / "testdata" / "conformance"
 EXTRA = REPO / "tools" / "corpus_extra.jsonl"

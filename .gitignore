@@ -16,3 +16,14 @@ tools/.venv/
 Thumbs.db
 .vscode/
 .idea/
+# secrets / local
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.pfx
+# build / coverage
+bin/
+*.out
+coverage*.html
