@@ -21,6 +21,7 @@
 | 列層過濾注入 | 對 AST 注入權限系統回傳之列過濾條件並重建 SQL；涵蓋外部 JOIN 可為 NULL 側、自我 JOIN、子查詢運算式、`INSERT … SELECT`、`MERGE … USING`、`UPDATE`／`DELETE` 之子查詢與目標表 |
 | 語法覆蓋 | 含遞迴 CTE（含欄位清單）、帶 schema 限定之 `MERGE`、三段式欄位名稱、視窗函式、`CROSS APPLY` 等；尚不支援者見 [KNOWN_DEVIATIONS.md](./KNOWN_DEVIATIONS.md) |
 | 整表操作政策 | 辨識 `DROP`／`CREATE`／`ALTER TABLE`、`TRUNCATE`、`SELECT … INTO` 與 `BULK INSERT` 並 Fail-Closed 拒絕 |
+| 預存程序政策 | `EXEC` 採**預設拒絕**：僅允許白名單（`Analyser.SetAllowedProcs`；`birdeye-svc` 以環境變數 `BIRDEYE_ALLOWED_PROCS`，逗號分隔，可含 schema）所列之程序；`xp_cmdshell`、`sp_executesql` 等封鎖清單恆優先，以變數指定程序名稱一律拒絕。預存程序內部讀寫之欄位對 BirdEye 不可見，故須由管理者逐一審核後列入 |
 | Schema 快取 | `Analyser` 以 `(db_id, schema, table)` 為鍵快取欄位 schema，並合併併發之相同查詢，避免變更 SQL 字面值造成對權限服務之重複查詢 |
 
 ## 現況

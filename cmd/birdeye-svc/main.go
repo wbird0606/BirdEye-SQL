@@ -39,7 +39,10 @@ func main() {
 	cacheTTL := time.Duration(getenvInt("BIRDEYE_CACHE_TTL", 300)) * time.Second
 
 	fetch := httpSchemaFetcher(permURL, apiKey, httpTimeout)
-	h := newService(bird.NewAnalyser(fetch, cacheTTL))
+	an := bird.NewAnalyser(fetch, cacheTTL)
+	// 預存程序白名單：封鎖清單以外之 EXEC 預設一律拒絕；以逗號分隔列出已審核之程序（可含 schema）。
+	an.SetAllowedProcs(bird.ParseProcAllowList(os.Getenv("BIRDEYE_ALLOWED_PROCS")))
+	h := newService(an)
 
 	addr := ":" + port
 	log.Printf("birdeye-svc → %s  (permission API: %s)", addr, permURL)

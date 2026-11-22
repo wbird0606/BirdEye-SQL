@@ -42,7 +42,7 @@ func TestFinalCov_Binder(t *testing.T) {
 	fcSemErr(t, "SELECT AddressID FROM Address WHERE AddressID > ANY (1, 'hello')", "Incompatible")
 	fcRun(t, "IF 1=1 SELECT AddressID FROM Address")
 	fcRun(t, "IF 1=1 SELECT AddressID FROM Address ELSE SELECT City FROM Address")
-	fcRun(t, "EXEC SomeProc 1, 2, 3")
+	fcSemErr(t, "EXEC SomeProc 1, 2, 3", "allow-list")
 	fcRun(t, "SET NOCOUNT ON")
 	fcRun(t, "MERGE Address USING Address ON 1 = 1 WHEN MATCHED THEN UPDATE SET AddressID = 1")
 	fcRun(t, "MERGE Address USING Address ON 1 = 1 WHEN MATCHED AND 1 = 1 THEN UPDATE SET AddressID = 1")

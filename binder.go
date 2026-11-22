@@ -11,6 +11,10 @@ import (
 type Binder struct {
 	registry *MetadataRegistry
 
+	// allowedProcs 為允許呼叫之預存程序白名單（鍵為大寫之 "SCHEMA.NAME" 或 "NAME"）；
+	// nil 表示一律不允許（預設拒絕）。
+	allowedProcs map[string]bool
+
 	scopes            []*scopeFrame // scope stack（保留插入順序）
 	nullableStack     []map[string]bool
 	lastRootNullables map[string]bool
@@ -1027,13 +1031,40 @@ func (b *Binder) bindIf(stmt *IfStatement) {
 
 var blockedProcs = strSet("XP_CMDSHELL SP_EXECUTESQL SP_OA_CREATE SP_OA_METHOD SP_OA_GETPROPERTY SP_CONFIGURE OPENROWSET OPENQUERY")
 
-func (b *Binder) bindExec(stmt *ExecStatement) {
-	procName := ""
-	if id, ok := stmt.ProcName.(*IdentifierNode); ok {
-		procName = id.Name
+// procKeys 回傳預存程序呼叫可對應之白名單鍵（皆為大寫）：呼叫時所寫之完整名稱；
+// 未指定 schema 者另視同 dbo.<name>（SQL Server 預設 schema）。
+func procKeys(id *IdentifierNode) []string {
+	full := strings.ToUpper(strings.Join(append(append([]string{}, id.Qualifiers...), id.Name), "."))
+	keys := []string{full}
+	if len(id.Qualifiers) == 0 {
+		keys = append(keys, "DBO."+strings.ToUpper(id.Name))
 	}
-	if blockedProcs[strings.ToUpper(procName)] {
-		b.sem("Stored procedure '" + procName + "' is blocked by ZTA policy")
+	return keys
+}
+
+// bindExec 對預存程序呼叫採「封鎖清單 + 白名單」：封鎖清單恆優先；其餘預存程序預設拒絕，
+// 僅允許白名單（Binder.allowedProcs）所列者。預存程序內部讀寫之欄位對 BirdEye 不可見，
+// 故不得預設放行，由管理者逐一審核後列入白名單。
+func (b *Binder) bindExec(stmt *ExecStatement) {
+	id, ok := stmt.ProcName.(*IdentifierNode)
+	if !ok || id == nil || id.Name == "" {
+		b.sem("Stored procedure call without a literal procedure name is not allowed by ZTA policy")
+	}
+	if blockedProcs[strings.ToUpper(id.Name)] {
+		b.sem("Stored procedure '" + id.Name + "' is blocked by ZTA policy")
+	}
+	if strings.HasPrefix(id.Name, "@") {
+		b.sem("Stored procedure name given by a variable is not allowed by ZTA policy")
+	}
+	allowed := false
+	for _, k := range procKeys(id) {
+		if b.allowedProcs[k] {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		b.sem("Stored procedure '" + strings.Join(append(append([]string{}, id.Qualifiers...), id.Name), ".") + "' is not on the ZTA allow-list")
 	}
 	for _, a := range stmt.Args {
 		b.visitExpr(a)

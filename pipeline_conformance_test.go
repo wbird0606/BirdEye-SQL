@@ -165,6 +165,11 @@ func runPipelineConformance(t *testing.T, mode string, fn func(sql string, param
 			continue
 		}
 
+		if gerr != nil && isExecPolicyDeviation(gerr) {
+			// 刻意偏離（KNOWN_DEVIATIONS A13）：預存程序預設拒絕，Python 基準版則放行任何非封鎖清單之 EXEC
+			skip++
+			continue
+		}
 		if gerr != nil {
 			fails["非預期錯誤"]++
 			t.Errorf("[%s] 非預期錯誤: %v\nSQL: %q", r.ID, gerr, r.SQL)

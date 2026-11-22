@@ -24,6 +24,8 @@ type Analyser struct {
 	fetch    SchemaFetcher
 	cacheTTL time.Duration
 
+	allowedProcs []string // 預存程序白名單（啟動時設定；空 = 預設拒絕所有 EXEC）
+
 	mu    sync.Mutex
 	cache map[string]analyserEntry
 }
@@ -65,6 +67,12 @@ func NewAnalyser(fetch SchemaFetcher, cacheTTL time.Duration) *Analyser {
 		fetch = newSchemaCache(fetch, cacheTTL).get
 	}
 	return &Analyser{fetch: fetch, cacheTTL: cacheTTL, cache: map[string]analyserEntry{}}
+}
+
+// SetAllowedProcs 設定允許呼叫之預存程序白名單（名稱可含 schema，不分大小寫）。
+// 須於開始處理請求前呼叫；未設定時，封鎖清單以外的 EXEC 一律被拒絕（Fail-Closed）。
+func (a *Analyser) SetAllowedProcs(names []string) {
+	a.allowedProcs = append([]string(nil), names...)
 }
 
 func (a *Analyser) getCache(key string) (AnalyserResult, bool) {
@@ -137,7 +145,7 @@ func (a *Analyser) GetIntents(ctx context.Context, sql string, dbID int, params 
 	}
 
 	// Pass 2：完整 pipeline
-	res, err := NewRunner(reg).RunMulti(sql, listAny(params))
+	res, err := NewRunner(reg).WithAllowedProcs(a.allowedProcs).RunMulti(sql, listAny(params))
 	if err != nil {
 		return AnalyserResult{}, fmt.Errorf("birdeye: %w", err)
 	}
