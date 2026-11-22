@@ -15,7 +15,16 @@ const (
 
 // rewriteQmarkSQL 把字串／註解外的位置參數 ? 改寫成 @P1, @P2, ...。
 // 回傳 (改寫後 SQL, ? 的數量)。以 rune 為單位處理（與 Python 一致）。
-func rewriteQmarkSQL(sql string) (string, int) {
+func rewriteQmarkSQL(sql string) (string, int) { return rewriteQmarkWith(sql, "@P") }
+
+// QmarkToPositional 把字串／註解外的位置參數 ? 改寫成 @p1, @p2, ...（小寫，對應 SQL Server 驅動
+// 之位置參數命名），供代理送交資料庫執行；字串字面值與註解內之 ? 不受影響。
+func QmarkToPositional(sql string) string {
+	out, _ := rewriteQmarkWith(sql, "@p")
+	return out
+}
+
+func rewriteQmarkWith(sql, prefix string) (string, int) {
 	src := []rune(sql)
 	var out []rune
 	n := len(src)
@@ -69,7 +78,7 @@ func rewriteQmarkSQL(sql string) (string, int) {
 			inString = true
 		case ch == '?':
 			pIdx++
-			out = append(out, []rune(fmt.Sprintf("@P%d", pIdx))...)
+			out = append(out, []rune(fmt.Sprintf("%s%d", prefix, pIdx))...)
 		default:
 			out = append(out, ch)
 		}
@@ -98,6 +107,15 @@ func prepareSQL(sql string, params any) (outSQL string, mode ParamMode, in *Para
 		return sql, ModeNone, nil, nil
 
 	case []any:
+		if qmarkCount == 0 && len(p) > 0 {
+			// 原生位置參數 @p1…@pN（Go database/sql 之 SQL Server 驅動慣用寫法）：
+			// 以依序之具名參數交給 binder，SQL 維持原樣。
+			pi := &ParamInput{}
+			for i, v := range p {
+				pi.Ordered = append(pi.Ordered, ParamKV{Name: fmt.Sprintf("@p%d", i+1), Raw: v})
+			}
+			return sql, ModeNamed, pi, nil
+		}
 		if qmarkCount != len(p) {
 			return "", "", nil, valueErr(fmt.Sprintf(
 				"PARAM_COUNT_MISMATCH: SQL has %d '?' placeholders, but params has %d values",

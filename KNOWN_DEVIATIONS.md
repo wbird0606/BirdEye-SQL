@@ -34,6 +34,8 @@ Go 版刻意與 Python [[baseline]] 不同之處。分兩類。
 
 | A13 | `binder.py` `_bind_exec` | 僅以 8 個程序之封鎖清單攔截 `EXEC`，其餘預存程序（含 `usp_*` 自訂程序、`sp_help`、`sp_columns` 等）一律放行。預存程序內部讀寫之欄位對 BirdEye 不可見，因此該呼叫不產生任何欄位意圖，權限平台收到空意圖時回傳 Allowed，列過濾亦不套用。Go 已修正：改為**預設拒絕**，僅允許白名單（`Analyser.SetAllowedProcs`／環境變數 `BIRDEYE_ALLOWED_PROCS`）所列者；封鎖清單恆優先（白名單含封鎖清單之程序視為設定錯誤，啟動即報錯）；以變數指定程序名稱（`EXEC @p`）一律拒絕。一致性測試中受影響之案例記為已知偏離（略過比對）。 |
 
+| A14 | `intent_extractor.py` 位置參數 | qmark 模式下位置參數（`@P1`…）序列化為 `?`，而意圖萃取僅略過 `@` 開頭之名稱，`?` 因此被當成名為 `?` 之欄位，對帶參數之 `WHERE`（例：`WHERE ProductID > ?`）多產生一筆 `column = "?"` 之 FILTER 意圖；權限平台查無此欄位而拒絕，使所有帶參數之篩選查詢被擋（Fail-Closed，非繞過）。**Go 已修正**：`?` 不產生意圖。對應 fixture 於 `wantsPlaceholderColumn` 放行，行為由 `qmark_param_intent_test.go` 鎖定。 | 2026-11 |
+
 ---
 
 ## B. 語言本質差異（非待修 bug）

@@ -391,7 +391,8 @@ func (ie *IntentExtractor) walkExpr(exprRaw any, am *aliasMap, intentType string
 	}
 	switch dstr(expr, "node_type") {
 	case "IdentifierNode":
-		if strings.HasPrefix(dstr(expr, "name"), "@") {
+		// 變數（@x）與 qmark 模式下顯示為 "?" 之位置參數都不是欄位，不產生意圖。
+		if nm := dstr(expr, "name"); strings.HasPrefix(nm, "@") || nm == "?" {
 			return
 		}
 		quals := strSlice(dslice(expr, "qualifiers"))

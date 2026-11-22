@@ -25,6 +25,10 @@ func TestIntentConformance(t *testing.T) {
 			// Go 將來源欄位意圖歸屬於真實資料表，而非別名。行為由 recursive_merge_test.go 鎖定。
 			continue
 		}
+		if wantsPlaceholderColumn(want) {
+			// 刻意偏離 Python 基準（KNOWN_DEVIATIONS A14）：位置參數 "?" 不是欄位，不產生意圖。
+			continue
+		}
 		total++
 
 		parsed, err := parseAny(r.Parse.ASTJSON)
@@ -191,4 +195,14 @@ var knownReconstructDeviation = map[string]bool{
 	"test_visualizer_suite:5f2c89d7dce4":             true,
 	"test_visualizer_suite:ef0ceea439a8":             true,
 	"test_visualizer_suite:f136407c4a2f":             true,
+}
+
+// wantsPlaceholderColumn 判斷 Python 基準之期望意圖是否把位置參數 "?" 當成欄位。
+func wantsPlaceholderColumn(want []any) bool {
+	for _, w := range want {
+		if m, ok := w.(map[string]any); ok && m["column"] == "?" {
+			return true
+		}
+	}
+	return false
 }
