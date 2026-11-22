@@ -1,6 +1,7 @@
 package birdeye
 
 import (
+	"fmt"
 	"regexp"
 	"strings"
 )
@@ -24,6 +25,23 @@ func ParseProcAllowList(csv string) []string {
 		}
 	}
 	return out
+}
+
+// ValidateProcAllowList 檢查白名單是否含封鎖清單之程序（以名稱最後一段比對，如 master.dbo.xp_cmdshell）。
+// 封鎖清單之程序無論如何都不得放行，列入白名單屬設定錯誤，應於啟動時即報錯而非靜默忽略。
+func ValidateProcAllowList(names []string) error {
+	var bad []string
+	for _, n := range names {
+		parts := strings.Split(strings.TrimSpace(n), ".")
+		last := strings.Trim(parts[len(parts)-1], "[]\" ")
+		if blockedProcs[strings.ToUpper(last)] {
+			bad = append(bad, n)
+		}
+	}
+	if len(bad) > 0 {
+		return fmt.Errorf("procedure allow-list contains blocked procedure(s): %s", strings.Join(bad, ", "))
+	}
+	return nil
 }
 
 func procSet(names []string) map[string]bool {

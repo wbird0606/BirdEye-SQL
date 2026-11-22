@@ -32,7 +32,7 @@ Go 版刻意與 Python [[baseline]] 不同之處。分兩類。
 | A11 | `rowfilter.go` DML 內部查詢（承襲 Python 移植，未於 Python 版另行驗證） | 列過濾注入器僅處理 SELECT、UPDATE／DELETE 之目標表、UNION、IF，**不走進** `INSERT … SELECT` 之來源、`MERGE … USING` 之來源，以及 UPDATE／DELETE 之 WHERE／SET 子查詢；有 INSERT 權限之角色可藉 `INSERT … SELECT` 把受限資料表之全部列（含應被過濾者）複製出去（**授權繞過**）。Go 已修正：INSERT 目標不加 WHERE，僅過濾其讀取來源；MERGE 來源（資料表改以過濾後衍生資料表取代，子查詢遞迴過濾）；UPDATE／DELETE 之子查詢遞迴過濾。MERGE 目標表因 T-SQL 不允許衍生資料表作為目標，具適用列過濾時 Fail-Closed 拒絕。 | 2026-11 |
 | A12 | `intent.go` `collectTables` | 第一遍資料表探索未涵蓋 `IF` 區塊，區塊內之 SELECT 資料表無法載入 schema，引擎以 `Table not found` 誤拒（Fail-Closed，非繞過）。Go 已補。 | 2026-11 |
 
-| A13 | `binder.py` `_bind_exec` | 僅以 8 個程序之封鎖清單攔截 `EXEC`，其餘預存程序（含 `usp_*` 自訂程序、`sp_help`、`sp_columns` 等）一律放行。預存程序內部讀寫之欄位對 BirdEye 不可見，因此該呼叫不產生任何欄位意圖，權限平台收到空意圖時回傳 Allowed，列過濾亦不套用。Go 已修正：改為**預設拒絕**，僅允許白名單（`Analyser.SetAllowedProcs`／環境變數 `BIRDEYE_ALLOWED_PROCS`）所列者；封鎖清單恆優先；以變數指定程序名稱（`EXEC @p`）一律拒絕。一致性測試中受影響之案例記為已知偏離（略過比對）。 |
+| A13 | `binder.py` `_bind_exec` | 僅以 8 個程序之封鎖清單攔截 `EXEC`，其餘預存程序（含 `usp_*` 自訂程序、`sp_help`、`sp_columns` 等）一律放行。預存程序內部讀寫之欄位對 BirdEye 不可見，因此該呼叫不產生任何欄位意圖，權限平台收到空意圖時回傳 Allowed，列過濾亦不套用。Go 已修正：改為**預設拒絕**，僅允許白名單（`Analyser.SetAllowedProcs`／環境變數 `BIRDEYE_ALLOWED_PROCS`）所列者；封鎖清單恆優先（白名單含封鎖清單之程序視為設定錯誤，啟動即報錯）；以變數指定程序名稱（`EXEC @p`）一律拒絕。一致性測試中受影響之案例記為已知偏離（略過比對）。 |
 
 ---
 

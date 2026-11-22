@@ -71,8 +71,13 @@ func NewAnalyser(fetch SchemaFetcher, cacheTTL time.Duration) *Analyser {
 
 // SetAllowedProcs 設定允許呼叫之預存程序白名單（名稱可含 schema，不分大小寫）。
 // 須於開始處理請求前呼叫；未設定時，封鎖清單以外的 EXEC 一律被拒絕（Fail-Closed）。
-func (a *Analyser) SetAllowedProcs(names []string) {
+// 白名單含封鎖清單之程序（如 xp_cmdshell）屬設定錯誤，回傳 error 且不採用該白名單。
+func (a *Analyser) SetAllowedProcs(names []string) error {
+	if err := ValidateProcAllowList(names); err != nil {
+		return err
+	}
 	a.allowedProcs = append([]string(nil), names...)
+	return nil
 }
 
 func (a *Analyser) getCache(key string) (AnalyserResult, bool) {

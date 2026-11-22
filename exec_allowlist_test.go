@@ -89,3 +89,24 @@ func TestParseProcAllowList(t *testing.T) {
 		t.Error("空輸入應回傳 nil")
 	}
 }
+
+func TestValidateProcAllowList(t *testing.T) {
+	if err := ValidateProcAllowList([]string{"usp_GetOrders", "dbo.usp_X"}); err != nil {
+		t.Errorf("合法白名單不應報錯: %v", err)
+	}
+	for _, bad := range []string{"xp_cmdshell", "XP_CMDSHELL", "master.dbo.xp_cmdshell", "dbo.[sp_executesql]", " sp_configure "} {
+		if err := ValidateProcAllowList([]string{"usp_ok", bad}); err == nil {
+			t.Errorf("白名單含封鎖清單之程序 %q 應報錯", bad)
+		}
+	}
+	a := NewAnalyser(nil, 0)
+	if err := a.SetAllowedProcs([]string{"usp_ok", "xp_cmdshell"}); err == nil {
+		t.Error("SetAllowedProcs 應拒絕含封鎖清單程序之白名單")
+	}
+	if len(a.allowedProcs) != 0 {
+		t.Error("設定失敗時不應採用該白名單")
+	}
+	if err := a.SetAllowedProcs([]string{"usp_ok"}); err != nil || len(a.allowedProcs) != 1 {
+		t.Errorf("合法白名單應被採用: %v %v", err, a.allowedProcs)
+	}
+}
