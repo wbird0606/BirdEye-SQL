@@ -105,6 +105,10 @@ func (ri *RowFilterInjector) walk(nodeRaw any, rf []RowFilter) {
 				ri.walkExpr(firstVal(am, "expr", "right", "expression"), rf)
 			}
 		}
+		if dmap(node, "from_table") != nil {
+			ri.injectDMLFrom(node, rf)
+			return
+		}
 		entries := buildAliasEntriesDML(node)
 		if applicable := matchFilters(entries, rf); len(applicable) > 0 {
 			var conds []any
@@ -126,6 +130,44 @@ func (ri *RowFilterInjector) walk(nodeRaw any, rf []RowFilter) {
 	}
 }
 
+// injectDMLFrom 處理 UPDATE／DELETE ... FROM：
+//   - FROM 來源與 JOIN 之每個資料表（含自我 JOIN 之每個別名）皆套用列過濾，規則同 SELECT；
+//   - 寫入目標若為 FROM 清單內之別名（或未加別名之資料表名），即為該 FROM 項目本身，過濾以 WHERE 表達；
+//     否則目標為獨立資料表，另以其表名為限定詞注入 WHERE 條件；
+//   - FROM 內之衍生資料表與 ON 條件中之子查詢先各自過濾。
+func (ri *RowFilterInjector) injectDMLFrom(node map[string]any, rf []RowFilter) {
+	adapter := map[string]any{"table": node["from_table"], "alias": node["from_alias"], "joins": node["from_joins"]}
+	ri.walkSubqueriesInSelect(adapter, rf) // 含 JOIN 衍生資料表與 ON 條件內之子查詢
+
+	targetQual := ""
+	if t := dmap(node, "table"); t != nil && len(strSlice(dslice(t, "qualifiers"))) == 0 {
+		name := dstr(t, "name")
+		for _, e := range buildAliasEntries(adapter) {
+			if strings.EqualFold(e.qualifier, name) {
+				targetQual = e.qualifier
+				break
+			}
+		}
+	}
+
+	adapter["where"] = node["where"]
+	ri.injectFrom(adapter, rf, targetQual)
+	node["where"] = adapter["where"]
+	node["from_table"] = adapter["table"]
+	node["from_alias"] = adapter["alias"]
+
+	if targetQual == "" { // 目標為獨立資料表
+		entries := buildAliasEntriesDML(node)
+		if applicable := matchFilters(entries, rf); len(applicable) > 0 {
+			var conds []any
+			for _, f := range applicable {
+				conds = append(conds, makeCondition(f, entries))
+			}
+			node["where"] = andConditions(node["where"], conds)
+		}
+	}
+}
+
 func (ri *RowFilterInjector) walkSubqueriesInSelect(node map[string]any, rf []RowFilter) {
 	for _, cte := range dslice(node, "ctes") {
 		ri.walk(node2map(cte)["query"], rf)
@@ -142,6 +184,8 @@ func (ri *RowFilterInjector) walkSubqueriesInSelect(node map[string]any, rf []Ro
 				ri.walk(jt, rf)
 			}
 		}
+		// ON 條件中之子查詢同樣讀取資料，須各自過濾（KNOWN_DEVIATIONS A17）
+		ri.walkExpr(node2map(j)["on"], rf)
 	}
 	for _, ap := range dslice(node, "applies") {
 		ri.walk(node2map(ap)["subquery"], rf)
@@ -383,6 +427,13 @@ type fromItem struct {
 //     否則 WHERE 會剔除保留列，使外部 JOIN 退化為內部 JOIN（FULL JOIN 時亦會漏出應被過濾之列）；
 //   - 同一資料表出現多個別名（自我 JOIN）時，每個別名皆套用過濾。
 func (ri *RowFilterInjector) injectSelect(node map[string]any, rf []RowFilter) {
+	ri.injectFrom(node, rf, "")
+}
+
+// injectFrom 為 injectSelect 之實作。targetQual 非空時，表示該限定詞（別名或表名）為
+// UPDATE／DELETE 之寫入目標：目標不能被衍生資料表取代，其過濾一律以 WHERE 條件表達
+// （不論其是否位於外部 JOIN 之可為 NULL 側；NULL 側之列本即不會被更新或刪除）。
+func (ri *RowFilterInjector) injectFrom(node map[string]any, rf []RowFilter, targetQual string) {
 	var items []*fromItem
 	reg := func(holder map[string]any) {
 		it := &fromItem{holder: holder}
@@ -401,6 +452,11 @@ func (ri *RowFilterInjector) injectSelect(node map[string]any, rf []RowFilter) {
 				it.entry = &aliasEntry{strings.ToUpper(schema), strings.ToUpper(name), q}
 				it.rawName = name
 			}
+		}
+		if holder["pivot"] != nil {
+			// PIVOT／UNPIVOT 之來源：WHERE 作用於轉置後之輸出，無法限縮來源列，
+			// 故一律改以過濾後衍生資料表取代來源（與外部 JOIN 之可為 NULL 側相同之處理）。
+			it.nullable = true
 		}
 		items = append(items, it)
 	}
@@ -422,6 +478,14 @@ func (ri *RowFilterInjector) injectSelect(node map[string]any, rf []RowFilter) {
 		case strings.Contains(jt, "FULL"):
 			for p := 0; p <= at; p++ {
 				items[p].nullable = true
+			}
+		}
+	}
+
+	if targetQual != "" {
+		for _, it := range items {
+			if it.entry != nil && strings.EqualFold(it.entry.qualifier, targetQual) {
+				it.nullable = false
 			}
 		}
 	}

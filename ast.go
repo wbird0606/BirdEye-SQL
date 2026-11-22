@@ -75,6 +75,19 @@ type SelectStatement struct {
 	CTEs         []*CTENode
 	IntoTable    *IdentifierNode
 	Applies      []*ApplyNode
+	ForClause    string // FOR XML / FOR JSON 子句（已白名單正規化），空字串表示無
+	Pivot        *PivotClause
+}
+
+// PivotClause 為基底 FROM 來源（Table／TableAlias）之後接的 PIVOT／UNPIVOT（KNOWN_DEVIATIONS A18）。
+// 轉置後之輸出欄位僅能經 Alias 引用；原來源之別名不再可見。
+type PivotClause struct {
+	Kind     string   // "PIVOT" 或 "UNPIVOT"
+	Agg      string   // PIVOT 之聚合函式（SUM／MAX／MIN／AVG／COUNT）；UNPIVOT 為空
+	ValueCol string   // PIVOT：被聚合之欄位；UNPIVOT：轉置後承載值之新欄位名稱
+	ForCol   string   // PIVOT：其值成為新欄位之來源欄位；UNPIVOT：承載來源欄位名稱之新欄位
+	InList   []string // PIVOT：新欄位名稱；UNPIVOT：被轉為列之來源欄位
+	Alias    string   // 必填
 }
 
 func NewSelectStatement() *SelectStatement {
@@ -96,6 +109,10 @@ type UpdateStatement struct {
 	SetClauses []*AssignmentNode
 	CTEs       []*CTENode
 	Where      Node
+	// T-SQL 之 UPDATE ... FROM ...：Table 可為 FROM 清單內之別名（見 KNOWN_DEVIATIONS A16）
+	FromTable Node
+	FromAlias string
+	FromJoins []*JoinNode
 }
 
 type DeleteStatement struct {
@@ -105,6 +122,10 @@ type DeleteStatement struct {
 	TableAlias string
 	Where      Node
 	CTEs       []*CTENode
+	// T-SQL 之 DELETE [FROM] 目標 FROM ...
+	FromTable Node
+	FromAlias string
+	FromJoins []*JoinNode
 }
 
 type InsertStatement struct {

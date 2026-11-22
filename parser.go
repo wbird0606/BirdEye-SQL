@@ -373,7 +373,7 @@ func (p *Parser) parseSingleSelect() *SelectStatement {
 				if hasAs {
 					alias, ok = p.matchAlias()
 				} else {
-					alias, ok = p.match(Identifier)
+					alias, ok = p.matchPlainAlias()
 				}
 				if ok {
 					if eb := exprOf(expr); eb != nil {
@@ -395,38 +395,7 @@ func (p *Parser) parseSingleSelect() *SelectStatement {
 	}
 
 	if p.matchOK(KwFrom) {
-		if p.check(SymLParen) {
-			p.advance()
-			subq := p.parseSelectWithSetOps()
-			p.consume(SymRParen, "Expected ) after derived table")
-			p.match(KwAs)
-			aliasTok, ok := p.matchAlias()
-			if !ok {
-				p.fail("Derived table must have an alias")
-			}
-			stmt.Table = subq
-			stmt.TableAlias = p.getText(aliasTok)
-		} else {
-			id, _ := p.parseFullIdentifierSafe()
-			stmt.Table = id
-			hasAs := p.matchOK(KwAs)
-			var aliasTok Token
-			var ok bool
-			if hasAs {
-				aliasTok, ok = p.matchAlias()
-			} else {
-				aliasTok, ok = p.match(Identifier)
-			}
-			if ok {
-				stmt.TableAlias = p.getText(aliasTok)
-			}
-		}
-
-		if p.check(SymComma) {
-			p.fail("Expected FROM")
-		}
-
-		p.parseFromTail(stmt)
+		p.parseFromBody(stmt)
 	} else {
 		needsFrom := stmt.IsSelectStar
 		for _, c := range stmt.Columns {
@@ -484,7 +453,65 @@ func (p *Parser) parseSingleSelect() *SelectStatement {
 			p.match(KwOnly)
 		}
 	}
+	if p.atForClause() {
+		stmt.ForClause = p.parseForClause()
+	}
 	return stmt
+}
+
+// parseFromBody 解析 FROM 關鍵字之後的來源（資料表或衍生資料表）與其 JOIN／APPLY，
+// 結果寫入 stmt.Table／TableAlias／Joins／Applies。SELECT 與 UPDATE／DELETE ... FROM 共用。
+func (p *Parser) parseFromBody(stmt *SelectStatement) {
+	if p.check(SymLParen) {
+		p.advance()
+		subq := p.parseSelectWithSetOps()
+		p.consume(SymRParen, "Expected ) after derived table")
+		p.match(KwAs)
+		aliasTok, ok := p.matchAlias()
+		if !ok {
+			p.fail("Derived table must have an alias")
+		}
+		stmt.Table = subq
+		stmt.TableAlias = p.getText(aliasTok)
+	} else {
+		id, _ := p.parseFullIdentifierSafe()
+		stmt.Table = id
+		hasAs := p.matchOK(KwAs)
+		var aliasTok Token
+		var ok bool
+		if hasAs {
+			aliasTok, ok = p.matchAlias()
+		} else {
+			aliasTok, ok = p.matchPlainAlias()
+		}
+		if ok {
+			stmt.TableAlias = p.getText(aliasTok)
+		}
+	}
+
+	if p.atPivotClause() {
+		stmt.Pivot = p.parsePivotClause()
+	}
+
+	if p.check(SymComma) {
+		p.fail("Expected FROM")
+	}
+
+	p.parseFromTail(stmt)
+}
+
+// parseDMLFrom 解析 UPDATE／DELETE 之 FROM 子句，回傳 (來源表, 別名, JOIN 清單)。
+// DML 之 FROM 不支援 APPLY（Fail-Closed）。
+func (p *Parser) parseDMLFrom() (Node, string, []*JoinNode) {
+	tmp := NewSelectStatement()
+	p.parseFromBody(tmp)
+	if len(tmp.Applies) > 0 {
+		p.fail("APPLY is not supported in UPDATE/DELETE ... FROM")
+	}
+	if tmp.Pivot != nil {
+		p.fail("PIVOT/UNPIVOT is not supported in UPDATE/DELETE ... FROM")
+	}
+	return tmp.Table, tmp.TableAlias, tmp.Joins
 }
 
 // parseFromTail 處理 FROM 之後的 JOIN / APPLY / CROSS JOIN 迴圈。
@@ -505,7 +532,7 @@ func (p *Parser) parseFromTail(stmt *SelectStatement) {
 				if hasAs {
 					al, ok = p.matchAlias()
 				} else {
-					al, ok = p.match(Identifier)
+					al, ok = p.matchPlainAlias()
 				}
 				if ok {
 					j.Alias = p.getText(al)
@@ -569,7 +596,7 @@ func (p *Parser) parseFromTail(stmt *SelectStatement) {
 				if hasAs {
 					al, ok = p.matchAlias()
 				} else {
-					al, ok = p.match(Identifier)
+					al, ok = p.matchPlainAlias()
 				}
 				if ok {
 					j.Alias = p.getText(al)
@@ -648,6 +675,9 @@ func (p *Parser) parseUpdate() *UpdateStatement {
 			break
 		}
 	}
+	if p.matchOK(KwFrom) {
+		stmt.FromTable, stmt.FromAlias, stmt.FromJoins = p.parseDMLFrom()
+	}
 	p.consume(KwWhere, "WHERE clause is mandatory for UPDATE/DELETE")
 	stmt.Where = p.parseExpression()
 	return stmt
@@ -658,6 +688,9 @@ func (p *Parser) parseDelete() *DeleteStatement {
 	p.consume(KwDelete, "Expected DELETE")
 	p.match(KwFrom)
 	stmt.Table, _ = p.parseFullIdentifierSafe()
+	if p.matchOK(KwFrom) {
+		stmt.FromTable, stmt.FromAlias, stmt.FromJoins = p.parseDMLFrom()
+	}
 	p.consume(KwWhere, "WHERE clause is mandatory for UPDATE/DELETE")
 	stmt.Where = p.parseExpression()
 	return stmt

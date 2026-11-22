@@ -171,6 +171,17 @@ func (ie *IntentExtractor) walkSelect(node map[string]any, intents *[]Intent, ct
 	}
 
 	am, derived := ie.buildAliasMap(node, localCTEs, intents)
+	if pv := dmap(node, "pivot"); pv != nil {
+		// PIVOT／UNPIVOT 之輸出欄位只能經其別名引用，該別名為衍生來源，不產生資料表意圖；
+		// 來源若為資料表，其所有欄位皆被轉置（分組或轉為列），故整張表視為 READ（與 SELECT * 相同）。
+		for _, a := range []string{dstr(pv, "alias"), strings.ToUpper(dstr(pv, "alias")), strings.ToLower(dstr(pv, "alias"))} {
+			derived[a] = true
+		}
+		if s, tbl := tableInfo(dmap(node, "table")); tbl != "" && !localCTEs[strings.ToUpper(tbl)] &&
+			dstr(dmap(node, "table"), "node_type") == "IdentifierNode" {
+			ie.add(intents, s, tbl, nil, IntentRead)
+		}
+	}
 	if parentAlias != nil {
 		merged := newAliasMap()
 		for _, k := range parentAlias.order {
@@ -240,15 +251,49 @@ func hasStarArg(col map[string]any) bool {
 
 // ── UpdateStatement ─────────────────────────────────────────────────────────
 
-func (ie *IntentExtractor) walkUpdate(node map[string]any, intents *[]Intent, cteNames strSetT) {
-	schema, tbl := tableInfo(dmap(node, "table"))
-	if tbl == "" || cteNames[tbl] {
-		return
+// lookupAlias 以別名或表名（不分大小寫）查出對應之真實資料表。
+func lookupAlias(am *aliasMap, q string) (schemaTable, bool) {
+	if st, ok := am.get(q); ok {
+		return st, true
 	}
-	am := newAliasMap()
+	qUp := strings.ToUpper(q)
+	for _, key := range am.order {
+		if strings.ToUpper(key) == qUp {
+			return am.m[key], true
+		}
+	}
+	return schemaTable{}, false
+}
+
+// dmlScope 建立 UPDATE／DELETE 之別名表與目標表。
+// 無 FROM 時與原行為相同；有 FROM 時，FROM 來源與 JOIN 之資料表一併登記（其欄位引用須產生意圖，
+// 否則來源表之讀取會漏檢），且目標若為 FROM 清單內之別名，則解析為該別名所指之真實資料表。
+func (ie *IntentExtractor) dmlScope(node map[string]any, intents *[]Intent, cteNames strSetT) (am *aliasMap, derived strSetT, schema, tbl string, ok bool) {
+	schema, tbl = tableInfo(dmap(node, "table"))
+	am = newAliasMap()
+	if dmap(node, "from_table") != nil {
+		sel := map[string]any{"table": node["from_table"], "alias": node["from_alias"], "joins": node["from_joins"]}
+		am, derived = ie.buildAliasMap(sel, cteNames, intents)
+		if t := dmap(node, "table"); t != nil && len(strSlice(dslice(t, "qualifiers"))) == 0 {
+			if st, found := lookupAlias(am, tbl); found {
+				schema, tbl = st.schema, st.table
+			}
+		}
+	}
+	if tbl == "" || cteNames[tbl] {
+		return nil, nil, schema, tbl, false
+	}
 	am.set(tbl, schemaTable{schema, tbl})
 	if a := dstr(node, "alias"); a != "" {
 		am.set(a, schemaTable{schema, tbl})
+	}
+	return am, derived, schema, tbl, true
+}
+
+func (ie *IntentExtractor) walkUpdate(node map[string]any, intents *[]Intent, cteNames strSetT) {
+	am, derived, schema, tbl, ok := ie.dmlScope(node, intents, cteNames)
+	if !ok {
+		return
 	}
 	for _, asgnRaw := range dslice(node, "set") {
 		asgn := node2map(asgnRaw)
@@ -264,23 +309,24 @@ func (ie *IntentExtractor) walkUpdate(node map[string]any, intents *[]Intent, ct
 			}
 			ie.add(intents, schemaOut, tableOut, sp(cn), IntentUpdate)
 		}
-		ie.walkExpr(asgn["expr"], am, IntentRead, intents, cteNames, nil)
+		ie.walkExpr(asgn["expr"], am, IntentRead, intents, cteNames, derived)
 	}
-	ie.walkExpr(node["where"], am, IntentFilter, intents, cteNames, nil)
+	ie.walkExpr(node["where"], am, IntentFilter, intents, cteNames, derived)
+	for _, j := range dslice(node, "from_joins") {
+		ie.walkExpr(node2map(j)["on"], am, IntentFilter, intents, cteNames, derived)
+	}
 }
 
 func (ie *IntentExtractor) walkDelete(node map[string]any, intents *[]Intent, cteNames strSetT) {
-	schema, tbl := tableInfo(dmap(node, "table"))
-	if tbl == "" || cteNames[tbl] {
+	am, derived, schema, tbl, ok := ie.dmlScope(node, intents, cteNames)
+	if !ok {
 		return
 	}
-	am := newAliasMap()
-	am.set(tbl, schemaTable{schema, tbl})
-	if a := dstr(node, "alias"); a != "" {
-		am.set(a, schemaTable{schema, tbl})
-	}
 	ie.add(intents, schema, tbl, nil, IntentDelete)
-	ie.walkExpr(node["where"], am, IntentFilter, intents, cteNames, nil)
+	ie.walkExpr(node["where"], am, IntentFilter, intents, cteNames, derived)
+	for _, j := range dslice(node, "from_joins") {
+		ie.walkExpr(node2map(j)["on"], am, IntentFilter, intents, cteNames, derived)
+	}
 }
 
 func (ie *IntentExtractor) walkInsert(node map[string]any, intents *[]Intent, cteNames strSetT) {
@@ -587,6 +633,7 @@ func (ie *IntentExtractor) collectTables(node map[string]any, tables map[[2]stri
 					tables[[2]string{s, tbl}] = true
 				}
 			}
+			ie.collectTables(dmap(node2map(j), "on"), tables, local)
 		}
 		ie.collectTables(dmap(node, "where"), tables, local)
 		ie.collectTables(dmap(node, "having"), tables, local)
@@ -611,7 +658,29 @@ func (ie *IntentExtractor) collectTables(node map[string]any, tables map[[2]stri
 		ie.collectTables(dmap(node, "right"), tables, cteNames)
 	case "UpdateStatement", "DeleteStatement", "TruncateStatement":
 		t := dmap(node, "table")
-		if t != nil && dstr(t, "node_type") == "IdentifierNode" {
+		targetIsAlias := false
+		if dmap(node, "from_table") != nil {
+			// UPDATE/DELETE ... FROM：來源表與 JOIN 之資料表須一併蒐集（供取得欄位定義）；
+			// 目標若為 FROM 清單內之別名，則其本身不是資料表，不另行蒐集。
+			sel := map[string]any{"node_type": "SelectStatement", "table": node["from_table"],
+				"alias": node["from_alias"], "joins": node["from_joins"]}
+			ie.collectTables(sel, tables, cteNames)
+			for _, j := range dslice(node, "from_joins") {
+				ie.collectTables(dmap(node2map(j), "on"), tables, cteNames)
+			}
+			if t != nil && len(strSlice(dslice(t, "qualifiers"))) == 0 {
+				name := strings.ToUpper(dstr(t, "name"))
+				if strings.ToUpper(dstr(node, "from_alias")) == name {
+					targetIsAlias = true
+				}
+				for _, j := range dslice(node, "from_joins") {
+					if strings.ToUpper(dstr(node2map(j), "alias")) == name {
+						targetIsAlias = true
+					}
+				}
+			}
+		}
+		if t != nil && !targetIsAlias && dstr(t, "node_type") == "IdentifierNode" {
 			s, tbl := tableInfo(t)
 			if tbl != "" && !cteNames[strings.ToUpper(tbl)] {
 				tables[[2]string{s, tbl}] = true

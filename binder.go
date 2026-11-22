@@ -224,6 +224,9 @@ func (b *Binder) bindSelect(stmt *SelectStatement) {
 	b.pushScope()
 	if stmt.Table != nil {
 		b.registerScopeNode(stmt.Table, stmt.TableAlias)
+		if stmt.Pivot != nil {
+			b.applyPivot(stmt)
+		}
 	}
 	for _, j := range stmt.Joins {
 		al := strings.ToUpper(joinAlias(j))
@@ -916,7 +919,7 @@ func (b *Binder) bindUpdate(stmt *UpdateStatement) {
 		b.bindCTE(cte)
 	}
 	b.pushScope()
-	b.registerScope(stmt.Table, stmt.TableAlias)
+	b.bindDMLSources(stmt.Table, stmt.TableAlias, stmt.FromTable, stmt.FromAlias, stmt.FromJoins)
 	if stmt.Where != nil {
 		b.visitExpr(stmt.Where)
 	}
@@ -931,11 +934,49 @@ func (b *Binder) bindDelete(stmt *DeleteStatement) {
 		b.bindCTE(cte)
 	}
 	b.pushScope()
-	b.registerScope(stmt.Table, stmt.TableAlias)
+	b.bindDMLSources(stmt.Table, stmt.TableAlias, stmt.FromTable, stmt.FromAlias, stmt.FromJoins)
 	if stmt.Where != nil {
 		b.visitExpr(stmt.Where)
 	}
 	b.popScope()
+}
+
+// bindDMLSources 登記 UPDATE／DELETE 之資料來源。
+// 無 FROM：目標表即唯一來源。有 FROM：先登記 FROM 來源與 JOIN，目標若為 FROM 清單內之別名
+// （或未加別名之資料表名）則直接解析至該項（T-SQL 慣用寫法 UPDATE c ... FROM T c），
+// 否則目標另行登記為獨立資料表（目標不存在時照常回報 Table not found）。
+func (b *Binder) bindDMLSources(target *IdentifierNode, tableAlias string, fromTable Node, fromAlias string, joins []*JoinNode) {
+	if fromTable == nil {
+		b.registerScope(target, tableAlias)
+		return
+	}
+	b.registerScopeNode(fromTable, fromAlias)
+	for _, j := range joins {
+		al := strings.ToUpper(joinAlias(j))
+		switch j.Type {
+		case "LEFT":
+			b.topNullable()[al] = true
+		case "RIGHT":
+			for _, k := range b.topScope().order {
+				b.topNullable()[k] = true
+			}
+		case "FULL":
+			b.topNullable()[al] = true
+			for _, k := range b.topScope().order {
+				b.topNullable()[k] = true
+			}
+		}
+		b.registerScopeNode(j.Table, j.Alias)
+		if j.OnCondition != nil {
+			b.visitExpr(j.OnCondition)
+		}
+	}
+	if target != nil && len(target.Qualifiers) == 0 {
+		if _, ok := b.topScope().m[strings.ToUpper(target.Name)]; ok {
+			return
+		}
+	}
+	b.registerScope(target, tableAlias)
 }
 
 func (b *Binder) bindInsert(stmt *InsertStatement) {

@@ -2,6 +2,7 @@ package birdeye
 
 import (
 	"encoding/json"
+	"regexp"
 	"strings"
 )
 
@@ -209,6 +210,9 @@ func (rc *Reconstructor) sqlSelect(n map[string]any) string {
 	if tbl := n["table"]; truthy(tbl) {
 		parts = append(parts, "FROM")
 		parts = append(parts, rc.sqlTableRef(node2map(tbl), dstr(n, "alias")))
+		if pv := dmap(n, "pivot"); pv != nil {
+			parts = append(parts, rc.sqlPivot(pv))
+		}
 	}
 
 	for _, j := range dslice(n, "joins") {
@@ -243,6 +247,9 @@ func (rc *Reconstructor) sqlSelect(n map[string]any) string {
 			parts = append(parts, "FETCH NEXT "+itoa(int(f))+" ROWS ONLY")
 		}
 	}
+	if fc := dstr(n, "for_clause"); fc != "" {
+		parts = append(parts, fc)
+	}
 	return strings.Join(parts, " ")
 }
 
@@ -269,6 +276,7 @@ func (rc *Reconstructor) sqlUpdate(n map[string]any) string {
 		sets = append(sets, rc.sqlAssignment(node2map(s)))
 	}
 	parts = append(parts, "UPDATE "+tbl+" SET "+strings.Join(sets, ", "))
+	parts = append(parts, rc.sqlDMLFrom(n)...)
 	if w := firstVal(n, "where_condition", "where"); truthy(w) {
 		parts = append(parts, "WHERE "+rc.sqlExpr(w))
 	}
@@ -284,11 +292,30 @@ func (rc *Reconstructor) sqlDelete(n map[string]any) string {
 		}
 		parts = append(parts, "WITH "+strings.Join(cp, ", "))
 	}
-	parts = append(parts, "DELETE FROM "+rc.sqlTableRef(dmap(n, "table"), dstr(n, "alias")))
+	if truthy(n["from_table"]) {
+		// DELETE 目標 FROM 來源：目標可為 FROM 清單內之別名
+		parts = append(parts, "DELETE "+rc.sqlTableRef(dmap(n, "table"), dstr(n, "alias")))
+		parts = append(parts, rc.sqlDMLFrom(n)...)
+	} else {
+		parts = append(parts, "DELETE FROM "+rc.sqlTableRef(dmap(n, "table"), dstr(n, "alias")))
+	}
 	if w := firstVal(n, "where_condition", "where"); truthy(w) {
 		parts = append(parts, "WHERE "+rc.sqlExpr(w))
 	}
 	return strings.Join(parts, " ")
+}
+
+// sqlDMLFrom 重建 UPDATE／DELETE 之 FROM 子句（來源表與其 JOIN）；無 FROM 時回傳 nil。
+func (rc *Reconstructor) sqlDMLFrom(n map[string]any) []string {
+	ft := n["from_table"]
+	if !truthy(ft) {
+		return nil
+	}
+	parts := []string{"FROM", rc.sqlTableRef(node2map(ft), dstr(n, "from_alias"))}
+	for _, j := range dslice(n, "from_joins") {
+		parts = append(parts, rc.sqlJoin(node2map(j)))
+	}
+	return parts
 }
 
 func (rc *Reconstructor) sqlInsert(n map[string]any) string {
@@ -566,7 +593,22 @@ func (rc *Reconstructor) sqlIdentifier(n map[string]any) string {
 		name = "?"
 	}
 	parts := append(strSlice(dslice(n, "qualifiers")), name)
+	for i, p := range parts {
+		parts[i] = quoteIdentPart(p)
+	}
 	return strings.Join(parts, ".")
+}
+
+var plainIdentRe = regexp.MustCompile(`^[\p{L}_][\p{L}\p{N}_$@#]*$`)
+
+// quoteIdentPart：詞法階段會剝除方括號，故不是單純識別字之名稱（如 [2019]、[my col]）
+// 重建時須補回方括號，否則重建後之 SQL（會被執行）語意改變或無法解析。
+// 星號、變數（@x）、暫存表（#t）與位置參數（?）維持原樣。
+func quoteIdentPart(s string) string {
+	if s == "" || s == "*" || s == "?" || plainIdentRe.MatchString(s) || strings.HasPrefix(s, "@") || strings.HasPrefix(s, "#") {
+		return s
+	}
+	return "[" + strings.ReplaceAll(s, "]", "]]") + "]"
 }
 
 func (rc *Reconstructor) sqlLiteral(n map[string]any) string {

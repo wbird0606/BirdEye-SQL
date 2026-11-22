@@ -192,6 +192,7 @@ var knownReconstructDeviation = map[string]bool{
 	"test_reconstructor_coverage_suite:88d06266db48": true,
 	"test_semantic_suite:359050b5d8b9":               true,
 	"test_semantic_suite:8c8d02e2d55b":               true,
+	"test_parser_suite:cac8b6efc150":                 true, // A19：方括號識別字重建時補回方括號
 	"test_visualizer_suite:5f2c89d7dce4":             true,
 	"test_visualizer_suite:ef0ceea439a8":             true,
 	"test_visualizer_suite:f136407c4a2f":             true,

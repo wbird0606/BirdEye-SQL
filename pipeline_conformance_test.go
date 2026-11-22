@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -133,6 +134,8 @@ func TestRunMultiConformance(t *testing.T) {
 	})
 }
 
+var forClauseTestRe = regexp.MustCompile(`(?i)\bFOR\s+(XML|JSON)\b|\b(UN)?PIVOT\s*\(`)
+
 func runPipelineConformance(t *testing.T, mode string, fn func(sql string, params any) (goPipe, error)) {
 	var total, skip int
 	pass := map[string]int{"ast_json": 0, "tree": 0, "mermaid": 0}
@@ -146,6 +149,11 @@ func runPipelineConformance(t *testing.T, mode string, fn func(sql string, param
 		got, gerr := fn(r.SQL, fixtureParams(t, r))
 
 		if !r.Parse.OK {
+			if forClauseTestRe.MatchString(r.SQL) {
+				// 刻意偏離（KNOWN_DEVIATIONS A15、A18）：Go 支援 FOR XML／FOR JSON 與 PIVOT／UNPIVOT，Python 基準版視為語法錯誤
+				skip++
+				continue
+			}
 			if gerr == nil {
 				fails["應報錯卻成功"]++
 				t.Errorf("[%s] 應 %s error 卻成功\nSQL: %q", r.ID, r.Parse.Error.Category, r.SQL)

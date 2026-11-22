@@ -184,11 +184,7 @@ func TestAdversarialCommentAndFailClosed(t *testing.T) {
 	}
 	failClosed := []string{
 		"SEL/**/ECT CustomerID FROM Customer",
-		"SELECT * FROM Sales PIVOT (SUM(Amount) FOR Region IN ([North],[South])) AS P",
-		"SELECT CustomerID, Name FROM Customer FOR XML AUTO",
-		"SELECT CustomerID FROM Customer FOR JSON PATH",
 		"BULK INSERT Customer FROM 'C:\\data.csv'",
-		"SELECT id FROM T FOR XML RAW",
 		"",
 		"-- just a comment",
 	}

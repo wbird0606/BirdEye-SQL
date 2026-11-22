@@ -286,6 +286,19 @@ func (s *Serializer) serialize(n Node) any {
 			jkv{"offset_count", derefInt(x.OffsetCount)},
 			jkv{"fetch_count", derefInt(x.FetchCount)},
 		)
+		if x.Pivot != nil {
+			var in jarr
+			for _, v := range x.Pivot.InList {
+				in = append(in, v)
+			}
+			obj = append(obj, jkv{"pivot", jobj{
+				{"kind", x.Pivot.Kind}, {"agg", nilIfEmpty(x.Pivot.Agg)}, {"value_col", x.Pivot.ValueCol},
+				{"for_col", x.Pivot.ForCol}, {"in_list", in}, {"alias", x.Pivot.Alias},
+			}})
+		}
+		if x.ForClause != "" {
+			obj = append(obj, jkv{"for_clause", x.ForClause})
+		}
 		if x.Alias != "" {
 			// 子查詢作為 SELECT 清單運算式時之別名；"alias" 鍵保留給內層 FROM 資料表別名
 			obj = append(obj, jkv{"expr_alias", x.Alias})
@@ -328,6 +341,13 @@ func (s *Serializer) serialize(n Node) any {
 			jkv{"set", s.serAny(x.SetClauses)},
 			jkv{"where", s.serialize2(x.Where)},
 		)
+		if x.FromTable != nil {
+			obj = append(obj,
+				jkv{"from_table", s.serialize2(x.FromTable)},
+				jkv{"from_alias", nilIfEmpty(x.FromAlias)},
+				jkv{"from_joins", s.serAny(x.FromJoins)},
+			)
+		}
 
 	case *DeleteStatement:
 		obj = append(obj,
@@ -335,6 +355,13 @@ func (s *Serializer) serialize(n Node) any {
 			jkv{"alias", nilIfEmpty(x.TableAlias)},
 			jkv{"where", s.serialize2(x.Where)},
 		)
+		if x.FromTable != nil {
+			obj = append(obj,
+				jkv{"from_table", s.serialize2(x.FromTable)},
+				jkv{"from_alias", nilIfEmpty(x.FromAlias)},
+				jkv{"from_joins", s.serAny(x.FromJoins)},
+			)
+		}
 
 	case *InsertStatement:
 		var values any
